@@ -41,10 +41,15 @@ class VisitorController {
                 addressLine,
                 city,
                 state,
+                postalCode,
                 gender,
                 phone,
+                phoneH,
                 email,
-                idCardNumber
+                idCardNumber,
+                healthCardVersion,
+                healthCardEffectivityDate,
+                healthCardExpiryDate
             } = req.body;
 
             console.log('createVisitor - Received data:', {
@@ -93,10 +98,15 @@ class VisitorController {
                 addressLine: addressLine.trim(),
                 city: city.trim(),
                 state: state.trim(),
+                postalCode: postalCode ? postalCode.trim() : '',
                 gender: gender.trim(),
                 phone: phone.trim(),
+                phoneH: phoneH ? phoneH.trim() : '',
                 email: email ? email.trim() : '',
                 idCardNumber: formattedIdCard,
+                healthCardVersion: healthCardVersion ? healthCardVersion.trim() : '',
+                healthCardEffectivityDate: healthCardEffectivityDate || '',
+                healthCardExpiryDate: healthCardExpiryDate || '',
                 createdAt: now,
                 editedAt: now,
                 deletedAt: ''

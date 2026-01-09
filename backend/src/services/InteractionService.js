@@ -63,20 +63,40 @@ class InteractionService {
 
     // Get next serial for a specific entity (composite format: E1-V1-I1, E1-V1-I2, etc.)
     async getNextSerialForEntity(entitySerial, visitorSerial) {
-        const all = await this.getAll();
-        let max = 0;
-        const prefix = `${entitySerial}-${visitorSerial}-I`;
-        
-        all.forEach(item => {
-            if (item.interactionSerial && item.interactionSerial.startsWith(prefix)) {
-                // Extract number from composite serial (e.g., "E1-V1-I1" -> 1)
-                const numPart = parseInt(item.interactionSerial.replace(prefix, ''));
-                if (!isNaN(numPart) && numPart > max) {
-                    max = numPart;
-                }
+        try {
+            console.log('getNextSerialForEntity - Input:', { entitySerial, visitorSerial });
+            
+            // visitorSerial should be just the serial number (e.g., "1"), not composite
+            // If it's composite (e.g., "E1-1"), extract just the serial part
+            let serialNumber = visitorSerial;
+            if (visitorSerial && visitorSerial.includes('-')) {
+                // Extract the last part after the last dash
+                const parts = visitorSerial.split('-');
+                serialNumber = parts[parts.length - 1];
             }
-        });
-        return `${prefix}${max + 1}`;
+            
+            const all = await this.getAll();
+            let max = 0;
+            const prefix = `${entitySerial}-${serialNumber}-I`;
+            console.log('getNextSerialForEntity - Prefix:', prefix);
+            
+            all.forEach(item => {
+                if (item.interactionSerial && item.interactionSerial.startsWith(prefix)) {
+                    // Extract number from composite serial (e.g., "E1-V1-I1" -> 1)
+                    const numPart = parseInt(item.interactionSerial.replace(prefix, ''));
+                    if (!isNaN(numPart) && numPart > max) {
+                        max = numPart;
+                    }
+                }
+            });
+            
+            const result = `${prefix}${max + 1}`;
+            console.log('getNextSerialForEntity - Result:', result);
+            return result;
+        } catch (error) {
+            console.error('getNextSerialForEntity error:', error);
+            throw error;
+        }
     }
 }
 

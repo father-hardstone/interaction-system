@@ -46,6 +46,10 @@ const visitorSchema = new mongoose.Schema({
         type: String,
         required: true
     },
+    postalCode: {
+        type: String,
+        default: ''
+    },
     gender: {
         type: String,
         required: true
@@ -54,6 +58,10 @@ const visitorSchema = new mongoose.Schema({
         type: String,
         required: true
     },
+    phoneH: {
+        type: String,
+        default: ''
+    },
     email: {
         type: String,
         default: ''
@@ -61,6 +69,18 @@ const visitorSchema = new mongoose.Schema({
     idCardNumber: {
         type: String,
         required: true
+    },
+    healthCardVersion: {
+        type: String,
+        default: ''
+    },
+    healthCardEffectivityDate: {
+        type: String,
+        default: ''
+    },
+    healthCardExpiryDate: {
+        type: String,
+        default: ''
     },
     createdAt: {
         type: String,

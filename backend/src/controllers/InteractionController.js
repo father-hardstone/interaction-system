@@ -76,11 +76,69 @@ class InteractionController {
     // Create a new interaction
     async createInteraction(req, res) {
         try {
-            const interactionData = req.body;
+            const { entityId, entitySerial, visitorId, visitorSerial } = req.body;
+            
+            console.log('createInteraction - Received data:', {
+                entityId,
+                entitySerial,
+                visitorId,
+                visitorSerial
+            });
+            
+            if (!entityId || !entitySerial || !visitorId || !visitorSerial) {
+                return res.status(400).json({ error: 'Missing required fields' });
+            }
+
+            // Generate interaction serial
+            const interactionSerial = await InteractionService.getNextSerialForEntity(entitySerial, visitorSerial);
+            console.log('createInteraction - Generated interactionSerial:', interactionSerial);
+            
+            if (!interactionSerial) {
+                return res.status(500).json({ error: 'Failed to generate interaction serial' });
+            }
+
+            const { v4: uuidv4 } = require('uuid');
+            const interactionId = uuidv4();
+            console.log('createInteraction - Generated id:', interactionId);
+            
+            const now = new Date().toISOString();
+
+            const interactionData = {
+                id: interactionId,
+                interactionSerial: interactionSerial,
+                entityId: entityId,
+                entitySerial: entitySerial,
+                visitorId: visitorId,
+                visitorSerial: visitorSerial,
+                officerId: '',
+                officerSerial: '',
+                createdAt: now,
+                editedAt: now,
+                deletedAt: ''
+            };
+
+            console.log('createInteraction - Interaction data to save:', interactionData);
+
             const created = await InteractionService.create(interactionData);
+            console.log('createInteraction - Created interaction:', created);
             res.status(201).json(created);
         } catch (e) {
             console.error('createInteraction error:', e);
+            res.status(500).json({ error: e.message });
+        }
+    }
+
+    // Delete an interaction
+    async deleteInteraction(req, res) {
+        try {
+            const { id } = req.params;
+            const deleted = await InteractionService.delete(id);
+            if (!deleted) {
+                return res.status(404).json({ error: 'Interaction not found' });
+            }
+            res.json({ message: 'Interaction deleted successfully' });
+        } catch (e) {
+            console.error('deleteInteraction error:', e);
             res.status(500).json({ error: e.message });
         }
     }

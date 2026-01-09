@@ -17,5 +17,10 @@ export const interactionService = {
             officerSerial
         });
         return response.data;
+    },
+
+    delete: async (interactionId) => {
+        const response = await api.delete(`/interactions/${interactionId}`);
+        return response.data;
     }
 };

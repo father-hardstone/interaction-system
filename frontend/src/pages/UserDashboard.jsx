@@ -16,7 +16,9 @@ const UserDashboard = () => {
     const [userData, setUserData] = useState(null);
     const [activeTab, setActiveTab] = useState('reception');
     const [visitors, setVisitors] = useState([]);
-    const [searchName, setSearchName] = useState('');
+    const [searchFirstName, setSearchFirstName] = useState('');
+    const [searchMiddleName, setSearchMiddleName] = useState('');
+    const [searchLastName, setSearchLastName] = useState('');
     const [searchSerial, setSearchSerial] = useState('');
     const [searchPhone, setSearchPhone] = useState('');
     const [searchIdCard, setSearchIdCard] = useState('');
@@ -29,11 +31,22 @@ const UserDashboard = () => {
         addressLine: '',
         city: '',
         state: '',
+        postalCode: '',
         gender: '',
-        email: ''
+        email: '',
+        phoneH: ''
     });
     const [phoneData, setPhoneData] = useState({ fullNumber: '', valid: false });
+    const [phoneHData, setPhoneHData] = useState({ fullNumber: '', valid: false });
     const [idCardNumber, setIdCardNumber] = useState('');
+    const [healthCardVersion, setHealthCardVersion] = useState('');
+    const [healthCardEffectivityDate, setHealthCardEffectivityDate] = useState('');
+    const [healthCardExpiryDate, setHealthCardExpiryDate] = useState('');
+    const [selectedPatient, setSelectedPatient] = useState(null);
+    const [showPatientDetailModal, setShowPatientDetailModal] = useState(false);
+    const [draggedPatient, setDraggedPatient] = useState(null);
+    const [showDeleteRegistrationModal, setShowDeleteRegistrationModal] = useState(false);
+    const [registrationToDelete, setRegistrationToDelete] = useState(null);
     const [error, setError] = useState('');
     const [interactions, setInteractions] = useState([]);
     const [officers, setOfficers] = useState([]);
@@ -268,10 +281,15 @@ const UserDashboard = () => {
                 addressLine: visitorForm.addressLine.trim(),
                 city: visitorForm.city.trim(),
                 state: visitorForm.state.trim(),
+                postalCode: visitorForm.postalCode.trim(),
                 gender: visitorForm.gender,
                 phone: phoneData.fullNumber,
+                phoneH: phoneHData.fullNumber || '',
                 email: visitorForm.email.trim(),
-                idCardNumber: cleanIdCard
+                idCardNumber: cleanIdCard,
+                healthCardVersion: healthCardVersion.trim(),
+                healthCardEffectivityDate: healthCardEffectivityDate,
+                healthCardExpiryDate: healthCardExpiryDate
             });
 
             // Reset form
@@ -283,11 +301,17 @@ const UserDashboard = () => {
                 addressLine: '',
                 city: '',
                 state: '',
+                postalCode: '',
                 gender: '',
-                email: ''
+                email: '',
+                phoneH: ''
             });
             setPhoneData({ fullNumber: '', valid: false });
+            setPhoneHData({ fullNumber: '', valid: false });
             setIdCardNumber('');
+            setHealthCardVersion('');
+            setHealthCardEffectivityDate('');
+            setHealthCardExpiryDate('');
             setShowVisitorModal(false);
             setError('');
 
@@ -300,15 +324,117 @@ const UserDashboard = () => {
     };
 
     const handleDeleteVisitor = async (visitorId) => {
-        if (window.confirm('Are you sure you want to delete this visitor?')) {
+        if (window.confirm('Are you sure you want to delete this patient?')) {
             try {
                 await visitorService.delete(visitorId);
                 if (userData?.entityId) {
                     await loadVisitors(userData.entityId);
                 }
             } catch (e) {
-                alert('Failed to delete visitor');
+                alert('Failed to delete patient');
             }
+        }
+    };
+
+    const handlePatientClick = (patient) => {
+        setSelectedPatient(patient);
+        setShowPatientDetailModal(true);
+    };
+
+    const handlePatientDragStart = (e, patient) => {
+        setDraggedPatient(patient);
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', 'patient'); // Use text/plain for better compatibility
+        e.dataTransfer.setData('patient', 'true');
+        
+        // Create a custom drag image (box/card style)
+        const dragImage = document.createElement('div');
+        dragImage.className = 'bg-white border-2 border-blue-300 rounded-xl p-3 shadow-lg';
+        dragImage.style.width = '180px';
+        dragImage.style.position = 'absolute';
+        dragImage.style.top = '-1000px';
+        dragImage.style.left = '-1000px';
+        dragImage.style.pointerEvents = 'none';
+        dragImage.innerHTML = `
+            <div class="text-xs font-semibold text-blue-700 mb-1">New Registration</div>
+            <div class="text-sm font-medium text-slate-900 truncate">${patient.firstName} ${patient.middleName ? patient.middleName + ' ' : ''}${patient.lastName}</div>
+            <div class="text-xs text-slate-600 mt-1">ID: ${patient.entitySerial ? `${patient.entitySerial}-${patient.serial}` : patient.serial}</div>
+        `;
+        document.body.appendChild(dragImage);
+        e.dataTransfer.setDragImage(dragImage, 90, 45);
+        
+        // Remove the drag image after a short delay
+        setTimeout(() => {
+            if (document.body.contains(dragImage)) {
+                document.body.removeChild(dragImage);
+            }
+        }, 0);
+    };
+
+    const handlePatientDrop = async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        if (!draggedPatient) {
+            console.log('No dragged patient found');
+            return;
+        }
+
+        console.log('Dropping patient:', draggedPatient);
+
+        try {
+            // Create a new interaction for this patient
+            // The backend will generate the interaction serial and timestamp
+            // Send just the serial number, not the composite format
+            const visitorSerial = draggedPatient.serial;
+
+            console.log('Creating interaction with:', {
+                entityId: userData.entityId,
+                entitySerial: userData.entitySerial,
+                visitorId: draggedPatient.id,
+                visitorSerial: visitorSerial
+            });
+
+            const response = await interactionService.create({
+                entityId: userData.entityId,
+                entitySerial: userData.entitySerial,
+                visitorId: draggedPatient.id,
+                visitorSerial: visitorSerial
+            });
+
+            console.log('Successfully created interaction:', response);
+            
+            // Reload interactions to show the new one
+            await loadInteractions(userData.entityId);
+            setDraggedPatient(null);
+        } catch (err) {
+            console.error('Failed to create interaction:', err);
+            console.error('Error details:', err.response?.data || err.message);
+            showWarning('Failed to create registration: ' + (err.response?.data?.error || err.message));
+            setDraggedPatient(null);
+        }
+    };
+
+    const handleDeleteRegistration = async () => {
+        if (!registrationToDelete) return;
+        
+        try {
+            await interactionService.delete(registrationToDelete.id);
+            await loadInteractions(userData.entityId);
+            setShowDeleteRegistrationModal(false);
+            setRegistrationToDelete(null);
+        } catch (err) {
+            console.error('Failed to delete registration:', err);
+            showWarning('Failed to delete registration');
+        }
+    };
+
+    const handleRegistrationDropOnBin = (e) => {
+        e.preventDefault();
+        if (draggedInteraction) {
+            setRegistrationToDelete(draggedInteraction);
+            setShowDeleteRegistrationModal(true);
+            setDraggedInteraction(null);
         }
     };
 
@@ -336,8 +462,12 @@ const UserDashboard = () => {
                     {activeTab === 'reception' && (
                         <ReceptionTab
                             visitors={visitors}
-                            searchName={searchName}
-                            setSearchName={setSearchName}
+                            searchFirstName={searchFirstName}
+                            setSearchFirstName={setSearchFirstName}
+                            searchMiddleName={searchMiddleName}
+                            setSearchMiddleName={setSearchMiddleName}
+                            searchLastName={searchLastName}
+                            setSearchLastName={setSearchLastName}
                             searchSerial={searchSerial}
                             setSearchSerial={setSearchSerial}
                             searchPhone={searchPhone}
@@ -350,13 +480,27 @@ const UserDashboard = () => {
                             setVisitorForm={setVisitorForm}
                             phoneData={phoneData}
                             setPhoneData={setPhoneData}
+                            phoneHData={phoneHData}
+                            setPhoneHData={setPhoneHData}
                             idCardNumber={idCardNumber}
                             setIdCardNumber={setIdCardNumber}
+                            healthCardVersion={healthCardVersion}
+                            setHealthCardVersion={setHealthCardVersion}
+                            healthCardEffectivityDate={healthCardEffectivityDate}
+                            setHealthCardEffectivityDate={setHealthCardEffectivityDate}
+                            healthCardExpiryDate={healthCardExpiryDate}
+                            setHealthCardExpiryDate={setHealthCardExpiryDate}
                             handleCreateVisitor={handleCreateVisitor}
                             handleIdCardChange={handleIdCardChange}
                             error={error}
                             setError={setError}
                             handleDeleteVisitor={handleDeleteVisitor}
+                            handlePatientClick={handlePatientClick}
+                            selectedPatient={selectedPatient}
+                            showPatientDetailModal={showPatientDetailModal}
+                            setShowPatientDetailModal={setShowPatientDetailModal}
+                            handlePatientDragStart={handlePatientDragStart}
+                            handlePatientDrop={handlePatientDrop}
                             warningMessage={warningMessage}
                             interactions={interactions}
                             officers={officers}
@@ -368,6 +512,11 @@ const UserDashboard = () => {
                             handleDragOver={handleDragOver}
                             handleDragLeave={handleDragLeave}
                             handleDrop={handleDrop}
+                            handleRegistrationDropOnBin={handleRegistrationDropOnBin}
+                            showDeleteRegistrationModal={showDeleteRegistrationModal}
+                            setShowDeleteRegistrationModal={setShowDeleteRegistrationModal}
+                            registrationToDelete={registrationToDelete}
+                            handleDeleteRegistration={handleDeleteRegistration}
                             getVisitorName={getVisitorName}
                             getVisitorSerial={getVisitorSerial}
                             formatDate={formatDate}

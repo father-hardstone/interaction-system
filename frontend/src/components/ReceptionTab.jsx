@@ -3,8 +3,12 @@ import InteractionsSection from './InteractionsSection';
 
 const ReceptionTab = ({
     visitors,
-    searchName,
-    setSearchName,
+    searchFirstName,
+    setSearchFirstName,
+    searchMiddleName,
+    setSearchMiddleName,
+    searchLastName,
+    setSearchLastName,
     searchSerial,
     setSearchSerial,
     searchPhone,
@@ -17,13 +21,27 @@ const ReceptionTab = ({
     setVisitorForm,
     phoneData,
     setPhoneData,
+    phoneHData,
+    setPhoneHData,
     idCardNumber,
     setIdCardNumber,
+    healthCardVersion,
+    setHealthCardVersion,
+    healthCardEffectivityDate,
+    setHealthCardEffectivityDate,
+    healthCardExpiryDate,
+    setHealthCardExpiryDate,
     handleCreateVisitor,
     handleIdCardChange,
     error,
     setError,
     handleDeleteVisitor,
+    handlePatientClick,
+    selectedPatient,
+    showPatientDetailModal,
+    setShowPatientDetailModal,
+    handlePatientDragStart,
+    handlePatientDrop,
     warningMessage,
     interactions,
     officers,
@@ -35,6 +53,11 @@ const ReceptionTab = ({
     handleDragOver,
     handleDragLeave,
     handleDrop,
+    handleRegistrationDropOnBin,
+    showDeleteRegistrationModal,
+    setShowDeleteRegistrationModal,
+    registrationToDelete,
+    handleDeleteRegistration,
     getVisitorName,
     getVisitorSerial,
     formatDate
@@ -43,8 +66,12 @@ const ReceptionTab = ({
         <div className="space-y-6">
             <VisitorsSection
                 visitors={visitors}
-                searchName={searchName}
-                setSearchName={setSearchName}
+                searchFirstName={searchFirstName}
+                setSearchFirstName={setSearchFirstName}
+                searchMiddleName={searchMiddleName}
+                setSearchMiddleName={setSearchMiddleName}
+                searchLastName={searchLastName}
+                setSearchLastName={setSearchLastName}
                 searchSerial={searchSerial}
                 setSearchSerial={setSearchSerial}
                 searchPhone={searchPhone}
@@ -57,13 +84,27 @@ const ReceptionTab = ({
                 setVisitorForm={setVisitorForm}
                 phoneData={phoneData}
                 setPhoneData={setPhoneData}
+                phoneHData={phoneHData}
+                setPhoneHData={setPhoneHData}
                 idCardNumber={idCardNumber}
                 setIdCardNumber={setIdCardNumber}
+                healthCardVersion={healthCardVersion}
+                setHealthCardVersion={setHealthCardVersion}
+                healthCardEffectivityDate={healthCardEffectivityDate}
+                setHealthCardEffectivityDate={setHealthCardEffectivityDate}
+                healthCardExpiryDate={healthCardExpiryDate}
+                setHealthCardExpiryDate={setHealthCardExpiryDate}
                 handleCreateVisitor={handleCreateVisitor}
                 handleIdCardChange={handleIdCardChange}
                 error={error}
                 setError={setError}
                 onDeleteVisitor={handleDeleteVisitor}
+                handlePatientClick={handlePatientClick}
+                selectedPatient={selectedPatient}
+                showPatientDetailModal={showPatientDetailModal}
+                setShowPatientDetailModal={setShowPatientDetailModal}
+                handlePatientDragStart={handlePatientDragStart}
+                handlePatientDrop={handlePatientDrop}
             />
 
             {warningMessage && (
@@ -88,6 +129,12 @@ const ReceptionTab = ({
                 handleDragOver={handleDragOver}
                 handleDragLeave={handleDragLeave}
                 handleDrop={handleDrop}
+                handlePatientDrop={handlePatientDrop}
+                handleRegistrationDropOnBin={handleRegistrationDropOnBin}
+                showDeleteRegistrationModal={showDeleteRegistrationModal}
+                setShowDeleteRegistrationModal={setShowDeleteRegistrationModal}
+                registrationToDelete={registrationToDelete}
+                handleDeleteRegistration={handleDeleteRegistration}
                 getVisitorName={getVisitorName}
                 getVisitorSerial={getVisitorSerial}
                 formatDate={formatDate}
