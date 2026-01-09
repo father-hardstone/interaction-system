@@ -40,7 +40,9 @@ const VisitorsSection = ({
     showPatientDetailModal,
     setShowPatientDetailModal,
     handlePatientDragStart,
-    handlePatientDrop
+    handlePatientDrop,
+    isCreatingVisitor,
+    deletingVisitorId
 }) => {
     const filteredVisitors = visitors
         .filter((v) => {
@@ -197,9 +199,20 @@ const VisitorsSection = ({
                                         <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
                                             <button
                                                 onClick={() => onDeleteVisitor(visitor.id)}
-                                                className="px-3 py-1 bg-red-500 text-white rounded-md text-sm hover:bg-red-600 transition-colors"
+                                                disabled={deletingVisitorId === visitor.id}
+                                                className="px-3 py-1 bg-red-500 text-white rounded-md text-sm hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                                             >
-                                                Delete
+                                                {deletingVisitorId === visitor.id ? (
+                                                    <>
+                                                        <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                        </svg>
+                                                        Deleting...
+                                                    </>
+                                                ) : (
+                                                    'Delete'
+                                                )}
                                             </button>
                                         </td>
                                     </tr>
@@ -310,12 +323,17 @@ const VisitorsSection = ({
                                     />
                                 </div>
                                 <div className="flex flex-col gap-2">
-                                    <label className="text-sm font-semibold text-slate-900">Postal Code</label>
+                                    <label className="text-sm font-semibold text-slate-900">Postal Code <span className="text-slate-500 text-xs font-normal">(5 digits)</span></label>
                                     <input
                                         type="text"
-                                        placeholder="Postal code"
+                                        placeholder="12345"
                                         value={visitorForm.postalCode}
-                                        onChange={(e) => setVisitorForm({ ...visitorForm, postalCode: e.target.value })}
+                                        onChange={(e) => {
+                                            // Only allow digits, max 5
+                                            const value = e.target.value.replace(/\D/g, '').substring(0, 5);
+                                            setVisitorForm({ ...visitorForm, postalCode: value });
+                                        }}
+                                        maxLength={5}
                                         className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
                                     />
                                 </div>
@@ -382,12 +400,16 @@ const VisitorsSection = ({
 
                             {/* Health Card Version */}
                             <div className="flex flex-col gap-2">
-                                <label className="text-sm font-semibold text-slate-900">Health Card Version</label>
+                                <label className="text-sm font-semibold text-slate-900">Health Card Version <span className="text-slate-500 text-xs font-normal">(max 2 characters)</span></label>
                                 <input
                                     type="text"
                                     placeholder="Version"
                                     value={healthCardVersion}
-                                    onChange={(e) => setHealthCardVersion(e.target.value)}
+                                    onChange={(e) => {
+                                        const value = e.target.value.substring(0, 2);
+                                        setHealthCardVersion(value);
+                                    }}
+                                    maxLength={2}
                                     className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
                                 />
                             </div>
@@ -460,9 +482,20 @@ const VisitorsSection = ({
                                 </button>
                                 <button
                                     type="submit"
-                                    className="flex-1 py-4 px-4 bg-primary text-white border-none rounded-xl font-semibold text-base cursor-pointer transition-all shadow-lg shadow-blue-300/30 hover:bg-primary-dark hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-400/40"
+                                    disabled={isCreatingVisitor}
+                                    className="flex-1 py-4 px-4 bg-primary text-white border-none rounded-xl font-semibold text-base cursor-pointer transition-all shadow-lg shadow-blue-300/30 hover:bg-primary-dark hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-400/40 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 flex items-center justify-center gap-2"
                                 >
-                                    Create Patient
+                                    {isCreatingVisitor ? (
+                                        <>
+                                            <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                            </svg>
+                                            Creating...
+                                        </>
+                                    ) : (
+                                        'Create Patient'
+                                    )}
                                 </button>
                             </div>
                         </form>

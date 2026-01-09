@@ -60,7 +60,14 @@ const ReceptionTab = ({
     handleDeleteRegistration,
     getVisitorName,
     getVisitorSerial,
-    formatDate
+    formatDate,
+    isCreatingVisitor,
+    deletingVisitorId,
+    isDeletingRegistration,
+    isCreatingInteraction,
+    isAssigningInteraction,
+    pendingInteractions,
+    pendingAssignments
 }) => {
     return (
         <div className="space-y-6">
@@ -105,6 +112,8 @@ const ReceptionTab = ({
                 setShowPatientDetailModal={setShowPatientDetailModal}
                 handlePatientDragStart={handlePatientDragStart}
                 handlePatientDrop={handlePatientDrop}
+                isCreatingVisitor={isCreatingVisitor}
+                deletingVisitorId={deletingVisitorId}
             />
 
             {warningMessage && (
@@ -138,6 +147,11 @@ const ReceptionTab = ({
                 getVisitorName={getVisitorName}
                 getVisitorSerial={getVisitorSerial}
                 formatDate={formatDate}
+                isDeletingRegistration={isDeletingRegistration}
+                isCreatingInteraction={isCreatingInteraction}
+                isAssigningInteraction={isAssigningInteraction}
+                pendingInteractions={pendingInteractions}
+                pendingAssignments={pendingAssignments}
             />
         </div>
     );

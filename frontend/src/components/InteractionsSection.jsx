@@ -17,7 +17,12 @@ const InteractionsSection = ({
     handleDeleteRegistration,
     getVisitorName,
     getVisitorSerial,
-    formatDate
+    formatDate,
+    isDeletingRegistration,
+    isCreatingInteraction,
+    isAssigningInteraction,
+    pendingInteractions,
+    pendingAssignments
 }) => {
     return (
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
@@ -83,8 +88,9 @@ const InteractionsSection = ({
                             draggedOverUnassigned ? 'bg-blue-50 border-2 border-blue-300 border-dashed' : 'bg-slate-50'
                         }`}
                     >
+                        {/* Show existing interactions first */}
                         {interactions
-                            .filter(i => !i.officerId || i.officerId === '')
+                            .filter(i => (!i.officerId || i.officerId === '') && !pendingInteractions.find(p => p.id === i.id && p.isPending))
                             .map((interaction) => (
                                 <div
                                     key={interaction.id}
@@ -110,7 +116,35 @@ const InteractionsSection = ({
                                     </div>
                                 </div>
                             ))}
-                        {interactions.filter(i => !i.officerId || i.officerId === '').length === 0 && (
+                        {/* Show pending interactions (optimistic UI) at the end */}
+                        {pendingInteractions
+                            .filter(i => i.isPending)
+                            .map((interaction) => {
+                                const visitor = interaction._visitor;
+                                return (
+                                <div
+                                    key={interaction.id}
+                                    className="bg-white border-2 border-blue-200 rounded-xl p-4 shadow-sm aspect-square flex flex-col justify-center items-center"
+                                >
+                                    <svg className="animate-spin h-6 w-6 text-blue-600 mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                    {visitor && (
+                                        <>
+                                            <div className="text-sm font-medium text-slate-900 mb-1 text-center">
+                                                {visitor.firstName} {visitor.middleName ? visitor.middleName + ' ' : ''}{visitor.lastName}
+                                            </div>
+                                            <div className="text-xs text-slate-600 mb-2 text-center">
+                                                ID: {visitor.entitySerial ? `${visitor.entitySerial}-${visitor.serial}` : visitor.serial}
+                                            </div>
+                                        </>
+                                    )}
+                                    <div className="text-xs text-slate-500 text-center">Creating...</div>
+                                </div>
+                                );
+                            })}
+                        {interactions.filter(i => !i.officerId || i.officerId === '').length === 0 && pendingInteractions.filter(i => i.isPending).length === 0 && (
                             <div className="col-span-1 sm:col-span-2 lg:col-span-3 xl:col-span-4 text-center py-8 text-slate-400 text-sm">
                                 No unassigned registrations
                             </div>
@@ -150,8 +184,27 @@ const InteractionsSection = ({
                                     
                                     {/* Assigned Interactions for this officer */}
                                     <div className="space-y-2 flex-1 overflow-y-auto">
+                                        {/* Show pending assignments (optimistic UI) */}
+                                        {Object.entries(pendingAssignments)
+                                            .filter(([interactionId, targetOfficerId]) => targetOfficerId === officer.id)
+                                            .map(([interactionId]) => {
+                                                const interaction = interactions.find(i => i.id === interactionId);
+                                                if (!interaction) return null;
+                                                return (
+                                                    <div
+                                                        key={`pending-${interactionId}`}
+                                                        className="bg-white border border-slate-200 rounded-lg p-2.5 text-xs shadow-sm flex items-center justify-center"
+                                                    >
+                                                        <svg className="animate-spin h-4 w-4 text-blue-600 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                        </svg>
+                                                        <span className="text-slate-500">Assigning...</span>
+                                                    </div>
+                                                );
+                                            })}
                                         {interactions
-                                            .filter(i => i.officerId === officer.id)
+                                            .filter(i => i.officerId === officer.id && !pendingAssignments[i.id])
                                             .map((interaction) => (
                                                 <div
                                                     key={interaction.id}
@@ -209,9 +262,20 @@ const InteractionsSection = ({
                             </button>
                             <button
                                 onClick={handleDeleteRegistration}
-                                className="flex-1 py-3 px-4 bg-red-500 text-white rounded-xl font-semibold hover:bg-red-600 transition-colors"
+                                disabled={isDeletingRegistration}
+                                className="flex-1 py-3 px-4 bg-red-500 text-white rounded-xl font-semibold hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                             >
-                                Yes
+                                {isDeletingRegistration ? (
+                                    <>
+                                        <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                        Deleting...
+                                    </>
+                                ) : (
+                                    'Yes'
+                                )}
                             </button>
                         </div>
                     </div>

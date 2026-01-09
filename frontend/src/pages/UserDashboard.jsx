@@ -54,6 +54,17 @@ const UserDashboard = () => {
     const [draggedInteraction, setDraggedInteraction] = useState(null);
     const [draggedOverOfficer, setDraggedOverOfficer] = useState(null);
     const [draggedOverUnassigned, setDraggedOverUnassigned] = useState(false);
+    
+    // Loading states
+    const [isCreatingVisitor, setIsCreatingVisitor] = useState(false);
+    const [deletingVisitorId, setDeletingVisitorId] = useState(null);
+    const [isDeletingRegistration, setIsDeletingRegistration] = useState(false);
+    const [isCreatingInteraction, setIsCreatingInteraction] = useState(false);
+    const [isAssigningInteraction, setIsAssigningInteraction] = useState(false);
+    
+    // Optimistic UI states for drag and drop
+    const [pendingInteractions, setPendingInteractions] = useState([]);
+    const [pendingAssignments, setPendingAssignments] = useState({});
 
     useEffect(() => {
         const token = localStorage.getItem('token');
@@ -157,6 +168,24 @@ const UserDashboard = () => {
 
         if (!draggedInteraction) return;
 
+        const interactionId = draggedInteraction.id;
+        const targetOfficerId = officer ? officer.id : null;
+        
+        // Optimistic UI update - show immediately
+        if (officer) {
+            setPendingAssignments(prev => ({
+                ...prev,
+                [interactionId]: targetOfficerId
+            }));
+        } else {
+            setPendingAssignments(prev => ({
+                ...prev,
+                [interactionId]: null
+            }));
+        }
+        
+        setIsAssigningInteraction(true);
+
         try {
             // If dropping on unassigned area, unassign the officer
             if (!officer) {
@@ -176,16 +205,32 @@ const UserDashboard = () => {
             
             // Reload interactions to get updated data
             await loadInteractions(userData.entityId);
+            
+            // Clear optimistic update after successful assignment
+            setPendingAssignments(prev => {
+                const newState = { ...prev };
+                delete newState[interactionId];
+                return newState;
+            });
+            
             setDraggedInteraction(null);
             setDraggedOverOfficer(null);
             setDraggedOverUnassigned(false);
         } catch (err) {
             console.error('Failed to assign/unassign officer:', err);
+            // Remove optimistic update on error
+            setPendingAssignments(prev => {
+                const newState = { ...prev };
+                delete newState[interactionId];
+                return newState;
+            });
             if (err.response?.status === 403) {
                 showWarning('Only receptionist can perform this action');
             } else {
                 showWarning('Failed to update interaction assignment');
             }
+        } finally {
+            setIsAssigningInteraction(false);
         }
     };
 
@@ -238,12 +283,14 @@ const UserDashboard = () => {
     const handleCreateVisitor = async (e) => {
         e.preventDefault();
         setError('');
+        setIsCreatingVisitor(true);
 
         // Validate required fields
         if (!visitorForm.firstName || !visitorForm.lastName || !visitorForm.dateOfBirth ||
             !visitorForm.addressLine || !visitorForm.city || !visitorForm.state ||
             !visitorForm.gender || !phoneData.valid || !idCardNumber) {
             setError('Please fill in all required fields');
+            setIsCreatingVisitor(false);
             return;
         }
 
@@ -267,7 +314,137 @@ const UserDashboard = () => {
         const dateRegex = /^(\d{2})-(\d{2})-(\d{4})$/;
         if (!dateRegex.test(visitorForm.dateOfBirth)) {
             setError('Date of birth must be in DD-MM-YYYY format');
+            setIsCreatingVisitor(false);
             return;
+        }
+
+        // Validate date of birth - check if it's a valid date and not in the future
+        const validateDate = (dateString, fieldName) => {
+            const parts = dateString.split('-');
+            const day = parseInt(parts[0], 10);
+            const month = parseInt(parts[1], 10);
+            const year = parseInt(parts[2], 10);
+            
+            // Check for absurd values
+            if (month < 1 || month > 12) {
+                return { valid: false, error: `${fieldName} has an invalid month` };
+            }
+            if (day < 1 || day > 31) {
+                return { valid: false, error: `${fieldName} has an invalid day` };
+            }
+            if (year < 1900 || year > 2100) {
+                return { valid: false, error: `${fieldName} has an invalid year` };
+            }
+            
+            // Create date object and check if it's valid
+            const date = new Date(year, month - 1, day);
+            if (date.getDate() !== day || date.getMonth() !== month - 1 || date.getFullYear() !== year) {
+                return { valid: false, error: `${fieldName} is not a valid date` };
+            }
+            
+            // Check if date is in the future
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            if (date > today) {
+                return { valid: false, error: `${fieldName} cannot be in the future` };
+            }
+            
+            return { valid: true };
+        };
+
+        const dobValidation = validateDate(visitorForm.dateOfBirth, 'Date of birth');
+        if (!dobValidation.valid) {
+            setError(dobValidation.error);
+            setIsCreatingVisitor(false);
+            return;
+        }
+
+        // Validate postal code (should be exactly 5 digits if provided)
+        if (visitorForm.postalCode && visitorForm.postalCode.trim().length > 0) {
+            const postalCodeDigits = visitorForm.postalCode.replace(/\D/g, '');
+            if (postalCodeDigits.length !== 5) {
+                setError('Postal code must be exactly 5 digits');
+                setIsCreatingVisitor(false);
+                return;
+            }
+        }
+
+        // Validate health card version (max 2 characters if provided)
+        if (healthCardVersion && healthCardVersion.trim().length > 2) {
+            setError('Health card version must be maximum 2 characters');
+            setIsCreatingVisitor(false);
+            return;
+        }
+
+        // Validate effectivity date if provided
+        if (healthCardEffectivityDate && healthCardEffectivityDate.trim().length > 0) {
+            if (!dateRegex.test(healthCardEffectivityDate)) {
+                setError('Effectivity date must be in DD-MM-YYYY format');
+                setIsCreatingVisitor(false);
+                return;
+            }
+            const effectivityValidation = validateDate(healthCardEffectivityDate, 'Effectivity date');
+            if (!effectivityValidation.valid) {
+                setError(effectivityValidation.error);
+                setIsCreatingVisitor(false);
+                return;
+            }
+        }
+
+        // Validate expiry date if provided
+        if (healthCardExpiryDate && healthCardExpiryDate.trim().length > 0) {
+            if (!dateRegex.test(healthCardExpiryDate)) {
+                setError('Expiry date must be in DD-MM-YYYY format');
+                setIsCreatingVisitor(false);
+                return;
+            }
+            
+            // Validate expiry date format and values (but allow future dates)
+            const expiryParts = healthCardExpiryDate.split('-');
+            const expiryDay = parseInt(expiryParts[0], 10);
+            const expiryMonth = parseInt(expiryParts[1], 10);
+            const expiryYear = parseInt(expiryParts[2], 10);
+            
+            // Check for absurd values
+            if (expiryMonth < 1 || expiryMonth > 12) {
+                setError('Expiry date has an invalid month');
+                setIsCreatingVisitor(false);
+                return;
+            }
+            if (expiryDay < 1 || expiryDay > 31) {
+                setError('Expiry date has an invalid day');
+                setIsCreatingVisitor(false);
+                return;
+            }
+            if (expiryYear < 1900 || expiryYear > 2100) {
+                setError('Expiry date has an invalid year');
+                setIsCreatingVisitor(false);
+                return;
+            }
+            
+            // Create date object and check if it's valid
+            const expiryDate = new Date(expiryYear, expiryMonth - 1, expiryDay);
+            if (expiryDate.getDate() !== expiryDay || expiryDate.getMonth() !== expiryMonth - 1 || expiryDate.getFullYear() !== expiryYear) {
+                setError('Expiry date is not a valid date');
+                setIsCreatingVisitor(false);
+                return;
+            }
+
+            // Check if expiry date is after effectivity date
+            if (healthCardEffectivityDate && healthCardEffectivityDate.trim().length > 0) {
+                const effectivityParts = healthCardEffectivityDate.split('-');
+                const effectivityDate = new Date(
+                    parseInt(effectivityParts[2], 10),
+                    parseInt(effectivityParts[1], 10) - 1,
+                    parseInt(effectivityParts[0], 10)
+                );
+                
+                if (expiryDate <= effectivityDate) {
+                    setError('Expiry date must be after effectivity date');
+                    setIsCreatingVisitor(false);
+                    return;
+                }
+            }
         }
 
         try {
@@ -320,11 +497,14 @@ const UserDashboard = () => {
             await loadInteractions(userData.entityId);
         } catch (err) {
             setError(err.response?.data?.error || 'Failed to create visitor');
+        } finally {
+            setIsCreatingVisitor(false);
         }
     };
 
     const handleDeleteVisitor = async (visitorId) => {
         if (window.confirm('Are you sure you want to delete this patient?')) {
+            setDeletingVisitorId(visitorId);
             try {
                 await visitorService.delete(visitorId);
                 if (userData?.entityId) {
@@ -332,6 +512,8 @@ const UserDashboard = () => {
                 }
             } catch (e) {
                 alert('Failed to delete patient');
+            } finally {
+                setDeletingVisitorId(null);
             }
         }
     };
@@ -382,6 +564,31 @@ const UserDashboard = () => {
 
         console.log('Dropping patient:', draggedPatient);
 
+        // Optimistic UI - create temporary interaction placeholder
+        const tempId = `temp-${Date.now()}`;
+        const visitorSerial = draggedPatient.entitySerial 
+            ? `${draggedPatient.entitySerial}-${draggedPatient.serial}` 
+            : draggedPatient.serial;
+        const optimisticInteraction = {
+            id: tempId,
+            interactionSerial: 'Loading...',
+            entityId: userData.entityId,
+            entitySerial: userData.entitySerial,
+            visitorId: draggedPatient.id,
+            visitorSerial: draggedPatient.serial,
+            officerId: '',
+            officerSerial: '',
+            createdAt: new Date().toISOString(),
+            editedAt: new Date().toISOString(),
+            deletedAt: '',
+            isPending: true,
+            // Store visitor data for display
+            _visitor: draggedPatient
+        };
+        
+        setPendingInteractions(prev => [...prev, optimisticInteraction]);
+        setIsCreatingInteraction(true);
+
         try {
             // Create a new interaction for this patient
             // The backend will generate the interaction serial and timestamp
@@ -404,20 +611,28 @@ const UserDashboard = () => {
 
             console.log('Successfully created interaction:', response);
             
+            // Remove optimistic update
+            setPendingInteractions(prev => prev.filter(i => i.id !== tempId));
+            
             // Reload interactions to show the new one
             await loadInteractions(userData.entityId);
             setDraggedPatient(null);
         } catch (err) {
             console.error('Failed to create interaction:', err);
             console.error('Error details:', err.response?.data || err.message);
+            // Remove optimistic update on error
+            setPendingInteractions(prev => prev.filter(i => i.id !== tempId));
             showWarning('Failed to create registration: ' + (err.response?.data?.error || err.message));
             setDraggedPatient(null);
+        } finally {
+            setIsCreatingInteraction(false);
         }
     };
 
     const handleDeleteRegistration = async () => {
         if (!registrationToDelete) return;
         
+        setIsDeletingRegistration(true);
         try {
             await interactionService.delete(registrationToDelete.id);
             await loadInteractions(userData.entityId);
@@ -426,6 +641,8 @@ const UserDashboard = () => {
         } catch (err) {
             console.error('Failed to delete registration:', err);
             showWarning('Failed to delete registration');
+        } finally {
+            setIsDeletingRegistration(false);
         }
     };
 
@@ -463,6 +680,8 @@ const UserDashboard = () => {
                         <ReceptionTab
                             visitors={visitors}
                             searchFirstName={searchFirstName}
+                            isCreatingVisitor={isCreatingVisitor}
+                            deletingVisitorId={deletingVisitorId}
                             setSearchFirstName={setSearchFirstName}
                             searchMiddleName={searchMiddleName}
                             setSearchMiddleName={setSearchMiddleName}
@@ -520,6 +739,11 @@ const UserDashboard = () => {
                             getVisitorName={getVisitorName}
                             getVisitorSerial={getVisitorSerial}
                             formatDate={formatDate}
+                            isDeletingRegistration={isDeletingRegistration}
+                            isCreatingInteraction={isCreatingInteraction}
+                            isAssigningInteraction={isAssigningInteraction}
+                            pendingInteractions={pendingInteractions}
+                            pendingAssignments={pendingAssignments}
                         />
                     )}
 
