@@ -3,7 +3,7 @@ const UserHeader = ({ activeTab }) => (
         <div>
             <h1 className="text-2xl font-bold text-slate-900">User Dashboard</h1>
             <p className="text-slate-500 mt-1">
-                {activeTab === 'reception' ? 'Reception view' : 'Officer view'}
+                {activeTab === 'reception' ? 'Reception view' : 'Doctor view'}
             </p>
         </div>
     </div>

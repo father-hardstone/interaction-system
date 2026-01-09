@@ -22,7 +22,7 @@ const UserSidebar = ({ userData, serial, activeTab, setActiveTab, handleLogout }
                     className={`w-full text-left flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors ${activeTab === 'officer' ? 'bg-blue-50 text-primary' : 'text-slate-700 hover:bg-slate-100'}`}
                     onClick={() => setActiveTab('officer')}
                 >
-                    Officer
+                    Doctor
                 </button>
             </nav>
 
