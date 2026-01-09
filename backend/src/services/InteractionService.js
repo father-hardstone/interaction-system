@@ -1,22 +1,64 @@
-const BaseService = require('./BaseService');
+const Interaction = require('../models/Interaction');
 
-const INTERACTION_HEADERS = [
-    'id', // UUID
-    'interactionSerial', // Composite: E1-V1-I1
-    'entityId',
-    'entitySerial',
-    'visitorId',
-    'visitorSerial',
-    'officerId', // assigned officer's id
-    'officerSerial', // assigned officer's serial
-    'createdAt',
-    'editedAt',
-    'deletedAt'
-];
+class InteractionService {
+    async getAll() {
+        const interactions = await Interaction.find({ deletedAt: '' });
+        return interactions.map(i => i.toObject());
+    }
 
-class InteractionService extends BaseService {
-    constructor() {
-        super('interactions.csv', INTERACTION_HEADERS);
+    async create(data) {
+        const interaction = new Interaction(data);
+        await interaction.save();
+        return interaction.toObject();
+    }
+
+    async findOne(query) {
+        // Support both function predicate (for backward compatibility) and object query
+        if (typeof query === 'function') {
+            const all = await this.getAll();
+            return all.find(query);
+        }
+        const interaction = await Interaction.findOne({ ...query, deletedAt: '' });
+        return interaction ? interaction.toObject() : null;
+    }
+
+    async update(id, updates) {
+        updates.editedAt = new Date().toISOString();
+        const interaction = await Interaction.findOneAndUpdate(
+            { id, deletedAt: '' },
+            updates,
+            { new: true }
+        );
+        return interaction ? interaction.toObject() : null;
+    }
+
+    async delete(id) {
+        const interaction = await Interaction.findOneAndUpdate(
+            { id },
+            { 
+                deletedAt: new Date().toISOString()
+            },
+            { new: true }
+        );
+        return interaction ? interaction.toObject() : null;
+    }
+
+    async getByEntity(entityId) {
+        const interactions = await Interaction.find({ entityId, deletedAt: '' });
+        return interactions.map(i => i.toObject());
+    }
+
+    async assignOfficer(interactionId, officerId, officerSerial) {
+        const interaction = await Interaction.findOneAndUpdate(
+            { id: interactionId, deletedAt: '' },
+            {
+                officerId: officerId || '',
+                officerSerial: officerSerial || '',
+                editedAt: new Date().toISOString()
+            },
+            { new: true }
+        );
+        return interaction ? interaction.toObject() : null;
     }
 
     // Get next serial for a specific entity (composite format: E1-V1-I1, E1-V1-I2, etc.)

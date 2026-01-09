@@ -1,20 +1,63 @@
-const BaseService = require('./BaseService');
+const Admin = require('../models/Admin');
 const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcryptjs');
 
-// Added 'serial' to headers
-const ADMIN_HEADERS = [
-    'id', 'serial', 'name', 'phone', 'password', 'otp',
-    'active', 'createdAt', 'editedAt', 'deletedAt'
-];
+class AccessControlService {
+    async getAll() {
+        const admins = await Admin.find({ deletedAt: '' });
+        return admins.map(a => a.toObject());
+    }
 
-class AccessControlService extends BaseService {
-    constructor() {
-        super('admins.csv', ADMIN_HEADERS);
+    async create(data) {
+        const admin = new Admin(data);
+        return await admin.save();
+    }
+
+    async findOne(query) {
+        // Support both function predicate (for backward compatibility) and object query
+        if (typeof query === 'function') {
+            const all = await this.getAll();
+            return all.find(query);
+        }
+        return await Admin.findOne({ ...query, deletedAt: '' });
+    }
+
+    async update(id, updates) {
+        updates.editedAt = new Date().toISOString();
+        return await Admin.findOneAndUpdate(
+            { id, deletedAt: '' },
+            updates,
+            { new: true }
+        );
+    }
+
+    async delete(id) {
+        return await Admin.findOneAndUpdate(
+            { id },
+            { 
+                deletedAt: new Date().toISOString(),
+                active: 'false'
+            },
+            { new: true }
+        );
+    }
+
+    async getNextSerial(prefix) {
+        const all = await this.getAll();
+        let max = 0;
+        all.forEach(item => {
+            if (item.serial && item.serial.startsWith(prefix)) {
+                const numPart = parseInt(item.serial.replace(prefix, ''));
+                if (!isNaN(numPart) && numPart > max) {
+                    max = numPart;
+                }
+            }
+        });
+        return `${prefix}${max + 1}`;
     }
 
     async registerAdmin({ name, phone, password }) {
-        const existing = await this.findOne(admin => admin.phone === phone);
+        const existing = await Admin.findOne({ phone, deletedAt: '' });
         if (existing) {
             throw new Error('Admin with this phone already exists');
         }
@@ -38,29 +81,23 @@ class AccessControlService extends BaseService {
             deletedAt: ''
         };
 
-        await this.create(newAdmin);
+        const admin = await this.create(newAdmin);
 
-        const { password: _, ...result } = newAdmin;
+        const { password: _, ...result } = admin.toObject();
         return result;
     }
 
     async loginAdmin({ phone, password }) {
         console.log('LoginAdmin - Searching for phone:', phone);
-        const allAdmins = await this.getAll();
-        console.log('LoginAdmin - Total admins found:', allAdmins.length);
-        allAdmins.forEach(a => {
-            console.log(`LoginAdmin - Admin phone: "${a.phone}", active: "${a.active}", match: ${a.phone === phone}`);
-        });
         
-        const admin = await this.findOne(a => a.phone === phone && a.active === 'true');
+        const admin = await Admin.findOne({ phone, active: 'true', deletedAt: '' });
         if (!admin) {
             console.log('LoginAdmin - Admin not found with phone:', phone);
             throw new Error('Invalid credentials or inactive account');
         }
         console.log('LoginAdmin - Admin found:', admin.serial);
 
-        // Check if the stored password looks like a bcrypt hash (starts with $2a$, $2b$, or $2y$)
-        // If it doesn't, it might be an encrypted string that wasn't properly hashed during registration
+        // Check if the stored password looks like a bcrypt hash
         if (!admin.password || (!admin.password.startsWith('$2a$') && !admin.password.startsWith('$2b$') && !admin.password.startsWith('$2y$'))) {
             console.error('Stored password does not appear to be a bcrypt hash. It may be encrypted or corrupted.');
             console.error('Stored password format:', admin.password ? admin.password.substring(0, 20) + '...' : 'null');
@@ -73,14 +110,14 @@ class AccessControlService extends BaseService {
         if (!isMatch) {
             throw new Error('Invalid credentials');
         }
-        return admin;
+        return admin.toObject();
     }
 
     async verifyOtp({ phone, otp }) {
-        const admin = await this.findOne(a => a.phone === phone);
+        const admin = await Admin.findOne({ phone, deletedAt: '' });
         if (!admin) throw new Error('Admin not found');
         if (admin.otp !== otp) throw new Error('Invalid OTP');
-        return admin;
+        return admin.toObject();
     }
 }
 
