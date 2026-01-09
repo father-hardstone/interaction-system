@@ -1,0 +1,3 @@
+id,serial,entityId,entitySerial,name,phone,email,password,active,approved,createdAt,editedAt,deletedAt
+1568817e-bb47-43ab-86dd-00ce3108a4e4,O1,0d4dbb2b-9fff-4d73-be5d-ea0c7d7cff25,E1,Ahmed Ibrahim,+921231231231,syedibrahimshah067@gmail.com,$2b$10$CRLl7wLUPBOlwOwNSr1Uz.qVVCgERBwiyrrKsD5Yczl9eqrQF0Z2K,true,true,2026-01-08T17:21:08.118Z,2026-01-08T17:21:08.118Z,
+5b5b64c2-f35a-4430-9104-dfec5e901c61,O2,0d4dbb2b-9fff-4d73-be5d-ea0c7d7cff25,E1,Muhammad Ali,+923213213213,muhammadali@gmail.com,$2b$10$k9ryVzSN8z/KsapNRzbXu.7rOotw94AoLJFzC7HGHhSvCcUTdR0Eu,true,true,2026-01-08T17:21:44.049Z,2026-01-08T17:21:44.049Z,

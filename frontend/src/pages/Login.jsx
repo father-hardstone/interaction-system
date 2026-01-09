@@ -1,0 +1,246 @@
+import { useState } from 'react';
+import { authService } from '../services/authService';
+import { entityService } from '../services/entityService';
+import { useNavigate, Link } from 'react-router-dom';
+import PhoneInput from '../components/PhoneInput';
+import OtpInput from '../components/OtpInput';
+import { hashPassword } from '../utils/crypto';
+import { validateEmail } from '../utils/crypto';
+import { jwtDecode } from 'jwt-decode';
+
+const Login = ({ type = 'admin' }) => {
+    const isEntity = type === 'entity';
+    const [step, setStep] = useState(1);
+    const [phoneData, setPhoneData] = useState({ fullNumber: '', valid: false });
+    const [email, setEmail] = useState('');
+    const [emailError, setEmailError] = useState('');
+    const [password, setPassword] = useState('');
+    const [otp, setOtp] = useState('');
+    const [error, setError] = useState('');
+    const navigate = useNavigate();
+
+    const getService = () => isEntity ? entityService : authService;
+
+    // Check if email is valid
+    const isEmailValid = () => {
+        if (!email || email.trim().length === 0) return false;
+        const validation = validateEmail(email);
+        return validation.valid;
+    };
+
+    // Check if phone is valid
+    const isPhoneValid = () => phoneData.valid;
+
+    // Determine if at least one identifier is valid
+    const hasValidIdentifier = () => isEmailValid() || isPhoneValid();
+
+    // Determine which fields are required
+    const isEmailRequired = () => {
+        if (!isEntity) return false;
+        return !isPhoneValid(); // Required if phone is not valid
+    };
+
+    const isPhoneRequired = () => {
+        if (!isEntity) return true; // Always required for admin
+        return !isEmailValid(); // Required if email is not valid
+    };
+
+    const handleEmailChange = (e) => {
+        const value = e.target.value;
+        setEmail(value);
+        if (value.trim().length > 0) {
+            const validation = validateEmail(value);
+            setEmailError(validation.error || '');
+        } else {
+            setEmailError('');
+        }
+    };
+
+    const handleLogin = async (e) => {
+        e.preventDefault();
+        setError('');
+        setEmailError('');
+
+        // For admin, phone is always required
+        if (!isEntity) {
+            if (!phoneData.valid) {
+                setError('Please enter a valid phone number');
+                return;
+            }
+        } else {
+            // For entity, either email or phone must be valid
+            if (!hasValidIdentifier()) {
+                setError('Please enter either a valid email address or phone number');
+                return;
+            }
+
+            // Validate email if provided
+            if (email.trim().length > 0) {
+                const emailValidation = validateEmail(email);
+                if (!emailValidation.valid) {
+                    setEmailError(emailValidation.error);
+                    return;
+                }
+            }
+
+            // Validate phone if provided
+            if (phoneData.fullNumber && !phoneData.valid) {
+                setError('Please enter a valid phone number');
+                return;
+            }
+        }
+
+        // Password is always required
+        if (!password || password.trim().length === 0) {
+            setError('Password is required');
+            return;
+        }
+
+        try {
+            const loginData = { password: password };
+            if (isEntity) {
+                if (isEmailValid()) {
+                    loginData.email = email.trim();
+                } else if (isPhoneValid()) {
+                    loginData.phone = phoneData.fullNumber;
+                }
+            } else {
+                loginData.phone = phoneData.fullNumber;
+            }
+
+            const response = await getService().login(loginData);
+            // Store identifier for OTP verification
+            if (isEntity && isEmailValid()) {
+                setPhoneData({ fullNumber: response.phone || '', valid: true }); // Store phone from response for OTP
+            }
+            setStep(2);
+        } catch (err) {
+            setError(err.response?.data?.error || 'Login failed');
+        }
+    };
+
+    const handleVerify = async (e) => {
+        e.preventDefault();
+        try {
+            if (otp.length < 6) {
+                setError('Please enter complete OTP');
+                return;
+            }
+
+            const verifyData = { otp };
+            if (isEntity) {
+                if (isEmailValid()) {
+                    verifyData.email = email.trim();
+                } else {
+                    verifyData.phone = phoneData.fullNumber;
+                }
+            } else {
+                verifyData.phone = phoneData.fullNumber;
+            }
+
+            const res = await getService().verifyOtp(verifyData);
+            localStorage.setItem('token', res.token);
+
+            if (isEntity) {
+                // Decode token to get serial for URL
+                const decoded = jwtDecode(res.token);
+                navigate(`/entity/${decoded.serial.toLowerCase()}/dashboard`);
+            } else {
+                navigate('/admin/dashboard');
+            }
+        } catch (err) {
+            setError(err.response?.data?.error || 'OTP Verification failed');
+        }
+    }
+
+    return (
+        <div className="flex-1 flex items-center justify-center p-8 w-full">
+            <div className={`bg-white w-full ${isEntity ? 'max-w-[520px]' : 'max-w-[440px]'} p-12 rounded-3xl shadow-lg animate-[slideUp_0.4s_ease-out] mx-auto`}>
+                <h2 className="m-0 mb-8 text-3xl font-bold text-center text-slate-900 tracking-tight">
+                    {isEntity ? 'Entity Portal' : 'Admin Portal'}
+                </h2>
+                {error && <p className="bg-red-50 border border-red-200 text-error py-3 px-4 rounded-xl text-sm text-center mb-4">{error}</p>}
+
+                {step === 1 ? (
+                    <>
+                        <form onSubmit={handleLogin} className="flex flex-col gap-5">
+                            {isEntity && (
+                                <div className="flex flex-col gap-2">
+                                    <label className="text-sm font-semibold text-slate-900">Email Address {isEmailRequired() && <span className="text-error">*</span>}</label>
+                                    <input
+                                        type="email"
+                                        placeholder="Enter your email address"
+                                        value={email}
+                                        onChange={handleEmailChange}
+                                        required={isEmailRequired()}
+                                        className={`w-full py-3.5 px-4 border rounded-xl font-inherit text-base transition-all text-slate-900 ${emailError ? 'border-error bg-red-50 focus:border-error focus:bg-white focus:outline-none focus:ring-4 focus:ring-red-100' : 'border-slate-200 bg-slate-50 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100'}`}
+                                    />
+                                    {emailError && <span className="text-error text-sm">{emailError}</span>}
+                                </div>
+                            )}
+
+                            <div className="flex flex-col gap-2">
+                                <label className="text-sm font-semibold text-slate-900">
+                                    {isEntity ? 'Phone Number' : 'Phone Number'} 
+                                    {isPhoneRequired() && <span className="text-error">*</span>}
+                                    {isEntity && !isPhoneRequired() && <span className="text-slate-500 text-sm font-normal"> (Optional if email is provided)</span>}
+                                </label>
+                                <PhoneInput
+                                    onChange={setPhoneData}
+                                    required={isPhoneRequired()}
+                                />
+                            </div>
+
+                            <div className="flex flex-col gap-2">
+                                <label className="text-sm font-semibold text-slate-900">Password <span className="text-error">*</span></label>
+                                <input
+                                    type="password"
+                                    placeholder="Enter your password"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    required
+                                    className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
+                                />
+                            </div>
+
+                            <button type="submit" className="mt-4 py-4 px-4 bg-primary text-white border-none rounded-xl font-semibold text-base cursor-pointer transition-all shadow-lg shadow-blue-300/30 hover:bg-primary-dark hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-400/40">Login</button>
+                        </form>
+
+                        {!isEntity && (
+                            <div className="mt-6 text-center text-sm">
+                                <span className="text-slate-500">Don't have an account? </span>
+                                <Link to="/register" className="text-primary font-semibold no-underline">
+                                    Register here
+                                </Link>
+                            </div>
+                        )}
+                        {/* 
+                           Note: Entities usually register themselves via a different flow or also use /register? 
+                           The current /register page creates Admins. 
+                           The prompt implies a general register link. 
+                           If Entity registration is needed publicly, we might need a separate page or toggle.
+                           For now, the prompt asked to add the link. Since /register creates Admins, I'll only show it for Admin login or clarify it.
+                           Actually, the user said "create a admin login and register flow" initially. 
+                           Later "create another login and sign in route for entity... controls for creating... entities on admin dashboard".
+                           But also "if an entity is created by themselves, i.e. registered".
+                           So Entity Registration page is needed?
+                           Let's assume /register is for Admins for now as built previously. 
+                           If the user is on Entity login, maybe they shouldn't see Admin register? 
+                           I'll hide it for Entity for now unless requested to separate Entity Registration page.
+                        */}
+                    </>
+                ) : (
+                    <form onSubmit={handleVerify} className="flex flex-col gap-5">
+                        <p className="text-center text-slate-500 text-sm leading-relaxed">Enter the 6-digit code sent to your device.</p>
+                        <div className="flex flex-col gap-2">
+                            <OtpInput onChange={setOtp} />
+                        </div>
+                        <button type="submit" className="mt-4 py-4 px-4 bg-primary text-white border-none rounded-xl font-semibold text-base cursor-pointer transition-all shadow-lg shadow-blue-300/30 hover:bg-primary-dark hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-400/40">Verify Access</button>
+                    </form>
+                )}
+            </div>
+        </div>
+    );
+};
+
+export default Login;

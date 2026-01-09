@@ -1,0 +1,2 @@
+id,serial,entityId,entitySerial,name,phone,email,password,active,approved,createdAt,editedAt,deletedAt
+b6ffe93f-4ba9-4807-931d-3974539852e3,R1,0d4dbb2b-9fff-4d73-be5d-ea0c7d7cff25,E1,Muhammad Hasan,+920979686878,hasan@gmail.com,$2b$10$OL/ZGXrfi69eUZrxH.Dw.ehnb/1/L9MaQ.xe/hUxJwlZwY1MMyELS,true,true,2026-01-08T17:41:50.835Z,2026-01-08T17:41:50.835Z,
