@@ -1,26 +1,50 @@
-const UserSidebar = ({ userData, serial, activeTab, setActiveTab, handleLogout }) => {
+const UserSidebar = ({ userData, serial, activeTab, setActiveTab, handleLogout, sidebarOpen, setSidebarOpen }) => {
     return (
-        <aside className="w-64 bg-white border-r border-slate-200 flex flex-col">
-            <div className="p-6 border-b border-slate-200">
-                <h2 className="text-lg font-bold text-slate-900 mb-1">
-                    {userData?.name || 'Internal User'}
-                </h2>
-                <p className="text-sm text-slate-500 uppercase">{serial}</p>
-                <p className="text-xs text-slate-400 mt-1 capitalize">{userData?.role || ''}</p>
-            </div>
+        <>
+            {/* Mobile Sidebar Overlay */}
+            <aside className={`
+                fixed lg:static inset-y-0 left-0 z-50
+                w-64 bg-white border-r border-slate-200 flex flex-col
+                transform transition-transform duration-300 ease-in-out
+                ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+            `}>
+                <div className="p-6 border-b border-slate-200 flex items-center justify-between">
+                    <div className="flex-1">
+                        <h2 className="text-lg font-bold text-slate-900 mb-1">
+                            {userData?.name || 'Internal User'}
+                        </h2>
+                        <p className="text-sm text-slate-500 uppercase">{serial}</p>
+                        <p className="text-xs text-slate-400 mt-1 capitalize">{userData?.role || ''}</p>
+                    </div>
+                    {/* Close button for mobile */}
+                    <button
+                        onClick={() => setSidebarOpen(false)}
+                        className="lg:hidden p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
+                    >
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
 
             <nav className="flex-1 p-4 space-y-1">
                 <button
                     type="button"
                     className={`w-full text-left flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors ${activeTab === 'reception' ? 'bg-blue-50 text-primary' : 'text-slate-700 hover:bg-slate-100'}`}
-                    onClick={() => setActiveTab('reception')}
+                    onClick={() => {
+                        setActiveTab('reception');
+                        setSidebarOpen(false); // Close sidebar on mobile after selection
+                    }}
                 >
                     Reception
                 </button>
                 <button
                     type="button"
                     className={`w-full text-left flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors ${activeTab === 'officer' ? 'bg-blue-50 text-primary' : 'text-slate-700 hover:bg-slate-100'}`}
-                    onClick={() => setActiveTab('officer')}
+                    onClick={() => {
+                        setActiveTab('officer');
+                        setSidebarOpen(false); // Close sidebar on mobile after selection
+                    }}
                 >
                     Doctor
                 </button>
@@ -38,6 +62,7 @@ const UserSidebar = ({ userData, serial, activeTab, setActiveTab, handleLogout }
                 </button>
             </div>
         </aside>
+        </>
     );
 };
 

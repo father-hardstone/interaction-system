@@ -48,6 +48,18 @@ class InteractionController {
                 return res.status(403).json({ error: 'Only receptionists can assign interactions to officers' });
             }
 
+            // Check if interaction can be moved (not started, completed, or closed)
+            const existing = await InteractionService.findOne({ id });
+            if (!existing) {
+                return res.status(404).json({ error: 'Interaction not found' });
+            }
+
+            if (existing.started || existing.completed || existing.closed) {
+                return res.status(400).json({ 
+                    error: 'Cannot move interaction that has been started, completed, or closed' 
+                });
+            }
+
             // Allow unassigning by passing empty strings
             // Update interaction
             const updates = {
@@ -132,6 +144,19 @@ class InteractionController {
     async deleteInteraction(req, res) {
         try {
             const { id } = req.params;
+            
+            // Check if interaction can be deleted (not started, completed, or closed)
+            const existing = await InteractionService.findOne({ id });
+            if (!existing) {
+                return res.status(404).json({ error: 'Interaction not found' });
+            }
+
+            if (existing.started || existing.completed || existing.closed) {
+                return res.status(400).json({ 
+                    error: 'Cannot delete interaction that has been started, completed, or closed' 
+                });
+            }
+
             const deleted = await InteractionService.delete(id);
             if (!deleted) {
                 return res.status(404).json({ error: 'Interaction not found' });
@@ -139,6 +164,102 @@ class InteractionController {
             res.json({ message: 'Interaction deleted successfully' });
         } catch (e) {
             console.error('deleteInteraction error:', e);
+            res.status(500).json({ error: e.message });
+        }
+    }
+
+    // Save interaction details (notes, service lines, etc.)
+    async saveInteractionDetails(req, res) {
+        try {
+            const { id } = req.params;
+            const {
+                ccReason,
+                subjective,
+                objective,
+                assessmentPlan,
+                serviceLines,
+                started
+            } = req.body;
+
+            // Validate interaction exists
+            const existing = await InteractionService.findOne({ id });
+            if (!existing) {
+                return res.status(404).json({ error: 'Interaction not found' });
+            }
+
+            // Build update object
+            const updates = {
+                editedAt: new Date().toISOString(),
+                completed: true, // Mark as completed when saved
+                // closed remains false until later step
+            };
+
+            // Set started flag if provided (when doctor starts interaction)
+            if (started !== undefined) {
+                updates.started = started;
+            } else {
+                // If not explicitly set, ensure it's true when saving (interaction was started)
+                updates.started = true;
+            }
+
+            // Add notes if provided
+            if (ccReason !== undefined) {
+                updates.ccReason = {
+                    text: ccReason.text || '',
+                    scratchpad: ccReason.scratchpad || '',
+                    hasScratchpad: ccReason.hasScratchpad || false
+                };
+            }
+
+            if (subjective !== undefined) {
+                updates.subjective = {
+                    text: subjective.text || '',
+                    scratchpad: subjective.scratchpad || '',
+                    hasScratchpad: subjective.hasScratchpad || false
+                };
+            }
+
+            if (objective !== undefined) {
+                updates.objective = {
+                    text: objective.text || '',
+                    scratchpad: objective.scratchpad || '',
+                    hasScratchpad: objective.hasScratchpad || false
+                };
+            }
+
+            if (assessmentPlan !== undefined) {
+                updates.assessmentPlan = {
+                    text: assessmentPlan.text || '',
+                    scratchpad: assessmentPlan.scratchpad || '',
+                    hasScratchpad: assessmentPlan.hasScratchpad || false
+                };
+            }
+
+            // Add service lines if provided
+            if (serviceLines !== undefined) {
+                updates.serviceLines = serviceLines.map(line => ({
+                    serialNumber: line.serialNumber || 1,
+                    service: line.service || '',
+                    suffix: line.suffix || '',
+                    diagnostic: line.diagnostic || '',
+                    totalFee: parseFloat(line.totalFee) || 0,
+                    accountingNumber: line.accountingNumber || ''
+                }));
+            }
+
+            const updated = await InteractionService.update(id, updates);
+            if (!updated) {
+                return res.status(404).json({ error: 'Interaction not found' });
+            }
+
+            console.log('saveInteractionDetails - Updated interaction:', {
+                id,
+                completed: updated.completed
+            });
+
+            res.json(updated);
+        } catch (e) {
+            console.error('saveInteractionDetails error:', e);
             res.status(500).json({ error: e.message });
         }
     }

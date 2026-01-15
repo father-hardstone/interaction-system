@@ -1,7 +1,10 @@
 import PhoneInput from './PhoneInput';
 
+import { useState, useMemo } from 'react';
+
 const VisitorsSection = ({
     visitors,
+    interactions = [],
     searchFirstName,
     setSearchFirstName,
     searchMiddleName,
@@ -12,8 +15,8 @@ const VisitorsSection = ({
     setSearchSerial,
     searchPhone,
     setSearchPhone,
-    searchIdCard,
-    setSearchIdCard,
+    searchHealthCard,
+    setSearchHealthCard,
     showVisitorModal,
     setShowVisitorModal,
     visitorForm,
@@ -22,8 +25,8 @@ const VisitorsSection = ({
     setPhoneData,
     phoneHData,
     setPhoneHData,
-    idCardNumber,
-    setIdCardNumber,
+    healthCardNumber,
+    setHealthCardNumber,
     healthCardVersion,
     setHealthCardVersion,
     healthCardEffectivityDate,
@@ -31,7 +34,7 @@ const VisitorsSection = ({
     healthCardExpiryDate,
     setHealthCardExpiryDate,
     handleCreateVisitor,
-    handleIdCardChange,
+    handleHealthCardChange,
     error,
     setError,
     onDeleteVisitor,
@@ -42,8 +45,30 @@ const VisitorsSection = ({
     handlePatientDragStart,
     handlePatientDrop,
     isCreatingVisitor,
-    deletingVisitorId
+    deletingVisitorId,
+    getVisitorName,
+    getVisitorSerial,
+    formatDate
 }) => {
+    const [expandedInteractionIds, setExpandedInteractionIds] = useState({});
+
+    // Get completed interactions for selected patient
+    const completedInteractionsForPatient = useMemo(() => {
+        if (!selectedPatient) return [];
+        return interactions
+            .filter((i) => i.visitorId === selectedPatient.id && i.completed)
+            .sort((a, b) => new Date(b.editedAt || b.createdAt).getTime() - new Date(a.editedAt || a.createdAt).getTime());
+    }, [interactions, selectedPatient]);
+
+    // Helper to get image URL
+    const getImageUrl = (imagePath) => {
+        if (!imagePath) return null;
+        if (imagePath.startsWith('data:image') || imagePath.startsWith('http')) {
+            return imagePath;
+        }
+        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+        return `${API_URL.replace('/api', '')}/${imagePath}`;
+    };
     const filteredVisitors = visitors
         .filter((v) => {
             const firstName = (v.firstName || '').toLowerCase();
@@ -51,37 +76,37 @@ const VisitorsSection = ({
             const lastName = (v.lastName || '').toLowerCase();
             const serialDisplay = `${v.entitySerial ? v.entitySerial + '-' : ''}${v.serial}`.toLowerCase();
             const phoneStr = (v.phone || '').toLowerCase();
-            const idCardStr = (v.idCardNumber || '').toLowerCase();
+            const healthCardStr = (v.healthCardNumber || '').toLowerCase();
 
             const matchesFirstName = !searchFirstName || firstName.includes(searchFirstName.toLowerCase());
             const matchesMiddleName = !searchMiddleName || middleName.includes(searchMiddleName.toLowerCase());
             const matchesLastName = !searchLastName || lastName.includes(searchLastName.toLowerCase());
             const matchesSerial = !searchSerial || serialDisplay.includes(searchSerial.toLowerCase());
             const matchesPhone = !searchPhone || phoneStr.includes(searchPhone.toLowerCase());
-            const matchesIdCard = !searchIdCard || idCardStr.includes(searchIdCard.toLowerCase());
+            const matchesHealthCard = !searchHealthCard || healthCardStr.includes(searchHealthCard.toLowerCase());
 
-            return matchesFirstName && matchesMiddleName && matchesLastName && matchesSerial && matchesPhone && matchesIdCard;
+            return matchesFirstName && matchesMiddleName && matchesLastName && matchesSerial && matchesPhone && matchesHealthCard;
         });
 
     return (
         <div className="space-y-6">
             {/* Visitors Table */}
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                <div className="p-6 border-b border-slate-200 flex justify-between items-center">
+                <div className="p-4 sm:p-6 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                     <div>
                         <h2 className="text-lg font-semibold text-slate-900">Patients</h2>
                         <p className="text-sm text-slate-500 mt-1">Manage patients for your entity</p>
                     </div>
                     <button
                         onClick={() => setShowVisitorModal(true)}
-                        className="px-4 py-2 bg-primary text-white rounded-xl font-semibold text-sm hover:bg-primary-dark transition-colors"
+                        className="px-4 py-2 bg-primary text-white rounded-xl font-semibold text-sm hover:bg-primary-dark transition-colors w-full sm:w-auto"
                     >
                         Add a patient
                     </button>
                 </div>
 
                 {/* Search filters */}
-                <div className="px-6 py-4 grid grid-cols-1 md:grid-cols-6 gap-4 border-b border-slate-200 bg-slate-50">
+                <div className="px-4 sm:px-6 py-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 border-b border-slate-200 bg-slate-50">
                     <input
                         type="text"
                         placeholder="Search by first name"
@@ -120,23 +145,23 @@ const VisitorsSection = ({
                     <input
                         type="text"
                         placeholder="Search by health card"
-                        value={searchIdCard}
-                        onChange={(e) => setSearchIdCard(e.target.value)}
+                        value={searchHealthCard}
+                        onChange={(e) => setSearchHealthCard(e.target.value)}
                         className="w-full py-3 px-4 border border-slate-200 rounded-xl text-sm bg-white focus:outline-none focus:border-primary focus:ring-4 focus:ring-blue-100"
                     />
                 </div>
                 
                 <div className="overflow-x-auto">
-                    <table className="w-full border-collapse">
+                    <table className="w-full border-collapse min-w-[800px]">
                         <thead>
                             <tr className="bg-slate-50 border-b border-slate-200">
-                                <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700">ID</th>
-                                <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700">Name</th>
-                                <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700">Date of Birth</th>
-                                <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700">Phone</th>
-                                <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700">Email</th>
-                                <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700">Health Card</th>
-                                <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700">Actions</th>
+                                <th className="px-4 sm:px-6 py-4 text-left text-xs sm:text-sm font-semibold text-slate-700">ID</th>
+                                <th className="px-4 sm:px-6 py-4 text-left text-xs sm:text-sm font-semibold text-slate-700">Name</th>
+                                <th className="px-4 sm:px-6 py-4 text-left text-xs sm:text-sm font-semibold text-slate-700 hidden md:table-cell">Date of Birth</th>
+                                <th className="px-4 sm:px-6 py-4 text-left text-xs sm:text-sm font-semibold text-slate-700 hidden lg:table-cell">Phone</th>
+                                <th className="px-4 sm:px-6 py-4 text-left text-xs sm:text-sm font-semibold text-slate-700 hidden lg:table-cell">Email</th>
+                                <th className="px-4 sm:px-6 py-4 text-left text-xs sm:text-sm font-semibold text-slate-700 hidden xl:table-cell">Health Card</th>
+                                <th className="px-4 sm:px-6 py-4 text-left text-xs sm:text-sm font-semibold text-slate-700">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -149,9 +174,12 @@ const VisitorsSection = ({
                             ) : (
                                 filteredVisitors.map((visitor) => {
                                     let dragStarted = false;
+                                    let touchStartX = 0;
+                                    let touchStartY = 0;
+                                    
                                     return (
                                     <tr 
-                                        key={visitor.id} 
+                                        key={visitor.id}
                                         className="border-b border-slate-100 hover:bg-slate-50 transition-all cursor-pointer"
                                         onMouseDown={() => {
                                             dragStarted = false;
@@ -178,10 +206,81 @@ const VisitorsSection = ({
                                                 dragStarted = false;
                                             }, 200);
                                         }}
+                                        onTouchStart={(e) => {
+                                            if (e.touches.length === 1) {
+                                                touchStartX = e.touches[0].clientX;
+                                                touchStartY = e.touches[0].clientY;
+                                                dragStarted = false;
+                                            }
+                                        }}
+                                        onTouchMove={(e) => {
+                                            if (e.touches.length === 1 && !dragStarted) {
+                                                const touch = e.touches[0];
+                                                const deltaX = Math.abs(touch.clientX - touchStartX);
+                                                const deltaY = Math.abs(touch.clientY - touchStartY);
+                                                
+                                                // Start drag if moved more than 10px
+                                                if (deltaX > 10 || deltaY > 10) {
+                                                    dragStarted = true;
+                                                    e.preventDefault();
+                                                    document.body.style.overflow = 'hidden';
+                                                    
+                                                    // Visual feedback
+                                                    e.currentTarget.style.opacity = '0.5';
+                                                    e.currentTarget.style.transform = 'scale(0.95)';
+                                                    
+                                                    // Create synthetic drag event
+                                                    const syntheticEvent = {
+                                                        currentTarget: e.currentTarget,
+                                                        dataTransfer: {
+                                                            effectAllowed: 'move',
+                                                            setData: () => {},
+                                                            getData: () => 'patient'
+                                                        },
+                                                        preventDefault: () => {}
+                                                    };
+                                                    handlePatientDragStart(syntheticEvent, visitor);
+                                                }
+                                            }
+                                        }}
+                                        onTouchEnd={(e) => {
+                                            if (dragStarted) {
+                                                // Restore styles
+                                                e.currentTarget.style.opacity = '1';
+                                                e.currentTarget.style.transform = 'scale(1)';
+                                                document.body.style.overflow = '';
+                                                
+                                                // Find drop target
+                                                const touch = e.changedTouches[0];
+                                                const dropTarget = document.elementFromPoint(touch.clientX, touch.clientY);
+                                                
+                                                if (dropTarget) {
+                                                    const dropZone = dropTarget.closest('[data-drop-zone]');
+                                                    if (dropZone) {
+                                                        // Trigger drop
+                                                        const syntheticEvent = {
+                                                            preventDefault: () => {},
+                                                            stopPropagation: () => {},
+                                                            dataTransfer: {
+                                                                getData: () => 'patient'
+                                                            },
+                                                            type: 'touchend'
+                                                        };
+                                                        // The drop zone will handle this via its onDrop handler
+                                                        const dropEvent = new Event('drop', { bubbles: true });
+                                                        dropZone.dispatchEvent(dropEvent);
+                                                    }
+                                                }
+                                                
+                                                setTimeout(() => {
+                                                    dragStarted = false;
+                                                }, 200);
+                                            }
+                                        }}
                                     >
-                                        <td className="px-6 py-4 font-medium text-slate-900">{visitor.entitySerial ? `${visitor.entitySerial}-${visitor.serial}` : visitor.serial}</td>
-                                        <td className="px-6 py-4 text-slate-700">
-                                            <div className="font-medium">
+                                        <td className="px-4 sm:px-6 py-4 font-medium text-slate-900 text-xs sm:text-sm">{visitor.entitySerial ? `${visitor.entitySerial}-${visitor.serial}` : visitor.serial}</td>
+                                        <td className="px-4 sm:px-6 py-4 text-slate-700">
+                                            <div className="font-medium text-sm">
                                                 {visitor.firstName} {visitor.middleName ? visitor.middleName + ' ' : ''}{visitor.lastName}
                                             </div>
                                             <div className="text-xs text-slate-500 mt-1">
@@ -191,12 +290,18 @@ const VisitorsSection = ({
                                                 <span className="text-slate-300 mx-1">•</span>
                                                 <span>{visitor.lastName || 'N/A'}</span>
                                             </div>
+                                            <div className="md:hidden mt-2 space-y-1 text-xs text-slate-500">
+                                                <div>DOB: {visitor.dateOfBirth}</div>
+                                                <div>Phone: {visitor.phone}</div>
+                                                <div>Email: {visitor.email || 'N/A'}</div>
+                                                <div>Health Card: {visitor.healthCardNumber}</div>
+                                            </div>
                                         </td>
-                                        <td className="px-6 py-4 text-slate-700">{visitor.dateOfBirth}</td>
-                                        <td className="px-6 py-4 text-slate-700">{visitor.phone}</td>
-                                        <td className="px-6 py-4 text-slate-700">{visitor.email || 'N/A'}</td>
-                                        <td className="px-6 py-4 text-slate-700">{visitor.idCardNumber}</td>
-                                        <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                                        <td className="px-4 sm:px-6 py-4 text-slate-700 hidden md:table-cell text-sm">{visitor.dateOfBirth}</td>
+                                        <td className="px-4 sm:px-6 py-4 text-slate-700 hidden lg:table-cell text-sm">{visitor.phone}</td>
+                                        <td className="px-4 sm:px-6 py-4 text-slate-700 hidden lg:table-cell text-sm">{visitor.email || 'N/A'}</td>
+                                        <td className="px-4 sm:px-6 py-4 text-slate-700 hidden xl:table-cell text-sm">{visitor.healthCardNumber}</td>
+                                        <td className="px-4 sm:px-6 py-4" onClick={(e) => e.stopPropagation()}>
                                             <button
                                                 onClick={() => onDeleteVisitor(visitor.id)}
                                                 disabled={deletingVisitorId === visitor.id}
@@ -227,12 +332,23 @@ const VisitorsSection = ({
             {/* Add Visitor Modal */}
             {showVisitorModal && (
                 <div className="fixed inset-0 bg-black/50 flex justify-center items-center z-[1000]" onClick={() => setShowVisitorModal(false)}>
-                    <div className="bg-white w-full max-w-[600px] max-h-[90vh] overflow-y-auto p-8 rounded-3xl shadow-lg animate-[slideUp_0.4s_ease-out] mx-4" onClick={(e) => e.stopPropagation()}>
-                        <h2 className="text-2xl font-bold text-slate-900 mb-6">Add New Patient</h2>
+                    <div className="bg-white w-full max-w-[900px] max-h-[90vh] overflow-y-auto p-4 sm:p-6 lg:p-8 rounded-3xl shadow-lg animate-[slideUp_0.4s_ease-out]" onClick={(e) => e.stopPropagation()}>
+                        <h2 className="text-xl sm:text-2xl font-bold text-slate-900 mb-6">Add New Patient</h2>
                         {error && <p className="bg-red-50 border border-red-200 text-red-600 py-3 px-4 rounded-xl text-sm mb-4">{error}</p>}
                         <form onSubmit={handleCreateVisitor} className="flex flex-col gap-5">
-                            {/* Name Fields */}
-                            <div className="grid grid-cols-3 gap-4">
+                            {/* Line 1: Last Name, First Name, Middle Name */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                <div className="flex flex-col gap-2">
+                                    <label className="text-sm font-semibold text-slate-900">Last Name <span className="text-red-500">*</span></label>
+                                    <input
+                                        type="text"
+                                        placeholder="Last name"
+                                        value={visitorForm.lastName}
+                                        onChange={(e) => setVisitorForm({ ...visitorForm, lastName: e.target.value })}
+                                        required
+                                        className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
+                                    />
+                                </div>
                                 <div className="flex flex-col gap-2">
                                     <label className="text-sm font-semibold text-slate-900">First Name <span className="text-red-500">*</span></label>
                                     <input
@@ -254,41 +370,142 @@ const VisitorsSection = ({
                                         className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
                                     />
                                 </div>
+                            </div>
+
+                            {/* Line 2: Health Card Number, Version, Effectivity Date */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                                 <div className="flex flex-col gap-2">
-                                    <label className="text-sm font-semibold text-slate-900">Last Name <span className="text-red-500">*</span></label>
+                                    <label className="text-sm font-semibold text-slate-900">Health Card Number <span className="text-red-500">*</span></label>
                                     <input
                                         type="text"
-                                        placeholder="Last name"
-                                        value={visitorForm.lastName}
-                                        onChange={(e) => setVisitorForm({ ...visitorForm, lastName: e.target.value })}
+                                        placeholder="1234-5678-90"
+                                        value={healthCardNumber}
+                                        onChange={handleHealthCardChange}
+                                        maxLength={12}
                                         required
+                                        className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
+                                    />
+                                </div>
+                                <div className="flex flex-col gap-2">
+                                    <label className="text-sm font-semibold text-slate-900">Version</label>
+                                    <input
+                                        type="text"
+                                        placeholder="Version"
+                                        value={healthCardVersion}
+                                        onChange={(e) => {
+                                            const value = e.target.value.substring(0, 2);
+                                            setHealthCardVersion(value);
+                                        }}
+                                        maxLength={2}
+                                        className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
+                                    />
+                                </div>
+                                <div className="flex flex-col gap-2">
+                                    <label className="text-sm font-semibold text-slate-900">Effectivity Date</label>
+                                    <input
+                                        type="text"
+                                        placeholder="MM-DD-YYYY"
+                                        value={healthCardEffectivityDate}
+                                        onChange={(e) => {
+                                            let value = e.target.value.replace(/\D/g, '');
+                                            if (value.length > 2) value = value.substring(0, 2) + '-' + value.substring(2);
+                                            if (value.length > 5) value = value.substring(0, 5) + '-' + value.substring(5, 9);
+                                            setHealthCardEffectivityDate(value);
+                                        }}
+                                        maxLength={10}
                                         className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
                                     />
                                 </div>
                             </div>
 
-                            {/* Date of Birth */}
-                            <div className="flex flex-col gap-2">
-                                <label className="text-sm font-semibold text-slate-900">Date of Birth <span className="text-red-500">*</span> <span className="text-slate-500 text-xs font-normal">(DD-MM-YYYY)</span></label>
-                                <input
-                                    type="text"
-                                    placeholder="DD-MM-YYYY"
-                                    value={visitorForm.dateOfBirth}
-                                    onChange={(e) => {
-                                        let value = e.target.value.replace(/\D/g, '');
-                                        if (value.length > 2) value = value.substring(0, 2) + '-' + value.substring(2);
-                                        if (value.length > 5) value = value.substring(0, 5) + '-' + value.substring(5, 9);
-                                        setVisitorForm({ ...visitorForm, dateOfBirth: value });
-                                    }}
-                                    maxLength={10}
-                                    required
-                                    className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
-                                />
+                            {/* Line 3: DOB (Calendar), Age (Calculated), Sex, Expiry Date */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                                <div className="flex flex-col gap-2">
+                                    <label className="text-sm font-semibold text-slate-900">Date of Birth <span className="text-red-500">*</span></label>
+                                    <input
+                                        type="date"
+                                        value={visitorForm.dateOfBirth ? (() => {
+                                            // Convert MM-DD-YYYY to YYYY-MM-DD for date input
+                                            const parts = visitorForm.dateOfBirth.split('-');
+                                            if (parts.length === 3) {
+                                                return `${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
+                                            }
+                                            return '';
+                                        })() : ''}
+                                        onChange={(e) => {
+                                            // Convert YYYY-MM-DD to MM-DD-YYYY
+                                            const dateValue = e.target.value;
+                                            if (dateValue) {
+                                                const parts = dateValue.split('-');
+                                                const formatted = `${parts[1]}-${parts[2]}-${parts[0]}`;
+                                                setVisitorForm({ ...visitorForm, dateOfBirth: formatted });
+                                            } else {
+                                                setVisitorForm({ ...visitorForm, dateOfBirth: '' });
+                                            }
+                                        }}
+                                        required
+                                        className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
+                                    />
+                                </div>
+                                <div className="flex flex-col gap-2">
+                                    <label className="text-sm font-semibold text-slate-900">Age</label>
+                                    <input
+                                        type="text"
+                                        value={(() => {
+                                            if (!visitorForm.dateOfBirth) return '';
+                                            const parts = visitorForm.dateOfBirth.split('-');
+                                            if (parts.length !== 3) return '';
+                                            const month = parseInt(parts[0], 10) - 1;
+                                            const day = parseInt(parts[1], 10);
+                                            const year = parseInt(parts[2], 10);
+                                            const dob = new Date(year, month, day);
+                                            const today = new Date();
+                                            let age = today.getFullYear() - dob.getFullYear();
+                                            const monthDiff = today.getMonth() - dob.getMonth();
+                                            if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) {
+                                                age--;
+                                            }
+                                            return isNaN(age) || age < 0 ? '' : age.toString();
+                                        })()}
+                                        readOnly
+                                        className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-100 text-slate-600 cursor-not-allowed"
+                                    />
+                                </div>
+                                <div className="flex flex-col gap-2">
+                                    <label className="text-sm font-semibold text-slate-900">Sex <span className="text-red-500">*</span></label>
+                                    <select
+                                        value={visitorForm.gender}
+                                        onChange={(e) => setVisitorForm({ ...visitorForm, gender: e.target.value })}
+                                        required
+                                        className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
+                                    >
+                                        <option value="">Select sex</option>
+                                        <option value="male">Male</option>
+                                        <option value="female">Female</option>
+                                        <option value="other">Other</option>
+                                    </select>
+                                </div>
+                                <div className="flex flex-col gap-2">
+                                    <label className="text-sm font-semibold text-slate-900">Expiry Date</label>
+                                    <input
+                                        type="text"
+                                        placeholder="MM-DD-YYYY"
+                                        value={healthCardExpiryDate}
+                                        onChange={(e) => {
+                                            let value = e.target.value.replace(/\D/g, '');
+                                            if (value.length > 2) value = value.substring(0, 2) + '-' + value.substring(2);
+                                            if (value.length > 5) value = value.substring(0, 5) + '-' + value.substring(5, 9);
+                                            setHealthCardExpiryDate(value);
+                                        }}
+                                        maxLength={10}
+                                        className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
+                                    />
+                                </div>
                             </div>
 
-                            {/* Address */}
+                            {/* Street */}
                             <div className="flex flex-col gap-2">
-                                <label className="text-sm font-semibold text-slate-900">Address Line <span className="text-red-500">*</span></label>
+                                <label className="text-sm font-semibold text-slate-900">Street <span className="text-red-500">*</span></label>
                                 <input
                                     type="text"
                                     placeholder="Street address"
@@ -299,7 +516,8 @@ const VisitorsSection = ({
                                 />
                             </div>
 
-                            <div className="grid grid-cols-3 gap-4">
+                            {/* City, Province, Postal Code */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                                 <div className="flex flex-col gap-2">
                                     <label className="text-sm font-semibold text-slate-900">City <span className="text-red-500">*</span></label>
                                     <input
@@ -312,24 +530,36 @@ const VisitorsSection = ({
                                     />
                                 </div>
                                 <div className="flex flex-col gap-2">
-                                    <label className="text-sm font-semibold text-slate-900">State <span className="text-red-500">*</span></label>
-                                    <input
-                                        type="text"
-                                        placeholder="State"
+                                    <label className="text-sm font-semibold text-slate-900">Province <span className="text-red-500">*</span></label>
+                                    <select
                                         value={visitorForm.state}
                                         onChange={(e) => setVisitorForm({ ...visitorForm, state: e.target.value })}
                                         required
                                         className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
-                                    />
+                                    >
+                                        <option value="">Select province</option>
+                                        <option value="Alberta">Alberta</option>
+                                        <option value="British Columbia">British Columbia</option>
+                                        <option value="Manitoba">Manitoba</option>
+                                        <option value="New Brunswick">New Brunswick</option>
+                                        <option value="Newfoundland and Labrador">Newfoundland and Labrador</option>
+                                        <option value="Northwest Territories">Northwest Territories</option>
+                                        <option value="Nova Scotia">Nova Scotia</option>
+                                        <option value="Nunavut">Nunavut</option>
+                                        <option value="Ontario">Ontario</option>
+                                        <option value="Prince Edward Island">Prince Edward Island</option>
+                                        <option value="Quebec">Quebec</option>
+                                        <option value="Saskatchewan">Saskatchewan</option>
+                                        <option value="Yukon">Yukon</option>
+                                    </select>
                                 </div>
                                 <div className="flex flex-col gap-2">
-                                    <label className="text-sm font-semibold text-slate-900">Postal Code <span className="text-slate-500 text-xs font-normal">(5 digits)</span></label>
+                                    <label className="text-sm font-semibold text-slate-900">Postal Code</label>
                                     <input
                                         type="text"
                                         placeholder="12345"
                                         value={visitorForm.postalCode}
                                         onChange={(e) => {
-                                            // Only allow digits, max 5
                                             const value = e.target.value.replace(/\D/g, '').substring(0, 5);
                                             setVisitorForm({ ...visitorForm, postalCode: value });
                                         }}
@@ -339,113 +569,19 @@ const VisitorsSection = ({
                                 </div>
                             </div>
 
-                            {/* Gender */}
-                            <div className="flex flex-col gap-2">
-                                <label className="text-sm font-semibold text-slate-900">Gender <span className="text-red-500">*</span></label>
-                                <select
-                                    value={visitorForm.gender}
-                                    onChange={(e) => setVisitorForm({ ...visitorForm, gender: e.target.value })}
-                                    required
-                                    className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
-                                >
-                                    <option value="">Select gender</option>
-                                    <option value="male">Male</option>
-                                    <option value="female">Female</option>
-                                    <option value="other">Other</option>
-                                </select>
-                            </div>
-
-                            {/* Phone */}
-                            <div className="flex flex-col gap-2">
-                                <label className="text-sm font-semibold text-slate-900">Phone Number <span className="text-red-500">*</span></label>
-                                <PhoneInput
-                                    onChange={setPhoneData}
-                                    required
-                                />
-                            </div>
-
-                            {/* Phone (H) */}
-                            <div className="flex flex-col gap-2">
-                                <label className="text-sm font-semibold text-slate-900">Phone Number (H)</label>
-                                <PhoneInput
-                                    onChange={setPhoneHData}
-                                />
-                            </div>
-
-                            {/* Email */}
-                            <div className="flex flex-col gap-2">
-                                <label className="text-sm font-semibold text-slate-900">Email Address</label>
-                                <input
-                                    type="email"
-                                    placeholder="Enter email address (optional)"
-                                    value={visitorForm.email}
-                                    onChange={(e) => setVisitorForm({ ...visitorForm, email: e.target.value })}
-                                    className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
-                                />
-                            </div>
-
-                            {/* Health Card Number */}
-                            <div className="flex flex-col gap-2">
-                                <label className="text-sm font-semibold text-slate-900">Health Card Number <span className="text-red-500">*</span> <span className="text-slate-500 text-xs font-normal">(10 digits)</span></label>
-                                <input
-                                    type="text"
-                                    placeholder="1234-5678-90"
-                                    value={idCardNumber}
-                                    onChange={handleIdCardChange}
-                                    maxLength={12}
-                                    required
-                                    className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
-                                />
-                            </div>
-
-                            {/* Health Card Version */}
-                            <div className="flex flex-col gap-2">
-                                <label className="text-sm font-semibold text-slate-900">Health Card Version <span className="text-slate-500 text-xs font-normal">(max 2 characters)</span></label>
-                                <input
-                                    type="text"
-                                    placeholder="Version"
-                                    value={healthCardVersion}
-                                    onChange={(e) => {
-                                        const value = e.target.value.substring(0, 2);
-                                        setHealthCardVersion(value);
-                                    }}
-                                    maxLength={2}
-                                    className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
-                                />
-                            </div>
-
-                            {/* Health Card Dates */}
+                            {/* Phone (H) and Phone (B) */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="flex flex-col gap-2">
-                                    <label className="text-sm font-semibold text-slate-900">Effectivity Date <span className="text-slate-500 text-xs font-normal">(DD-MM-YYYY)</span></label>
-                                    <input
-                                        type="text"
-                                        placeholder="DD-MM-YYYY"
-                                        value={healthCardEffectivityDate}
-                                        onChange={(e) => {
-                                            let value = e.target.value.replace(/\D/g, '');
-                                            if (value.length > 2) value = value.substring(0, 2) + '-' + value.substring(2);
-                                            if (value.length > 5) value = value.substring(0, 5) + '-' + value.substring(5, 9);
-                                            setHealthCardEffectivityDate(value);
-                                        }}
-                                        maxLength={10}
-                                        className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
+                                    <label className="text-sm font-semibold text-slate-900">Phone (H)</label>
+                                    <PhoneInput
+                                        onChange={setPhoneHData}
                                     />
                                 </div>
                                 <div className="flex flex-col gap-2">
-                                    <label className="text-sm font-semibold text-slate-900">Expiry Date <span className="text-slate-500 text-xs font-normal">(DD-MM-YYYY)</span></label>
-                                    <input
-                                        type="text"
-                                        placeholder="DD-MM-YYYY"
-                                        value={healthCardExpiryDate}
-                                        onChange={(e) => {
-                                            let value = e.target.value.replace(/\D/g, '');
-                                            if (value.length > 2) value = value.substring(0, 2) + '-' + value.substring(2);
-                                            if (value.length > 5) value = value.substring(0, 5) + '-' + value.substring(5, 9);
-                                            setHealthCardExpiryDate(value);
-                                        }}
-                                        maxLength={10}
-                                        className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
+                                    <label className="text-sm font-semibold text-slate-900">Phone (B) <span className="text-red-500">*</span></label>
+                                    <PhoneInput
+                                        onChange={setPhoneData}
+                                        required
                                     />
                                 </div>
                             </div>
@@ -505,12 +641,18 @@ const VisitorsSection = ({
 
             {/* Patient Detail Modal */}
             {showPatientDetailModal && selectedPatient && (
-                <div className="fixed inset-0 bg-black/50 flex justify-center items-center z-[1000]" onClick={() => setShowPatientDetailModal(false)}>
-                    <div className="bg-white w-full max-w-[600px] max-h-[90vh] overflow-y-auto p-8 rounded-3xl shadow-lg animate-[slideUp_0.4s_ease-out] mx-4" onClick={(e) => e.stopPropagation()}>
+                <div className="fixed inset-0 bg-black/50 flex justify-center items-center z-[1000]" onClick={() => {
+                    setShowPatientDetailModal(false);
+                    setExpandedInteractionIds({});
+                }}>
+                    <div className="bg-white w-full max-w-[1200px] max-h-[90vh] overflow-y-auto p-4 sm:p-6 lg:p-8 rounded-3xl shadow-lg animate-[slideUp_0.4s_ease-out]" onClick={(e) => e.stopPropagation()}>
                         <div className="flex justify-between items-center mb-6">
                             <h2 className="text-2xl font-bold text-slate-900">Patient Details</h2>
                             <button
-                                onClick={() => setShowPatientDetailModal(false)}
+                                onClick={() => {
+                                    setShowPatientDetailModal(false);
+                                    setExpandedInteractionIds({});
+                                }}
                                 className="text-slate-400 hover:text-slate-600 transition-colors"
                             >
                                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -519,8 +661,9 @@ const VisitorsSection = ({
                             </button>
                         </div>
                         
-                        <div className="space-y-4">
-                            <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-6">
+                            {/* Patient Information - Horizontal Layout */}
+                            <div className="grid grid-cols-3 gap-6">
                                 <div>
                                     <label className="text-sm font-semibold text-slate-500">ID</label>
                                     <p className="text-base text-slate-900 mt-1">
@@ -530,6 +673,10 @@ const VisitorsSection = ({
                                 <div>
                                     <label className="text-sm font-semibold text-slate-500">Date of Birth</label>
                                     <p className="text-base text-slate-900 mt-1">{selectedPatient.dateOfBirth || 'N/A'}</p>
+                                </div>
+                                <div>
+                                    <label className="text-sm font-semibold text-slate-500">Gender</label>
+                                    <p className="text-base text-slate-900 mt-1 capitalize">{selectedPatient.gender || 'N/A'}</p>
                                 </div>
                             </div>
 
@@ -547,17 +694,23 @@ const VisitorsSection = ({
                                 </p>
                             </div>
 
-                            <div>
-                                <label className="text-sm font-semibold text-slate-500">Address</label>
-                                <p className="text-base text-slate-900 mt-1">
-                                    {selectedPatient.addressLine || 'N/A'}
-                                    {selectedPatient.city && `, ${selectedPatient.city}`}
-                                    {selectedPatient.state && `, ${selectedPatient.state}`}
-                                    {selectedPatient.postalCode && ` ${selectedPatient.postalCode}`}
-                                </p>
+                            <div className="grid grid-cols-2 gap-6">
+                                <div>
+                                    <label className="text-sm font-semibold text-slate-500">Address</label>
+                                    <p className="text-base text-slate-900 mt-1">
+                                        {selectedPatient.addressLine || 'N/A'}
+                                        {selectedPatient.city && `, ${selectedPatient.city}`}
+                                        {(selectedPatient.province || selectedPatient.state) && `, ${selectedPatient.province || selectedPatient.state}`}
+                                        {selectedPatient.postalCode && ` ${selectedPatient.postalCode}`}
+                                    </p>
+                                </div>
+                                <div>
+                                    <label className="text-sm font-semibold text-slate-500">Email</label>
+                                    <p className="text-base text-slate-900 mt-1">{selectedPatient.email || 'N/A'}</p>
+                                </div>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-2 gap-6">
                                 <div>
                                     <label className="text-sm font-semibold text-slate-500">Phone</label>
                                     <p className="text-base text-slate-900 mt-1">{selectedPatient.phone || 'N/A'}</p>
@@ -568,48 +721,192 @@ const VisitorsSection = ({
                                 </div>
                             </div>
 
-                            <div>
-                                <label className="text-sm font-semibold text-slate-500">Email</label>
-                                <p className="text-base text-slate-900 mt-1">{selectedPatient.email || 'N/A'}</p>
-                            </div>
-
-                            <div>
-                                <label className="text-sm font-semibold text-slate-500">Gender</label>
-                                <p className="text-base text-slate-900 mt-1 capitalize">{selectedPatient.gender || 'N/A'}</p>
-                            </div>
-
-                            <div>
-                                <label className="text-sm font-semibold text-slate-500">Health Card Number</label>
-                                <p className="text-base text-slate-900 mt-1">{selectedPatient.idCardNumber || 'N/A'}</p>
-                            </div>
-
-                            {selectedPatient.healthCardVersion && (
+                            <div className="grid grid-cols-3 gap-6">
                                 <div>
-                                    <label className="text-sm font-semibold text-slate-500">Health Card Version</label>
-                                    <p className="text-base text-slate-900 mt-1">{selectedPatient.healthCardVersion}</p>
+                                    <label className="text-sm font-semibold text-slate-500">Health Card Number</label>
+                                    <p className="text-base text-slate-900 mt-1">{selectedPatient.healthCardNumber || 'N/A'}</p>
                                 </div>
-                            )}
+                                {selectedPatient.healthCardVersion && (
+                                    <div>
+                                        <label className="text-sm font-semibold text-slate-500">Health Card Version</label>
+                                        <p className="text-base text-slate-900 mt-1">{selectedPatient.healthCardVersion}</p>
+                                    </div>
+                                )}
+                                {(selectedPatient.healthCardEffectivityDate || selectedPatient.healthCardExpiryDate) && (
+                                    <div className="grid grid-cols-2 gap-4">
+                                        {selectedPatient.healthCardEffectivityDate && (
+                                            <div>
+                                                <label className="text-sm font-semibold text-slate-500">Effectivity Date</label>
+                                                <p className="text-base text-slate-900 mt-1">{selectedPatient.healthCardEffectivityDate}</p>
+                                            </div>
+                                        )}
+                                        {selectedPatient.healthCardExpiryDate && (
+                                            <div>
+                                                <label className="text-sm font-semibold text-slate-500">Expiry Date</label>
+                                                <p className="text-base text-slate-900 mt-1">{selectedPatient.healthCardExpiryDate}</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
 
-                            {(selectedPatient.healthCardEffectivityDate || selectedPatient.healthCardExpiryDate) && (
-                                <div className="grid grid-cols-2 gap-4">
-                                    {selectedPatient.healthCardEffectivityDate && (
-                                        <div>
-                                            <label className="text-sm font-semibold text-slate-500">Effectivity Date</label>
-                                            <p className="text-base text-slate-900 mt-1">{selectedPatient.healthCardEffectivityDate}</p>
-                                        </div>
-                                    )}
-                                    {selectedPatient.healthCardExpiryDate && (
-                                        <div>
-                                            <label className="text-sm font-semibold text-slate-500">Expiry Date</label>
-                                            <p className="text-base text-slate-900 mt-1">{selectedPatient.healthCardExpiryDate}</p>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
+                            {/* Completed Interactions Section */}
+                            <div className="pt-4 border-t border-slate-200">
+                                <h3 className="text-lg font-semibold text-slate-900 mb-4">Interactions</h3>
+                                {completedInteractionsForPatient.length === 0 ? (
+                                    <div className="text-sm text-slate-400 italic py-4">
+                                        No completed interactions for this patient.
+                                    </div>
+                                ) : (
+                                    <div className="space-y-2">
+                                        {completedInteractionsForPatient.map((interaction) => {
+                                            const isExpanded = expandedInteractionIds[interaction.id];
+                                            return (
+                                                <div
+                                                    key={interaction.id}
+                                                    className="border border-slate-200 rounded-lg overflow-hidden bg-white"
+                                                >
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            setExpandedInteractionIds((prev) => ({
+                                                                ...prev,
+                                                                [interaction.id]: !isExpanded,
+                                                            }))
+                                                        }
+                                                        className="w-full flex items-center justify-between px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                                                    >
+                                                        <div className="flex flex-col items-start">
+                                                            <span className="font-semibold text-blue-700">
+                                                                {interaction.interactionSerial || 'N/A'}
+                                                            </span>
+                                                            <span className="text-xs text-slate-500 mt-0.5">
+                                                                Completed: {formatDate(interaction.editedAt || interaction.createdAt)}
+                                                            </span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border ${
+                                                                interaction.closed 
+                                                                    ? 'bg-green-50 text-green-700 border-green-200' 
+                                                                    : 'bg-red-50 text-red-700 border-red-200'
+                                                            }`}>
+                                                                {interaction.closed ? 'Closed' : 'Open'}
+                                                            </span>
+                                                            <svg 
+                                                                className={`w-4 h-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                                                                fill="none" 
+                                                                stroke="currentColor" 
+                                                                viewBox="0 0 24 24"
+                                                            >
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                                            </svg>
+                                                        </div>
+                                                    </button>
+                                                    {isExpanded && (
+                                                        <div className="px-4 py-3 text-sm text-slate-700 space-y-4 bg-slate-50 border-t border-slate-200">
+                                                            {/* CC/Reason */}
+                                                            {interaction.ccReason && (interaction.ccReason.text || interaction.ccReason.scratchpad) && (
+                                                                <div>
+                                                                    <h5 className="font-semibold text-slate-900 mb-1">CC / Reason</h5>
+                                                                    {interaction.ccReason.text && (
+                                                                        <p className="text-xs text-slate-600 mb-2 whitespace-pre-wrap">{interaction.ccReason.text}</p>
+                                                                    )}
+                                                                    {interaction.ccReason.hasScratchpad && interaction.ccReason.scratchpad && (
+                                                                        <img 
+                                                                            src={getImageUrl(interaction.ccReason.scratchpad)} 
+                                                                            alt="CC/Reason" 
+                                                                            className="max-w-full h-auto rounded border border-slate-200"
+                                                                            onError={(e) => e.target.style.display = 'none'}
+                                                                        />
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                            {/* Subjective */}
+                                                            {interaction.subjective && (interaction.subjective.text || interaction.subjective.scratchpad) && (
+                                                                <div>
+                                                                    <h5 className="font-semibold text-slate-900 mb-1">S (Subjective)</h5>
+                                                                    {interaction.subjective.text && (
+                                                                        <p className="text-xs text-slate-600 mb-2 whitespace-pre-wrap">{interaction.subjective.text}</p>
+                                                                    )}
+                                                                    {interaction.subjective.hasScratchpad && interaction.subjective.scratchpad && (
+                                                                        <img 
+                                                                            src={getImageUrl(interaction.subjective.scratchpad)} 
+                                                                            alt="Subjective" 
+                                                                            className="max-w-full h-auto rounded border border-slate-200"
+                                                                            onError={(e) => e.target.style.display = 'none'}
+                                                                        />
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                            {/* Objective */}
+                                                            {interaction.objective && (interaction.objective.text || interaction.objective.scratchpad) && (
+                                                                <div>
+                                                                    <h5 className="font-semibold text-slate-900 mb-1">O (Objective)</h5>
+                                                                    {interaction.objective.text && (
+                                                                        <p className="text-xs text-slate-600 mb-2 whitespace-pre-wrap">{interaction.objective.text}</p>
+                                                                    )}
+                                                                    {interaction.objective.hasScratchpad && interaction.objective.scratchpad && (
+                                                                        <img 
+                                                                            src={getImageUrl(interaction.objective.scratchpad)} 
+                                                                            alt="Objective" 
+                                                                            className="max-w-full h-auto rounded border border-slate-200"
+                                                                            onError={(e) => e.target.style.display = 'none'}
+                                                                        />
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                            {/* Assessment and Plan */}
+                                                            {interaction.assessmentPlan && (interaction.assessmentPlan.text || interaction.assessmentPlan.scratchpad) && (
+                                                                <div>
+                                                                    <h5 className="font-semibold text-slate-900 mb-1">A and P (Assessment and Plan)</h5>
+                                                                    {interaction.assessmentPlan.text && (
+                                                                        <p className="text-xs text-slate-600 mb-2 whitespace-pre-wrap">{interaction.assessmentPlan.text}</p>
+                                                                    )}
+                                                                    {interaction.assessmentPlan.hasScratchpad && interaction.assessmentPlan.scratchpad && (
+                                                                        <img 
+                                                                            src={getImageUrl(interaction.assessmentPlan.scratchpad)} 
+                                                                            alt="Assessment and Plan" 
+                                                                            className="max-w-full h-auto rounded border border-slate-200"
+                                                                            onError={(e) => e.target.style.display = 'none'}
+                                                                        />
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                            {/* Service Lines */}
+                                                            {interaction.serviceLines && interaction.serviceLines.length > 0 && (
+                                                                <div>
+                                                                    <h5 className="font-semibold text-slate-900 mb-2">Services</h5>
+                                                                    <div className="space-y-1">
+                                                                        {interaction.serviceLines.map((line, idx) => (
+                                                                            <div key={idx} className="bg-white rounded p-2 text-xs border border-slate-200">
+                                                                                <div className="grid grid-cols-6 gap-2">
+                                                                                    <div className="font-medium text-slate-600">{line.serialNumber}</div>
+                                                                                    <div><span className="text-slate-500">Service:</span> {line.service}</div>
+                                                                                    <div><span className="text-slate-500">Suffix:</span> {line.suffix}</div>
+                                                                                    <div><span className="text-slate-500">Diagnostic:</span> {line.diagnostic}</div>
+                                                                                    <div><span className="text-slate-500">Fee:</span> ${line.totalFee || '0.00'}</div>
+                                                                                    <div><span className="text-slate-500">Acct #:</span> {line.accountingNumber || 'N/A'}</div>
+                                                                                </div>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
 
                             <div className="pt-4 border-t border-slate-200">
                                 <button
-                                    onClick={() => setShowPatientDetailModal(false)}
+                                    onClick={() => {
+                                        setShowPatientDetailModal(false);
+                                        setExpandedInteractionIds({});
+                                    }}
                                     className="w-full py-3 px-4 bg-primary text-white rounded-xl font-semibold text-base hover:bg-primary-dark transition-colors"
                                 >
                                     Close

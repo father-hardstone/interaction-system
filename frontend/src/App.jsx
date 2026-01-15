@@ -13,7 +13,7 @@ import UserDashboard from './pages/UserDashboard';
 function App() {
   return (
     <Router>
-      <div className="w-full min-h-screen flex flex-col">
+      <div className="w-full min-h-screen flex flex-col overflow-x-hidden">
         {/* Navigation removed from auth pages as requested. 
             We can keep a simple logo or minimal header if needed, 
             but the request was to remove buttons from top bar.

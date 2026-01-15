@@ -45,6 +45,49 @@ const interactionSchema = new mongoose.Schema({
     deletedAt: {
         type: String,
         default: ''
+    },
+    // Interaction notes fields
+    ccReason: {
+        text: { type: String, default: '' },
+        scratchpad: { type: String, default: '' },
+        hasScratchpad: { type: Boolean, default: false }
+    },
+    subjective: {
+        text: { type: String, default: '' },
+        scratchpad: { type: String, default: '' },
+        hasScratchpad: { type: Boolean, default: false }
+    },
+    objective: {
+        text: { type: String, default: '' },
+        scratchpad: { type: String, default: '' },
+        hasScratchpad: { type: Boolean, default: false }
+    },
+    assessmentPlan: {
+        text: { type: String, default: '' },
+        scratchpad: { type: String, default: '' },
+        hasScratchpad: { type: Boolean, default: false }
+    },
+    // Service lines array
+    serviceLines: [{
+        serialNumber: { type: Number, default: 1 },
+        service: { type: String, default: '' },
+        suffix: { type: String, default: '' },
+        diagnostic: { type: String, default: '' },
+        totalFee: { type: Number, default: 0 },
+        accountingNumber: { type: String, default: '' }
+    }],
+    // Status flags
+    started: {
+        type: Boolean,
+        default: false
+    },
+    completed: {
+        type: Boolean,
+        default: false
+    },
+    closed: {
+        type: Boolean,
+        default: false
     }
 }, {
     timestamps: false,

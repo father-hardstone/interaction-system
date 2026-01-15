@@ -40,13 +40,13 @@ class VisitorController {
                 dateOfBirth,
                 addressLine,
                 city,
-                state,
+                province,
                 postalCode,
                 gender,
                 phone,
                 phoneH,
                 email,
-                idCardNumber,
+                healthCardNumber,
                 healthCardVersion,
                 healthCardEffectivityDate,
                 healthCardExpiryDate
@@ -63,7 +63,7 @@ class VisitorController {
 
             // Validate required fields
             if (!entityId || !entitySerial || !firstName || !lastName || !dateOfBirth || 
-                !addressLine || !city || !state || !gender || !phone || !idCardNumber) {
+                !addressLine || !city || !province || !gender || !phone || !healthCardNumber) {
                 return res.status(400).json({ error: "Missing required fields" });
             }
 
@@ -73,14 +73,14 @@ class VisitorController {
                 return res.status(400).json({ error: "Invalid entity serial format. Must start with 'E'" });
             }
 
-            // Validate ID card number format (should be 10 digits, we'll format it)
-            const cleanIdCard = idCardNumber.replace(/-/g, '');
-            if (cleanIdCard.length !== 10 || !/^\d+$/.test(cleanIdCard)) {
-                return res.status(400).json({ error: "ID card number must be exactly 10 digits" });
+            // Validate health card number format (should be 10 digits, we'll format it)
+            const cleanHealthCard = healthCardNumber.replace(/-/g, '');
+            if (cleanHealthCard.length !== 10 || !/^\d+$/.test(cleanHealthCard)) {
+                return res.status(400).json({ error: "Health card number must be exactly 10 digits" });
             }
 
-            // Format ID card number with dashes (1234-5678-90)
-            const formattedIdCard = `${cleanIdCard.substring(0, 4)}-${cleanIdCard.substring(4, 8)}-${cleanIdCard.substring(8, 10)}`;
+            // Format health card number with dashes (1234-5678-90)
+            const formattedHealthCard = `${cleanHealthCard.substring(0, 4)}-${cleanHealthCard.substring(4, 8)}-${cleanHealthCard.substring(8, 10)}`;
 
             const now = new Date().toISOString();
             // Get composite serial (e.g., E1-V1, E1-V2, etc.)
@@ -97,13 +97,13 @@ class VisitorController {
                 dateOfBirth,
                 addressLine: addressLine.trim(),
                 city: city.trim(),
-                state: state.trim(),
+                province: province.trim(),
                 postalCode: postalCode ? postalCode.trim() : '',
                 gender: gender.trim(),
                 phone: phone.trim(),
                 phoneH: phoneH ? phoneH.trim() : '',
                 email: email ? email.trim() : '',
-                idCardNumber: formattedIdCard,
+                healthCardNumber: formattedHealthCard,
                 healthCardVersion: healthCardVersion ? healthCardVersion.trim() : '',
                 healthCardEffectivityDate: healthCardEffectivityDate || '',
                 healthCardExpiryDate: healthCardExpiryDate || '',
@@ -159,13 +159,13 @@ class VisitorController {
             delete updates.entitySerial;
             delete updates.createdAt;
 
-            // Format ID card if provided
-            if (updates.idCardNumber) {
-                const cleanIdCard = updates.idCardNumber.replace(/-/g, '');
-                if (cleanIdCard.length !== 10 || !/^\d+$/.test(cleanIdCard)) {
-                    return res.status(400).json({ error: "ID card number must be exactly 10 digits" });
+            // Format health card if provided
+            if (updates.healthCardNumber) {
+                const cleanHealthCard = updates.healthCardNumber.replace(/-/g, '');
+                if (cleanHealthCard.length !== 10 || !/^\d+$/.test(cleanHealthCard)) {
+                    return res.status(400).json({ error: "Health card number must be exactly 10 digits" });
                 }
-                updates.idCardNumber = `${cleanIdCard.substring(0, 4)}-${cleanIdCard.substring(4, 8)}-${cleanIdCard.substring(8, 10)}`;
+                updates.healthCardNumber = `${cleanHealthCard.substring(0, 4)}-${cleanHealthCard.substring(4, 8)}-${cleanHealthCard.substring(8, 10)}`;
             }
 
             updates.editedAt = new Date().toISOString();

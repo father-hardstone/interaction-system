@@ -5,6 +5,8 @@ const Officer = require('./Officer');
 const Receptionist = require('./Receptionist');
 const Visitor = require('./Visitor');
 const Interaction = require('./Interaction');
+const Service = require('./Service');
+const Diagnostic = require('./Diagnostic');
 
 module.exports = {
     Admin,
@@ -12,5 +14,7 @@ module.exports = {
     Officer,
     Receptionist,
     Visitor,
-    Interaction
+    Interaction,
+    Service,
+    Diagnostic
 };

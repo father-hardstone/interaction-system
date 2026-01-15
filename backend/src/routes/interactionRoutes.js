@@ -11,6 +11,9 @@ router.post('/', InteractionController.createInteraction);
 // Assign officer to interaction (receptionist only)
 router.put('/:id/assign-officer', InteractionController.assignOfficer);
 
+// Save interaction details (notes, service lines, etc.)
+router.put('/:id/details', InteractionController.saveInteractionDetails);
+
 // Delete an interaction
 router.delete('/:id', InteractionController.deleteInteraction);
 

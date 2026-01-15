@@ -70,9 +70,10 @@ const ReceptionTab = ({
     pendingAssignments
 }) => {
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 overflow-x-hidden">
             <VisitorsSection
                 visitors={visitors}
+                interactions={interactions}
                 searchFirstName={searchFirstName}
                 setSearchFirstName={setSearchFirstName}
                 searchMiddleName={searchMiddleName}
@@ -114,6 +115,9 @@ const ReceptionTab = ({
                 handlePatientDrop={handlePatientDrop}
                 isCreatingVisitor={isCreatingVisitor}
                 deletingVisitorId={deletingVisitorId}
+                getVisitorName={getVisitorName}
+                getVisitorSerial={getVisitorSerial}
+                formatDate={formatDate}
             />
 
             {warningMessage && (

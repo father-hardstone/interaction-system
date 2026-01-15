@@ -42,7 +42,7 @@ const visitorSchema = new mongoose.Schema({
         type: String,
         required: true
     },
-    state: {
+    province: {
         type: String,
         required: true
     },
@@ -66,7 +66,7 @@ const visitorSchema = new mongoose.Schema({
         type: String,
         default: ''
     },
-    idCardNumber: {
+    healthCardNumber: {
         type: String,
         required: true
     },
@@ -102,7 +102,7 @@ const visitorSchema = new mongoose.Schema({
 visitorSchema.index({ entityId: 1 });
 visitorSchema.index({ serial: 1 });
 visitorSchema.index({ phone: 1 });
-visitorSchema.index({ idCardNumber: 1 });
+visitorSchema.index({ healthCardNumber: 1 });
 
 const Visitor = mongoose.model('Visitor', visitorSchema);
 

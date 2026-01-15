@@ -15,13 +15,14 @@ const UserDashboard = () => {
     const { serial } = useParams();
     const [userData, setUserData] = useState(null);
     const [activeTab, setActiveTab] = useState('reception');
+    const [sidebarOpen, setSidebarOpen] = useState(false);
     const [visitors, setVisitors] = useState([]);
     const [searchFirstName, setSearchFirstName] = useState('');
     const [searchMiddleName, setSearchMiddleName] = useState('');
     const [searchLastName, setSearchLastName] = useState('');
     const [searchSerial, setSearchSerial] = useState('');
     const [searchPhone, setSearchPhone] = useState('');
-    const [searchIdCard, setSearchIdCard] = useState('');
+    const [searchHealthCard, setSearchHealthCard] = useState('');
     const [showVisitorModal, setShowVisitorModal] = useState(false);
     const [visitorForm, setVisitorForm] = useState({
         firstName: '',
@@ -38,7 +39,7 @@ const UserDashboard = () => {
     });
     const [phoneData, setPhoneData] = useState({ fullNumber: '', valid: false });
     const [phoneHData, setPhoneHData] = useState({ fullNumber: '', valid: false });
-    const [idCardNumber, setIdCardNumber] = useState('');
+    const [healthCardNumber, setHealthCardNumber] = useState('');
     const [healthCardVersion, setHealthCardVersion] = useState('');
     const [healthCardEffectivityDate, setHealthCardEffectivityDate] = useState('');
     const [healthCardExpiryDate, setHealthCardExpiryDate] = useState('');
@@ -260,7 +261,7 @@ const UserDashboard = () => {
             : (visitor.entitySerial ? `${visitor.entitySerial}-${visitor.serial}` : visitor.serial || '');
     };
 
-    const formatIdCardNumber = (value) => {
+    const formatHealthCardNumber = (value) => {
         // Remove all non-digits
         const digits = value.replace(/\D/g, '');
         // Limit to 10 digits
@@ -275,9 +276,9 @@ const UserDashboard = () => {
         }
     };
 
-    const handleIdCardChange = (e) => {
-        const formatted = formatIdCardNumber(e.target.value);
-        setIdCardNumber(formatted);
+    const handleHealthCardChange = (e) => {
+        const formatted = formatHealthCardNumber(e.target.value);
+        setHealthCardNumber(formatted);
     };
 
     const handleCreateVisitor = async (e) => {
@@ -288,16 +289,16 @@ const UserDashboard = () => {
         // Validate required fields
         if (!visitorForm.firstName || !visitorForm.lastName || !visitorForm.dateOfBirth ||
             !visitorForm.addressLine || !visitorForm.city || !visitorForm.state ||
-            !visitorForm.gender || !phoneData.valid || !idCardNumber) {
+            !visitorForm.gender || !phoneData.valid || !healthCardNumber) {
             setError('Please fill in all required fields');
             setIsCreatingVisitor(false);
             return;
         }
 
-        // Validate ID card number (should be 10 digits after formatting)
-        const cleanIdCard = idCardNumber.replace(/-/g, '');
-        if (cleanIdCard.length !== 10) {
-            setError('ID card number must be exactly 10 digits');
+        // Validate health card number (should be 10 digits after formatting)
+        const cleanHealthCard = healthCardNumber.replace(/-/g, '');
+        if (cleanHealthCard.length !== 10) {
+            setError('Health card number must be exactly 10 digits');
             return;
         }
 
@@ -310,10 +311,10 @@ const UserDashboard = () => {
             }
         }
 
-        // Validate date format (should be DD-MM-YYYY)
+        // Validate date format (should be MM-DD-YYYY)
         const dateRegex = /^(\d{2})-(\d{2})-(\d{4})$/;
         if (!dateRegex.test(visitorForm.dateOfBirth)) {
-            setError('Date of birth must be in DD-MM-YYYY format');
+            setError('Date of birth must be in MM-DD-YYYY format');
             setIsCreatingVisitor(false);
             return;
         }
@@ -321,8 +322,8 @@ const UserDashboard = () => {
         // Validate date of birth - check if it's a valid date and not in the future
         const validateDate = (dateString, fieldName) => {
             const parts = dateString.split('-');
-            const day = parseInt(parts[0], 10);
-            const month = parseInt(parts[1], 10);
+            const month = parseInt(parts[0], 10);
+            const day = parseInt(parts[1], 10);
             const year = parseInt(parts[2], 10);
             
             // Check for absurd values
@@ -379,7 +380,7 @@ const UserDashboard = () => {
         // Validate effectivity date if provided
         if (healthCardEffectivityDate && healthCardEffectivityDate.trim().length > 0) {
             if (!dateRegex.test(healthCardEffectivityDate)) {
-                setError('Effectivity date must be in DD-MM-YYYY format');
+                setError('Effectivity date must be in MM-DD-YYYY format');
                 setIsCreatingVisitor(false);
                 return;
             }
@@ -394,15 +395,15 @@ const UserDashboard = () => {
         // Validate expiry date if provided
         if (healthCardExpiryDate && healthCardExpiryDate.trim().length > 0) {
             if (!dateRegex.test(healthCardExpiryDate)) {
-                setError('Expiry date must be in DD-MM-YYYY format');
+                setError('Expiry date must be in MM-DD-YYYY format');
                 setIsCreatingVisitor(false);
                 return;
             }
             
             // Validate expiry date format and values (but allow future dates)
             const expiryParts = healthCardExpiryDate.split('-');
-            const expiryDay = parseInt(expiryParts[0], 10);
-            const expiryMonth = parseInt(expiryParts[1], 10);
+            const expiryMonth = parseInt(expiryParts[0], 10);
+            const expiryDay = parseInt(expiryParts[1], 10);
             const expiryYear = parseInt(expiryParts[2], 10);
             
             // Check for absurd values
@@ -435,8 +436,8 @@ const UserDashboard = () => {
                 const effectivityParts = healthCardEffectivityDate.split('-');
                 const effectivityDate = new Date(
                     parseInt(effectivityParts[2], 10),
-                    parseInt(effectivityParts[1], 10) - 1,
-                    parseInt(effectivityParts[0], 10)
+                    parseInt(effectivityParts[0], 10) - 1,
+                    parseInt(effectivityParts[1], 10)
                 );
                 
                 if (expiryDate <= effectivityDate) {
@@ -457,13 +458,13 @@ const UserDashboard = () => {
                 dateOfBirth: visitorForm.dateOfBirth,
                 addressLine: visitorForm.addressLine.trim(),
                 city: visitorForm.city.trim(),
-                state: visitorForm.state.trim(),
+                province: visitorForm.state.trim(), // Frontend uses 'state' but backend expects 'province'
                 postalCode: visitorForm.postalCode.trim(),
                 gender: visitorForm.gender,
                 phone: phoneData.fullNumber,
                 phoneH: phoneHData.fullNumber || '',
                 email: visitorForm.email.trim(),
-                idCardNumber: cleanIdCard,
+                healthCardNumber: cleanHealthCard,
                 healthCardVersion: healthCardVersion.trim(),
                 healthCardEffectivityDate: healthCardEffectivityDate,
                 healthCardExpiryDate: healthCardExpiryDate
@@ -485,7 +486,7 @@ const UserDashboard = () => {
             });
             setPhoneData({ fullNumber: '', valid: false });
             setPhoneHData({ fullNumber: '', valid: false });
-            setIdCardNumber('');
+            setHealthCardNumber('');
             setHealthCardVersion('');
             setHealthCardEffectivityDate('');
             setHealthCardExpiryDate('');
@@ -661,7 +662,15 @@ const UserDashboard = () => {
     };
 
     return (
-        <div className="flex h-[calc(100vh-64px)]">
+        <div className="flex h-[calc(100vh-64px)] relative overflow-x-hidden">
+            {/* Mobile Overlay */}
+            {sidebarOpen && (
+                <div 
+                    className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+                    onClick={() => setSidebarOpen(false)}
+                />
+            )}
+
             {/* Sidebar */}
             <UserSidebar
                 userData={userData}
@@ -669,13 +678,19 @@ const UserDashboard = () => {
                 activeTab={activeTab}
                 setActiveTab={setActiveTab}
                 handleLogout={handleLogout}
+                sidebarOpen={sidebarOpen}
+                setSidebarOpen={setSidebarOpen}
             />
 
             {/* Main Content */}
-            <main className="flex-1 overflow-auto bg-slate-50">
-                <UserHeader activeTab={activeTab} />
+            <main className="flex-1 overflow-x-hidden overflow-y-auto bg-slate-50">
+                <UserHeader 
+                    activeTab={activeTab} 
+                    sidebarOpen={sidebarOpen}
+                    setSidebarOpen={setSidebarOpen}
+                />
 
-                <div className="p-8">
+                <div className="p-4 sm:p-6 lg:p-8">
                     {activeTab === 'reception' && (
                         <ReceptionTab
                             visitors={visitors}
@@ -691,8 +706,8 @@ const UserDashboard = () => {
                             setSearchSerial={setSearchSerial}
                             searchPhone={searchPhone}
                             setSearchPhone={setSearchPhone}
-                            searchIdCard={searchIdCard}
-                            setSearchIdCard={setSearchIdCard}
+                            searchHealthCard={searchHealthCard}
+                            setSearchHealthCard={setSearchHealthCard}
                             showVisitorModal={showVisitorModal}
                             setShowVisitorModal={setShowVisitorModal}
                             visitorForm={visitorForm}
@@ -701,8 +716,8 @@ const UserDashboard = () => {
                             setPhoneData={setPhoneData}
                             phoneHData={phoneHData}
                             setPhoneHData={setPhoneHData}
-                            idCardNumber={idCardNumber}
-                            setIdCardNumber={setIdCardNumber}
+                            healthCardNumber={healthCardNumber}
+                            setHealthCardNumber={setHealthCardNumber}
                             healthCardVersion={healthCardVersion}
                             setHealthCardVersion={setHealthCardVersion}
                             healthCardEffectivityDate={healthCardEffectivityDate}
@@ -710,7 +725,7 @@ const UserDashboard = () => {
                             healthCardExpiryDate={healthCardExpiryDate}
                             setHealthCardExpiryDate={setHealthCardExpiryDate}
                             handleCreateVisitor={handleCreateVisitor}
-                            handleIdCardChange={handleIdCardChange}
+                            handleHealthCardChange={handleHealthCardChange}
                             error={error}
                             setError={setError}
                             handleDeleteVisitor={handleDeleteVisitor}
@@ -748,7 +763,11 @@ const UserDashboard = () => {
                     )}
 
                     {activeTab === 'officer' && (
-                        <OfficerTab />
+                        <OfficerTab
+                            userData={userData}
+                            interactions={interactions}
+                            visitors={visitors}
+                        />
                     )}
                 </div>
             </main>

@@ -3,6 +3,9 @@ const cors = require('cors');
 require('dotenv').config();
 
 const connectDB = require('./src/config/database');
+const ServiceService = require('./src/services/ServiceService');
+const DiagnosticService = require('./src/services/DiagnosticService');
+const mongoose = require('mongoose');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -10,15 +13,32 @@ const PORT = process.env.PORT || 5000;
 // Connect to MongoDB
 connectDB();
 
+// Seed initial services and diagnostics once MongoDB is connected
+mongoose.connection.once('connected', async () => {
+    try {
+        await ServiceService.seedInitialServices();
+        await DiagnosticService.seedInitialDiagnostics();
+    } catch (error) {
+        console.error('Error seeding data:', error);
+    }
+});
+
 const accessControlRoutes = require('./src/routes/accessControlRoutes');
 const entityRoutes = require('./src/routes/entityRoutes');
 const officerRoutes = require('./src/routes/officerRoutes');
 const receptionistRoutes = require('./src/routes/receptionistRoutes');
 const visitorRoutes = require('./src/routes/visitorRoutes');
 const interactionRoutes = require('./src/routes/interactionRoutes');
+const serviceRoutes = require('./src/routes/serviceRoutes');
+const diagnosticRoutes = require('./src/routes/diagnosticRoutes');
+const imageRoutes = require('./src/routes/imageRoutes');
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' })); // Increase limit for image uploads
+
+// Serve static files from uploads directory
+const path = require('path');
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 app.use('/api/auth', accessControlRoutes);
 app.use('/api/entities', entityRoutes);
@@ -26,6 +46,9 @@ app.use('/api/officers', officerRoutes);
 app.use('/api/receptionists', receptionistRoutes);
 app.use('/api/visitors', visitorRoutes);
 app.use('/api/interactions', interactionRoutes);
+app.use('/api/services', serviceRoutes);
+app.use('/api/diagnostics', diagnosticRoutes);
+app.use('/api/images', imageRoutes);
 
 app.get('/', (req, res) => {
     res.send('Backend is running!');
