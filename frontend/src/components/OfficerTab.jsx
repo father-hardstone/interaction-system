@@ -1305,7 +1305,7 @@ const OfficerTab = ({ userData, interactions, visitors }) => {
             {/* Patient details modal */}
             {showPatientDetailModal && selectedPatient && (
                 <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 p-4">
-                    <div className="bg-white rounded-xl shadow-xl max-w-5xl w-full max-h-[90vh] flex flex-col overflow-hidden">
+                    <div className="bg-white rounded-xl shadow-xl max-w-7xl w-full max-h-[90vh] flex flex-col overflow-hidden">
                         <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-slate-100 bg-slate-50">
                             <div>
                                 <h3 className="text-base font-semibold text-slate-900">

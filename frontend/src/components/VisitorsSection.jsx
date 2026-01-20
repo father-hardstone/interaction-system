@@ -1,6 +1,8 @@
 import PhoneInput from './PhoneInput';
+import ReportUpload from './ReportUpload';
+import { reportService } from '../services/reportService';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 
 const VisitorsSection = ({
     visitors,
@@ -48,9 +50,13 @@ const VisitorsSection = ({
     deletingVisitorId,
     getVisitorName,
     getVisitorSerial,
-    formatDate
+    formatDate,
+    userData
 }) => {
     const [expandedInteractionIds, setExpandedInteractionIds] = useState({});
+    const [reports, setReports] = useState([]);
+    const [loadingReports, setLoadingReports] = useState(false);
+    const [deletingReportId, setDeletingReportId] = useState(null);
 
     // Get completed interactions for selected patient
     const completedInteractionsForPatient = useMemo(() => {
@@ -59,6 +65,50 @@ const VisitorsSection = ({
             .filter((i) => i.visitorId === selectedPatient.id && i.completed)
             .sort((a, b) => new Date(b.editedAt || b.createdAt).getTime() - new Date(a.editedAt || a.createdAt).getTime());
     }, [interactions, selectedPatient]);
+
+    // Load reports when patient detail modal opens
+    useEffect(() => {
+        if (showPatientDetailModal && selectedPatient) {
+            loadReports();
+        } else {
+            setReports([]);
+        }
+    }, [showPatientDetailModal, selectedPatient]);
+
+    const loadReports = async () => {
+        if (!selectedPatient) return;
+        setLoadingReports(true);
+        try {
+            const data = await reportService.getByVisitor(selectedPatient.id);
+            setReports(data || []);
+        } catch (error) {
+            console.error('Failed to load reports:', error);
+            setReports([]);
+        } finally {
+            setLoadingReports(false);
+        }
+    };
+
+    const handleReportUploadSuccess = () => {
+        loadReports();
+    };
+
+    const handleDeleteReport = async (reportId) => {
+        if (!window.confirm('Are you sure you want to delete this report?')) {
+            return;
+        }
+
+        setDeletingReportId(reportId);
+        try {
+            await reportService.delete(reportId);
+            await loadReports();
+        } catch (error) {
+            console.error('Failed to delete report:', error);
+            alert('Failed to delete report. Please try again.');
+        } finally {
+            setDeletingReportId(null);
+        }
+    };
 
     // Helper to get image URL
     const getImageUrl = (imagePath) => {
@@ -332,7 +382,7 @@ const VisitorsSection = ({
             {/* Add Visitor Modal */}
             {showVisitorModal && (
                 <div className="fixed inset-0 bg-black/50 flex justify-center items-center z-[1000]" onClick={() => setShowVisitorModal(false)}>
-                    <div className="bg-white w-full max-w-[900px] max-h-[90vh] overflow-y-auto p-4 sm:p-6 lg:p-8 rounded-3xl shadow-lg animate-[slideUp_0.4s_ease-out]" onClick={(e) => e.stopPropagation()}>
+                    <div className="bg-white w-full max-w-[1400px] max-h-[90vh] overflow-y-auto p-4 sm:p-6 lg:p-8 rounded-3xl shadow-lg animate-[slideUp_0.4s_ease-out]" onClick={(e) => e.stopPropagation()}>
                         <h2 className="text-xl sm:text-2xl font-bold text-slate-900 mb-6">Add New Patient</h2>
                         {error && <p className="bg-red-50 border border-red-200 text-red-600 py-3 px-4 rounded-xl text-sm mb-4">{error}</p>}
                         <form onSubmit={handleCreateVisitor} className="flex flex-col gap-5">
@@ -645,20 +695,31 @@ const VisitorsSection = ({
                     setShowPatientDetailModal(false);
                     setExpandedInteractionIds({});
                 }}>
-                    <div className="bg-white w-full max-w-[1200px] max-h-[90vh] overflow-y-auto p-4 sm:p-6 lg:p-8 rounded-3xl shadow-lg animate-[slideUp_0.4s_ease-out]" onClick={(e) => e.stopPropagation()}>
+                    <div className="bg-white w-full max-w-[1600px] max-h-[90vh] overflow-y-auto p-4 sm:p-6 lg:p-8 rounded-3xl shadow-lg animate-[slideUp_0.4s_ease-out]" onClick={(e) => e.stopPropagation()}>
                         <div className="flex justify-between items-center mb-6">
                             <h2 className="text-2xl font-bold text-slate-900">Patient Details</h2>
-                            <button
-                                onClick={() => {
-                                    setShowPatientDetailModal(false);
-                                    setExpandedInteractionIds({});
-                                }}
-                                className="text-slate-400 hover:text-slate-600 transition-colors"
-                            >
-                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                            </button>
+                            <div className="flex items-center gap-3">
+                                {userData && selectedPatient && (
+                                    <ReportUpload
+                                        visitor={selectedPatient}
+                                        entityId={userData.entityId}
+                                        entitySerial={userData.entitySerial}
+                                        interactions={interactions}
+                                        onUploadSuccess={handleReportUploadSuccess}
+                                    />
+                                )}
+                                <button
+                                    onClick={() => {
+                                        setShowPatientDetailModal(false);
+                                        setExpandedInteractionIds({});
+                                    }}
+                                    className="text-slate-400 hover:text-slate-600 transition-colors"
+                                >
+                                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                </button>
+                            </div>
                         </div>
                         
                         <div className="space-y-6">
@@ -894,6 +955,109 @@ const VisitorsSection = ({
                                                             )}
                                                         </div>
                                                     )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Reports Section */}
+                            <div className="pt-4 border-t border-slate-200">
+                                <h3 className="text-lg font-semibold text-slate-900 mb-4">Reports</h3>
+                                {loadingReports ? (
+                                    <div className="text-sm text-slate-400 italic py-4">
+                                        Loading reports...
+                                    </div>
+                                ) : reports.length === 0 ? (
+                                    <div className="text-sm text-slate-400 italic py-4">
+                                        No reports uploaded for this patient.
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {reports.map((report) => {
+                                            const reportDate = new Date(report.uploadedAt).toLocaleDateString();
+                                            const reportTime = new Date(report.uploadedAt).toLocaleTimeString();
+                                            const fileUrl = report.filePath.startsWith('http') 
+                                                ? report.filePath 
+                                                : `${import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000'}/${report.filePath}`;
+                                            
+                                            return (
+                                                <div
+                                                    key={report.id}
+                                                    className="border border-slate-200 rounded-lg p-4 bg-white hover:bg-slate-50 transition-colors"
+                                                >
+                                                    <div className="flex items-start justify-between">
+                                                        <div className="flex-1">
+                                                            <div className="flex items-center gap-2 mb-2">
+                                                                <span className="font-semibold text-slate-900">
+                                                                    {report.instituteName}
+                                                                </span>
+                                                                {report.interactionId && (
+                                                                    <span className="text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
+                                                                        {interactions.find(i => i.id === report.interactionId)?.interactionSerial || 'Associated'}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <p className="text-xs text-slate-500 mb-2">
+                                                                {report.fileName} · {reportDate} {reportTime}
+                                                            </p>
+                                                            <div className="flex items-center gap-2">
+                                                                <a
+                                                                    href={fileUrl}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1"
+                                                                >
+                                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                                                    </svg>
+                                                                    View Report
+                                                                </a>
+                                                                {report.fileType === 'pdf' && (
+                                                                    <a
+                                                                        href={fileUrl}
+                                                                        download
+                                                                        className="text-xs text-green-600 hover:text-green-700 font-medium flex items-center gap-1"
+                                                                    >
+                                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                                                        </svg>
+                                                                        Download PDF
+                                                                    </a>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                        {report.fileType === 'image' && (
+                                                            <div className="ml-4">
+                                                                <img
+                                                                    src={fileUrl}
+                                                                    alt={report.fileName}
+                                                                    className="w-20 h-20 object-cover rounded border border-slate-200 cursor-pointer hover:opacity-80 transition-opacity"
+                                                                    onClick={() => window.open(fileUrl, '_blank')}
+                                                                    onError={(e) => e.target.style.display = 'none'}
+                                                                />
+                                                            </div>
+                                                        )}
+                                                        <button
+                                                            onClick={() => handleDeleteReport(report.id)}
+                                                            disabled={deletingReportId === report.id}
+                                                            className="ml-2 p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                                            title="Delete report"
+                                                        >
+                                                            {deletingReportId === report.id ? (
+                                                                <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                                </svg>
+                                                            ) : (
+                                                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                                </svg>
+                                                            )}
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             );
                                         })}

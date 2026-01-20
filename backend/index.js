@@ -32,6 +32,7 @@ const interactionRoutes = require('./src/routes/interactionRoutes');
 const serviceRoutes = require('./src/routes/serviceRoutes');
 const diagnosticRoutes = require('./src/routes/diagnosticRoutes');
 const imageRoutes = require('./src/routes/imageRoutes');
+const reportRoutes = require('./src/routes/reportRoutes');
 
 app.use(cors());
 app.use(express.json({ limit: '50mb' })); // Increase limit for image uploads
@@ -49,6 +50,7 @@ app.use('/api/interactions', interactionRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/diagnostics', diagnosticRoutes);
 app.use('/api/images', imageRoutes);
+app.use('/api/reports', reportRoutes);
 
 app.get('/', (req, res) => {
     res.send('Backend is running!');

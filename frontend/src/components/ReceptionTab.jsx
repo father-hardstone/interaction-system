@@ -118,6 +118,7 @@ const ReceptionTab = ({
                 getVisitorName={getVisitorName}
                 getVisitorSerial={getVisitorSerial}
                 formatDate={formatDate}
+                userData={userData}
             />
 
             {warningMessage && (

@@ -462,7 +462,7 @@ const InteractionsSection = ({
                     }}
                 >
                     <div 
-                        className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden"
+                        className="bg-white rounded-xl shadow-xl max-w-6xl w-full max-h-[90vh] flex flex-col overflow-hidden"
                         onClick={(e) => e.stopPropagation()}
                     >
                         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50">

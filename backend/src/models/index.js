@@ -7,6 +7,7 @@ const Visitor = require('./Visitor');
 const Interaction = require('./Interaction');
 const Service = require('./Service');
 const Diagnostic = require('./Diagnostic');
+const Report = require('./Report');
 
 module.exports = {
     Admin,
@@ -16,5 +17,6 @@ module.exports = {
     Visitor,
     Interaction,
     Service,
-    Diagnostic
+    Diagnostic,
+    Report
 };
