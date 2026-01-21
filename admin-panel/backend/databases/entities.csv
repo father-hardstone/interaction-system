@@ -1,0 +1,2 @@
+id,serial,name,email,phone,password,otp,active,approved,createdAt,editedAt,deletedAt
+0d4dbb2b-9fff-4d73-be5d-ea0c7d7cff25,E1,Bilal's entity,syedibrahimshah067@gmail.com,+921231231231,$2b$10$5NlYReThbfniifi2IlJ/QeB7WPmUOvjBztoQ5A6/0nXxHdYkLbZwG,123456,true,true,2026-01-08T14:01:15.248Z,2026-01-08T14:01:15.248Z,

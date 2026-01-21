@@ -1,0 +1,4 @@
+id,serial,entityId,entitySerial,firstName,middleName,lastName,dateOfBirth,addressLine,city,state,gender,phone,email,idCardNumber,createdAt,editedAt,deletedAt
+35a6639c-4293-4f51-929a-94d8fa641adc,E1-V1,0d4dbb2b-9fff-4d73-be5d-ea0c7d7cff25,E1,Edward,Albert,Victor,12-02-1980,"house 1, street 1, Town 1",Houston,Texas,male,+12324523534,,1234-1234-12,2026-01-08T18:14:19.803Z,2026-01-08T18:14:19.803Z,2026-01-08T18:56:43.808Z
+09923948-71a7-4d6c-820a-a31886d528eb,E1-V2,0d4dbb2b-9fff-4d73-be5d-ea0c7d7cff25,E1,James,Earl,Jones,31-01-1972,"house 2, street 2, town 3",Gary,Indiana,male,+12314232645,james@gmail.com,3423-4132-13,2026-01-08T18:37:26.588Z,2026-01-08T18:37:26.588Z,2026-01-08T18:56:45.643Z
+c4e05ad5-eafe-46c8-a7c3-a57283614a08,E1-V3,0d4dbb2b-9fff-4d73-be5d-ea0c7d7cff25,E1,James,Earl,Jones,12-11-1980,"house 1, street 1, town 1",Gary,Indiana,male,+12131423553,jones@gmail.com,2425-3123-12,2026-01-08T18:57:53.071Z,2026-01-08T18:57:53.071Z,
