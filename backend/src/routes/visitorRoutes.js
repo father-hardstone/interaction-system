@@ -1,6 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const VisitorController = require('../controllers/VisitorController');
+const { authenticateToken, requireRoles } = require('../middleware/auth');
+
+// Visitors are used by entity + internal users (officer/receptionist)
+router.use(authenticateToken, requireRoles(['entity', 'officer', 'receptionist']));
 
 // Get all visitors for an entity
 router.get('/entity/:entityId', VisitorController.getVisitorsByEntity);

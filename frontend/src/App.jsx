@@ -1,8 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import Login from './pages/Login';
-import Register from './pages/Register';
-import AdminHome from './pages/AdminHome';
-import ProtectedRoute from './components/ProtectedRoute';
+import PublicOnlyRoute from './components/PublicOnlyRoute';
 import EntityProtectedRoute from './components/EntityProtectedRoute';
 import EntityDashboard from './pages/EntityDashboard';
 import EntitySettings from './pages/EntitySettings';
@@ -26,15 +24,22 @@ function App() {
         </nav>
 
         <Routes>
-          {/* Auth Routes */}
-          <Route path="/admin/login" element={<Login type="admin" />} />
-          <Route path="/entity/login" element={<Login type="entity" />} />
-          <Route path="/user/login" element={<InternalLogin />} />
-          <Route path="/register" element={<Register />} />
-
-          {/* Admin Protected Routes */}
-          <Route element={<ProtectedRoute />}>
-            <Route path="/admin/dashboard" element={<AdminHome />} />
+          {/* Public-only Routes (if logged in, redirect to correct dashboard) */}
+          <Route element={<PublicOnlyRoute />}>
+            <Route path="/entity/login" element={<Login type="entity" />} />
+            <Route path="/user/login" element={<InternalLogin />} />
+            <Route path="/" element={
+              <div className="flex-1 flex items-center justify-center p-8 w-full">
+                <div className="text-center">
+                  <h1 className="text-5xl mb-4 font-bold">Interaction System</h1>
+                  <p className="mb-8 text-gray-600">Select a portal to continue.</p>
+                  <div className="flex gap-4 justify-center">
+                    <Link to="/entity/login" className="px-6 py-3 bg-white text-primary border border-primary rounded-xl font-semibold text-base no-underline inline-block transition-all hover:bg-blue-50">Entity Portal</Link>
+                    <Link to="/user/login" className="px-6 py-3 bg-white text-primary border border-dashed border-primary rounded-xl font-semibold text-base no-underline inline-block transition-all hover:bg-blue-50">Internal Login</Link>
+                  </div>
+                </div>
+              </div>
+            } />
           </Route>
 
           {/* Entity Protected Routes */}
@@ -47,20 +52,6 @@ function App() {
           <Route element={<UserProtectedRoute />}>
             <Route path="/:serial/user/dashboard" element={<UserDashboard />} />
           </Route>
-
-          <Route path="/" element={
-            <div className="flex-1 flex items-center justify-center p-8 w-full">
-              <div className="text-center">
-                <h1 className="text-5xl mb-4 font-bold">Interaction System</h1>
-                <p className="mb-8 text-gray-600">Select a portal to continue.</p>
-                <div className="flex gap-4 justify-center">
-                  <Link to="/admin/login" className="px-6 py-3 bg-primary text-white rounded-xl font-semibold text-base no-underline inline-block transition-all hover:bg-primary-dark hover:-translate-y-0.5 hover:shadow-lg">Admin Portal</Link>
-                  <Link to="/entity/login" className="px-6 py-3 bg-white text-primary border border-primary rounded-xl font-semibold text-base no-underline inline-block transition-all hover:bg-blue-50">Entity Portal</Link>
-                  <Link to="/user/login" className="px-6 py-3 bg-white text-primary border border-dashed border-primary rounded-xl font-semibold text-base no-underline inline-block transition-all hover:bg-blue-50">Internal Login</Link>
-                </div>
-              </div>
-            </div>
-          } />
         </Routes>
       </div>
     </Router>

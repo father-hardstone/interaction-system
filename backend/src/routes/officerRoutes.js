@@ -1,6 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const OfficerController = require('../controllers/OfficerController');
+const { authenticateToken, requireRoles } = require('../middleware/auth');
+
+// Internal login for officers
+router.post('/login', OfficerController.login);
+
+// Everything else requires ENTITY auth (entity manages officers)
+router.use(authenticateToken, requireRoles(['entity']));
 
 // Get all officers for an entity
 router.get('/entity/:entityId', OfficerController.getOfficersByEntity);
@@ -13,9 +20,6 @@ router.put('/:id', OfficerController.updateOfficer);
 
 // Delete an officer
 router.delete('/:id', OfficerController.deleteOfficer);
-
-// Internal login for officers
-router.post('/login', OfficerController.login);
 
 module.exports = router;
 

@@ -24,7 +24,9 @@ mongoose.connection.once('connected', async () => {
 });
 
 const accessControlRoutes = require('./src/routes/accessControlRoutes');
-const entityRoutes = require('./src/routes/entityRoutes');
+// NOTE: Admin workflows are separated into admin-panel/backend.
+// Main backend only exposes entity/officer/receptionist/user workflows.
+const entityAuthRoutes = require('./src/routes/entityAuthRoutes');
 const officerRoutes = require('./src/routes/officerRoutes');
 const receptionistRoutes = require('./src/routes/receptionistRoutes');
 const visitorRoutes = require('./src/routes/visitorRoutes');
@@ -41,8 +43,11 @@ app.use(express.json({ limit: '50mb' })); // Increase limit for image uploads
 const path = require('path');
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-app.use('/api/auth', accessControlRoutes);
-app.use('/api/entities', entityRoutes);
+// Admin auth removed from main backend
+// app.use('/api/auth', accessControlRoutes);
+
+// Entity auth only (register/login/verify-otp)
+app.use('/api/entities', entityAuthRoutes);
 app.use('/api/officers', officerRoutes);
 app.use('/api/receptionists', receptionistRoutes);
 app.use('/api/visitors', visitorRoutes);
