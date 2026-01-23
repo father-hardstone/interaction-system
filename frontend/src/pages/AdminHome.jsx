@@ -4,6 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import PhoneInput from '../components/PhoneInput';
 import { hashPassword } from '../utils/crypto';
 
+// NOTE: Admin workflow has moved to admin-panel/frontend.
+// This file is kept to avoid breaking imports during transition, but it is no longer routed in main `frontend/src/App.jsx`.
 const AdminDashboard = () => {
     const navigate = useNavigate();
     const [entities, setEntities] = useState([]);
@@ -204,3 +206,4 @@ const AdminDashboard = () => {
 }
 
 export default AdminDashboard;
+

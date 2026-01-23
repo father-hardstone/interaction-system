@@ -6,6 +6,7 @@ class VisitorService {
         return visitors.map(v => v.toObject());
     }
 
+
     async create(data) {
         const visitor = new Visitor(data);
         await visitor.save();
@@ -35,7 +36,7 @@ class VisitorService {
     async delete(id) {
         const visitor = await Visitor.findOneAndUpdate(
             { id },
-            { 
+            {
                 deletedAt: new Date().toISOString()
             },
             { new: true }
@@ -48,29 +49,17 @@ class VisitorService {
         return visitors.map(v => v.toObject());
     }
 
-    // Get next serial for a specific entity (composite format: entitySerial-V1, entitySerial-V2, etc.)
-    async getNextSerialForEntity(entitySerial) {
-        const all = await this.getAll();
+    // Get next serial for a specific entity (6-digit number)
+    async getNextSerialForEntity(entityId) {
+        const visitors = await Visitor.find({ entityId, deletedAt: '' });
         let max = 0;
-        all.forEach(item => {
-            if (item.serial) {
-                // Handle both composite (E1-V1) and simple (V1) formats
-                let baseSerial = item.serial;
-                // If it's composite format (contains dash), extract the base part
-                if (item.serial.includes('-') && item.serial.startsWith(entitySerial + '-')) {
-                    // Extract base serial after entitySerial- (e.g., "E1-V1" -> "V1")
-                    baseSerial = item.serial.substring(entitySerial.length + 1);
-                }
-                // Check if it starts with 'V' and extract number
-                if (baseSerial.startsWith('V')) {
-                    const numPart = parseInt(baseSerial.replace('V', ''));
-                    if (!isNaN(numPart) && numPart > max) {
-                        max = numPart;
-                    }
-                }
+        visitors.forEach(v => {
+            const num = parseInt(v.serial, 10);
+            if (!isNaN(num) && num > max) {
+                max = num;
             }
         });
-        return `${entitySerial}-V${max + 1}`;
+        return (max + 1).toString().padStart(6, '0');
     }
 }
 

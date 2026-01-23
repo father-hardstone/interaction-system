@@ -19,5 +19,10 @@ export const visitorService = {
     delete: async (id) => {
         const response = await api.delete(`/visitors/${id}`);
         return response.data;
+    },
+
+    getNextSerial: async (entityId) => {
+        const response = await api.get(`/visitors/entity/${entityId}/next-serial`);
+        return response.data.serial;
     }
 };

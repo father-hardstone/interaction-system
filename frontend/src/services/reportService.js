@@ -1,9 +1,9 @@
 import api from './api';
 
 export const reportService = {
-    // Get all reports for a visitor
-    getByVisitor: async (visitorId) => {
-        const response = await api.get(`/reports/visitor/${visitorId}`);
+    // Get all reports for a patient
+    getByPatient: async (visitorId) => {
+        const response = await api.get(`/reports/patient/${visitorId}`);
         return response.data;
     },
 

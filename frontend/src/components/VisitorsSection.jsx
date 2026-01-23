@@ -1,12 +1,26 @@
 import PhoneInput from './PhoneInput';
 import ReportUpload from './ReportUpload';
 import { reportService } from '../services/reportService';
+import api from '../services/api';
 
 import { useState, useMemo, useEffect } from 'react';
+
+const REPORT_TYPES = [
+    { value: 'blood_test', label: 'Blood Test' },
+    { value: 'x_ray', label: 'X-Ray' },
+    { value: 'ultrasound', label: 'Ultrasound' },
+    { value: 'ct_scan', label: 'CT Scan' },
+    { value: 'mri_scan', label: 'MRI Scan' },
+    { value: 'ecg', label: 'ECG' },
+    { value: 'pathology', label: 'Pathology' },
+    { value: 'urine_test', label: 'Urine Test' },
+    { value: 'other', label: 'Other' }
+];
 
 const VisitorsSection = ({
     visitors,
     interactions = [],
+    officers = [],
     searchFirstName,
     setSearchFirstName,
     searchMiddleName,
@@ -39,7 +53,7 @@ const VisitorsSection = ({
     handleHealthCardChange,
     error,
     setError,
-    onDeleteVisitor,
+    onEditVisitor,
     handlePatientClick,
     selectedPatient,
     showPatientDetailModal,
@@ -51,12 +65,45 @@ const VisitorsSection = ({
     getVisitorName,
     getVisitorSerial,
     formatDate,
-    userData
+    userData,
+    fieldErrors = {},
+    setFieldErrors = () => { },
+    handleRegisterPatient,
+    nextVisitorSerial = ''
 }) => {
     const [expandedInteractionIds, setExpandedInteractionIds] = useState({});
     const [reports, setReports] = useState([]);
     const [loadingReports, setLoadingReports] = useState(false);
     const [deletingReportId, setDeletingReportId] = useState(null);
+    const [services, setServices] = useState([]);
+    const [diagnostics, setDiagnostics] = useState([]);
+
+    useEffect(() => {
+        const fetchMasterData = async () => {
+            try {
+                const [servicesRes, diagnosticsRes] = await Promise.all([
+                    api.get('/services'),
+                    api.get('/diagnostics')
+                ]);
+                setServices(servicesRes.data || []);
+                setDiagnostics(diagnosticsRes.data || []);
+            } catch (error) {
+                console.error('Error fetching master data:', error);
+            }
+        };
+        fetchMasterData();
+    }, []);
+
+    const validateDates = (effectivity, expiry) => {
+        if (effectivity && expiry) {
+            const effDate = new Date(effectivity);
+            const expDate = new Date(expiry);
+            if (expDate < effDate) {
+                return 'Expiry date cannot be before effectivity date';
+            }
+        }
+        return '';
+    };
 
     // Get completed interactions for selected patient
     const completedInteractionsForPatient = useMemo(() => {
@@ -79,7 +126,7 @@ const VisitorsSection = ({
         if (!selectedPatient) return;
         setLoadingReports(true);
         try {
-            const data = await reportService.getByVisitor(selectedPatient.id);
+            const data = await reportService.getByPatient(selectedPatient.id);
             setReports(data || []);
         } catch (error) {
             console.error('Failed to load reports:', error);
@@ -118,6 +165,31 @@ const VisitorsSection = ({
         }
         const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
         return `${API_URL.replace('/api', '')}/${imagePath}`;
+    };
+
+    const handlePostalChange = (e) => {
+        let value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+        if (value.length > 3) value = value.slice(0, 3) + '-' + value.slice(3);
+        value = value.slice(0, 7);
+        setVisitorForm({ ...visitorForm, postalCode: value });
+    };
+
+    const handleHealthCardVersionChange = (e) => {
+        const val = e.target.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 2);
+        setHealthCardVersion(val);
+    };
+
+
+
+    const handleGuardianIdChange = (e) => {
+        const val = e.target.value.trim();
+        let updates = { ...visitorForm, guardianId: val };
+        const guardian = visitors.find((v) => v.id === val);
+        if (guardian) {
+            updates.guardianName = guardian.firstName ? `${guardian.firstName} ${guardian.lastName || ''}`.trim() : updates.guardianName;
+            updates.guardianPhone = guardian.phone || updates.guardianPhone;
+        }
+        setVisitorForm(updates);
     };
     const filteredVisitors = visitors
         .filter((v) => {
@@ -200,7 +272,7 @@ const VisitorsSection = ({
                         className="w-full py-3 px-4 border border-slate-200 rounded-xl text-sm bg-white focus:outline-none focus:border-primary focus:ring-4 focus:ring-blue-100"
                     />
                 </div>
-                
+
                 <div className="overflow-x-auto">
                     <table className="w-full border-collapse min-w-[800px]">
                         <thead>
@@ -226,151 +298,149 @@ const VisitorsSection = ({
                                     let dragStarted = false;
                                     let touchStartX = 0;
                                     let touchStartY = 0;
-                                    
+
                                     return (
-                                    <tr 
-                                        key={visitor.id}
-                                        className="border-b border-slate-100 hover:bg-slate-50 transition-all cursor-pointer"
-                                        onMouseDown={() => {
-                                            dragStarted = false;
-                                        }}
-                                        onClick={(e) => {
-                                            if (!dragStarted) {
-                                                handlePatientClick(visitor);
-                                            }
-                                        }}
-                                        draggable
-                                        onDragStart={(e) => {
-                                            dragStarted = true;
-                                            handlePatientDragStart(e, visitor);
-                                            // Add visual feedback - make row look like it's being lifted
-                                            e.currentTarget.style.opacity = '0.4';
-                                            e.currentTarget.style.transform = 'scale(0.98)';
-                                            e.currentTarget.style.transition = 'all 0.2s';
-                                        }}
-                                        onDragEnd={(e) => {
-                                            // Reset visual feedback
-                                            e.currentTarget.style.opacity = '1';
-                                            e.currentTarget.style.transform = 'scale(1)';
-                                            setTimeout(() => {
+                                        <tr
+                                            key={visitor.id}
+                                            className="border-b border-slate-100 hover:bg-slate-50 transition-all cursor-pointer"
+                                            onMouseDown={() => {
                                                 dragStarted = false;
-                                            }, 200);
-                                        }}
-                                        onTouchStart={(e) => {
-                                            if (e.touches.length === 1) {
-                                                touchStartX = e.touches[0].clientX;
-                                                touchStartY = e.touches[0].clientY;
-                                                dragStarted = false;
-                                            }
-                                        }}
-                                        onTouchMove={(e) => {
-                                            if (e.touches.length === 1 && !dragStarted) {
-                                                const touch = e.touches[0];
-                                                const deltaX = Math.abs(touch.clientX - touchStartX);
-                                                const deltaY = Math.abs(touch.clientY - touchStartY);
-                                                
-                                                // Start drag if moved more than 10px
-                                                if (deltaX > 10 || deltaY > 10) {
-                                                    dragStarted = true;
-                                                    e.preventDefault();
-                                                    document.body.style.overflow = 'hidden';
-                                                    
-                                                    // Visual feedback
-                                                    e.currentTarget.style.opacity = '0.5';
-                                                    e.currentTarget.style.transform = 'scale(0.95)';
-                                                    
-                                                    // Create synthetic drag event
-                                                    const syntheticEvent = {
-                                                        currentTarget: e.currentTarget,
-                                                        dataTransfer: {
-                                                            effectAllowed: 'move',
-                                                            setData: () => {},
-                                                            getData: () => 'patient'
-                                                        },
-                                                        preventDefault: () => {}
-                                                    };
-                                                    handlePatientDragStart(syntheticEvent, visitor);
+                                            }}
+                                            onClick={(e) => {
+                                                if (!dragStarted) {
+                                                    handlePatientClick(visitor);
                                                 }
-                                            }
-                                        }}
-                                        onTouchEnd={(e) => {
-                                            if (dragStarted) {
-                                                // Restore styles
+                                            }}
+                                            /* Drag and drop suspended for now as per subtab separation */
+                                            /* draggable */
+                                            /* onDragStart={(e) => {
+                                                dragStarted = true;
+                                                handlePatientDragStart(e, visitor);
+                                                e.currentTarget.style.opacity = '0.4';
+                                                e.currentTarget.style.transform = 'scale(0.98)';
+                                                e.currentTarget.style.transition = 'all 0.2s';
+                                            }}
+                                            onDragEnd={(e) => {
                                                 e.currentTarget.style.opacity = '1';
                                                 e.currentTarget.style.transform = 'scale(1)';
-                                                document.body.style.overflow = '';
-                                                
-                                                // Find drop target
-                                                const touch = e.changedTouches[0];
-                                                const dropTarget = document.elementFromPoint(touch.clientX, touch.clientY);
-                                                
-                                                if (dropTarget) {
-                                                    const dropZone = dropTarget.closest('[data-drop-zone]');
-                                                    if (dropZone) {
-                                                        // Trigger drop
-                                                        const syntheticEvent = {
-                                                            preventDefault: () => {},
-                                                            stopPropagation: () => {},
-                                                            dataTransfer: {
-                                                                getData: () => 'patient'
-                                                            },
-                                                            type: 'touchend'
-                                                        };
-                                                        // The drop zone will handle this via its onDrop handler
-                                                        const dropEvent = new Event('drop', { bubbles: true });
-                                                        dropZone.dispatchEvent(dropEvent);
-                                                    }
-                                                }
-                                                
                                                 setTimeout(() => {
                                                     dragStarted = false;
                                                 }, 200);
-                                            }
-                                        }}
-                                    >
-                                        <td className="px-4 sm:px-6 py-4 font-medium text-slate-900 text-xs sm:text-sm">{visitor.entitySerial ? `${visitor.entitySerial}-${visitor.serial}` : visitor.serial}</td>
-                                        <td className="px-4 sm:px-6 py-4 text-slate-700">
-                                            <div className="font-medium text-sm">
-                                                {visitor.firstName} {visitor.middleName ? visitor.middleName + ' ' : ''}{visitor.lastName}
-                                            </div>
-                                            <div className="text-xs text-slate-500 mt-1">
-                                                <span>{visitor.firstName || 'N/A'}</span>
-                                                <span className="text-slate-300 mx-1">•</span>
-                                                <span>{visitor.middleName || 'N/A'}</span>
-                                                <span className="text-slate-300 mx-1">•</span>
-                                                <span>{visitor.lastName || 'N/A'}</span>
-                                            </div>
-                                            <div className="md:hidden mt-2 space-y-1 text-xs text-slate-500">
-                                                <div>DOB: {visitor.dateOfBirth}</div>
-                                                <div>Phone: {visitor.phone}</div>
-                                                <div>Email: {visitor.email || 'N/A'}</div>
-                                                <div>Health Card: {visitor.healthCardNumber}</div>
-                                            </div>
-                                        </td>
-                                        <td className="px-4 sm:px-6 py-4 text-slate-700 hidden md:table-cell text-sm">{visitor.dateOfBirth}</td>
-                                        <td className="px-4 sm:px-6 py-4 text-slate-700 hidden lg:table-cell text-sm">{visitor.phone}</td>
-                                        <td className="px-4 sm:px-6 py-4 text-slate-700 hidden lg:table-cell text-sm">{visitor.email || 'N/A'}</td>
-                                        <td className="px-4 sm:px-6 py-4 text-slate-700 hidden xl:table-cell text-sm">{visitor.healthCardNumber}</td>
-                                        <td className="px-4 sm:px-6 py-4" onClick={(e) => e.stopPropagation()}>
-                                            <button
-                                                onClick={() => onDeleteVisitor(visitor.id)}
-                                                disabled={deletingVisitorId === visitor.id}
-                                                className="px-3 py-1 bg-red-500 text-white rounded-md text-sm hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                                            >
-                                                {deletingVisitorId === visitor.id ? (
-                                                    <>
-                                                        <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                                        </svg>
-                                                        Deleting...
-                                                    </>
-                                                ) : (
-                                                    'Delete'
-                                                )}
-                                            </button>
-                                        </td>
-                                    </tr>
+                                            }} */
+                                            onTouchStart={(e) => {
+                                                if (e.touches.length === 1) {
+                                                    touchStartX = e.touches[0].clientX;
+                                                    touchStartY = e.touches[0].clientY;
+                                                    dragStarted = false;
+                                                }
+                                            }}
+                                            onTouchMove={(e) => {
+                                                if (e.touches.length === 1 && !dragStarted) {
+                                                    const touch = e.touches[0];
+                                                    const deltaX = Math.abs(touch.clientX - touchStartX);
+                                                    const deltaY = Math.abs(touch.clientY - touchStartY);
+
+                                                    // Start drag if moved more than 10px
+                                                    if (deltaX > 10 || deltaY > 10) {
+                                                        dragStarted = true;
+                                                        e.preventDefault();
+                                                        document.body.style.overflow = 'hidden';
+
+                                                        // Visual feedback
+                                                        e.currentTarget.style.opacity = '0.5';
+                                                        e.currentTarget.style.transform = 'scale(0.95)';
+
+                                                        // Create synthetic drag event
+                                                        const syntheticEvent = {
+                                                            currentTarget: e.currentTarget,
+                                                            dataTransfer: {
+                                                                effectAllowed: 'move',
+                                                                setData: () => { },
+                                                                getData: () => 'patient'
+                                                            },
+                                                            preventDefault: () => { }
+                                                        };
+                                                        handlePatientDragStart(syntheticEvent, visitor);
+                                                    }
+                                                }
+                                            }}
+                                            onTouchEnd={(e) => {
+                                                if (dragStarted) {
+                                                    // Restore styles
+                                                    e.currentTarget.style.opacity = '1';
+                                                    e.currentTarget.style.transform = 'scale(1)';
+                                                    document.body.style.overflow = '';
+
+                                                    // Find drop target
+                                                    const touch = e.changedTouches[0];
+                                                    const dropTarget = document.elementFromPoint(touch.clientX, touch.clientY);
+
+                                                    if (dropTarget) {
+                                                        const dropZone = dropTarget.closest('[data-drop-zone]');
+                                                        if (dropZone) {
+                                                            // Trigger drop
+                                                            const syntheticEvent = {
+                                                                preventDefault: () => { },
+                                                                stopPropagation: () => { },
+                                                                dataTransfer: {
+                                                                    getData: () => 'patient'
+                                                                },
+                                                                type: 'touchend'
+                                                            };
+                                                            // The drop zone will handle this via its onDrop handler
+                                                            const dropEvent = new Event('drop', { bubbles: true });
+                                                            dropZone.dispatchEvent(dropEvent);
+                                                        }
+                                                    }
+
+                                                    setTimeout(() => {
+                                                        dragStarted = false;
+                                                    }, 200);
+                                                }
+                                            }}
+                                        >
+                                            <td className="px-4 sm:px-6 py-4 font-medium text-slate-900 text-xs sm:text-sm">{visitor.entitySerial ? `${visitor.entitySerial}-${visitor.serial}` : visitor.serial}</td>
+                                            <td className="px-4 sm:px-6 py-4 text-slate-700">
+                                                <div className="font-medium text-sm">
+                                                    {visitor.firstName} {visitor.middleName ? visitor.middleName + ' ' : ''}{visitor.lastName}
+                                                </div>
+                                                <div className="text-xs text-slate-500 mt-1">
+                                                    <span>{visitor.firstName || 'N/A'}</span>
+                                                    <span className="text-slate-300 mx-1">•</span>
+                                                    <span>{visitor.middleName || 'N/A'}</span>
+                                                    <span className="text-slate-300 mx-1">•</span>
+                                                    <span>{visitor.lastName || 'N/A'}</span>
+                                                </div>
+                                                <div className="md:hidden mt-2 space-y-1 text-xs text-slate-500">
+                                                    <div>DOB: {visitor.dateOfBirth}</div>
+                                                    <div>Phone: {visitor.phone}</div>
+                                                    <div>Email: {visitor.email || 'N/A'}</div>
+                                                    <div>Health Card: {visitor.healthCardNumber}</div>
+                                                </div>
+                                            </td>
+                                            <td className="px-4 sm:px-6 py-4 text-slate-700 hidden md:table-cell text-sm">{visitor.dateOfBirth}</td>
+                                            <td className="px-4 sm:px-6 py-4 text-slate-700 hidden lg:table-cell text-sm">{visitor.phone}</td>
+                                            <td className="px-4 sm:px-6 py-4 text-slate-700 hidden lg:table-cell text-sm">{visitor.email || 'N/A'}</td>
+                                            <td className="px-4 sm:px-6 py-4 text-slate-700 hidden xl:table-cell text-sm">{visitor.healthCardNumber}</td>
+                                            <td className="px-4 sm:px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                                                <div className="flex gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => onEditVisitor?.(visitor)}
+                                                        className="px-3 py-1 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                                    >
+                                                        Edit
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleRegisterPatient?.(visitor)}
+                                                        className="px-3 py-1 bg-green-600 text-white rounded-md text-sm hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                                    >
+                                                        Register
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
                                     );
                                 })
                             )}
@@ -382,9 +452,23 @@ const VisitorsSection = ({
             {/* Add Visitor Modal */}
             {showVisitorModal && (
                 <div className="fixed inset-0 bg-black/50 flex justify-center items-center z-[1000]" onClick={() => setShowVisitorModal(false)}>
-                    <div className="bg-white w-full max-w-[1400px] max-h-[90vh] overflow-y-auto p-4 sm:p-6 lg:p-8 rounded-3xl shadow-lg animate-[slideUp_0.4s_ease-out]" onClick={(e) => e.stopPropagation()}>
+                    <div className="bg-white w-full max-w-[1100px] max-h-[90vh] overflow-y-auto p-4 sm:p-5 lg:p-6 rounded-3xl shadow-lg animate-[slideUp_0.4s_ease-out]" onClick={(e) => e.stopPropagation()}>
                         <h2 className="text-xl sm:text-2xl font-bold text-slate-900 mb-6">Add New Patient</h2>
                         {error && <p className="bg-red-50 border border-red-200 text-red-600 py-3 px-4 rounded-xl text-sm mb-4">{error}</p>}
+
+                        {/* Next Serial Preview */}
+                        {nextVisitorSerial && (
+                            <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                                <div className="flex items-center gap-2">
+                                    <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    <span className="text-sm font-semibold text-blue-900">Patient ID:</span>
+                                    <span className="text-sm font-bold text-blue-700 font-mono">{userData?.entitySerial}-{nextVisitorSerial}</span>
+                                </div>
+                            </div>
+                        )}
+
                         <form onSubmit={handleCreateVisitor} className="flex flex-col gap-5">
                             {/* Line 1: Last Name, First Name, Middle Name */}
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -394,10 +478,16 @@ const VisitorsSection = ({
                                         type="text"
                                         placeholder="Last name"
                                         value={visitorForm.lastName}
-                                        onChange={(e) => setVisitorForm({ ...visitorForm, lastName: e.target.value })}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            setVisitorForm({ ...visitorForm, lastName: val });
+                                            if (!val.trim()) setFieldErrors(prev => ({ ...prev, lastName: 'Last name is required' }));
+                                            else setFieldErrors(prev => { const n = { ...prev }; delete n.lastName; return n; });
+                                        }}
                                         required
-                                        className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
+                                        className={`w-full py-2.5 px-3.5 border ${fieldErrors.lastName ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-slate-50'} rounded-xl font-inherit text-sm transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100`}
                                     />
+                                    {fieldErrors.lastName && <p className="text-red-500 text-xs">{fieldErrors.lastName}</p>}
                                 </div>
                                 <div className="flex flex-col gap-2">
                                     <label className="text-sm font-semibold text-slate-900">First Name <span className="text-red-500">*</span></label>
@@ -405,10 +495,16 @@ const VisitorsSection = ({
                                         type="text"
                                         placeholder="First name"
                                         value={visitorForm.firstName}
-                                        onChange={(e) => setVisitorForm({ ...visitorForm, firstName: e.target.value })}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            setVisitorForm({ ...visitorForm, firstName: val });
+                                            if (!val.trim()) setFieldErrors(prev => ({ ...prev, firstName: 'First name is required' }));
+                                            else setFieldErrors(prev => { const n = { ...prev }; delete n.firstName; return n; });
+                                        }}
                                         required
-                                        className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
+                                        className={`w-full py-2.5 px-3.5 border ${fieldErrors.firstName ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-slate-50'} rounded-xl font-inherit text-sm transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100`}
                                     />
+                                    {fieldErrors.firstName && <p className="text-red-500 text-xs">{fieldErrors.firstName}</p>}
                                 </div>
                                 <div className="flex flex-col gap-2">
                                     <label className="text-sm font-semibold text-slate-900">Middle Name</label>
@@ -417,87 +513,111 @@ const VisitorsSection = ({
                                         placeholder="Middle name"
                                         value={visitorForm.middleName}
                                         onChange={(e) => setVisitorForm({ ...visitorForm, middleName: e.target.value })}
-                                        className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
+                                        className="w-full py-2.5 px-3.5 border border-slate-200 rounded-xl font-inherit text-sm bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
                                     />
                                 </div>
                             </div>
 
-                            {/* Line 2: Health Card Number, Version, Effectivity Date */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                                <div className="flex flex-col gap-2">
+                            {/* Line 2: Health Card Number, Version, Effectivity & Expiry Dates (single row, tight spacing) */}
+                            <div className="flex flex-col md:flex-row md:items-end gap-4">
+                                <div className="flex-1 flex flex-col gap-2">
                                     <label className="text-sm font-semibold text-slate-900">Health Card Number <span className="text-red-500">*</span></label>
                                     <input
                                         type="text"
-                                        placeholder="1234-5678-90"
+                                        placeholder="10-digit numeric"
                                         value={healthCardNumber}
                                         onChange={handleHealthCardChange}
-                                        maxLength={12}
+                                        maxLength={10}
                                         required
-                                        className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
+                                        className={`w-full py-2.5 px-3.5 border ${fieldErrors.healthCard ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-slate-50'} rounded-xl font-inherit text-sm transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100`}
                                     />
+                                    {fieldErrors.healthCard && <p className="text-red-500 text-xs">{fieldErrors.healthCard}</p>}
                                 </div>
-                                <div className="flex flex-col gap-2">
+                                <div className="w-full md:w-24 flex flex-col gap-2">
                                     <label className="text-sm font-semibold text-slate-900">Version</label>
                                     <input
                                         type="text"
-                                        placeholder="Version"
+                                        placeholder="A1"
                                         value={healthCardVersion}
-                                        onChange={(e) => {
-                                            const value = e.target.value.substring(0, 2);
-                                            setHealthCardVersion(value);
-                                        }}
+                                        onChange={handleHealthCardVersionChange}
                                         maxLength={2}
-                                        className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
+                                        className="w-full py-3 px-3 border border-slate-200 rounded-xl font-inherit text-sm bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
                                     />
                                 </div>
-                                <div className="flex flex-col gap-2">
+                                <div className="w-full md:w-40 flex flex-col gap-2">
                                     <label className="text-sm font-semibold text-slate-900">Effectivity Date</label>
                                     <input
-                                        type="text"
-                                        placeholder="MM-DD-YYYY"
-                                        value={healthCardEffectivityDate}
+                                        type="date"
+                                        value={healthCardEffectivityDate || ''}
                                         onChange={(e) => {
-                                            let value = e.target.value.replace(/\D/g, '');
-                                            if (value.length > 2) value = value.substring(0, 2) + '-' + value.substring(2);
-                                            if (value.length > 5) value = value.substring(0, 5) + '-' + value.substring(5, 9);
-                                            setHealthCardEffectivityDate(value);
+                                            const val = e.target.value;
+                                            setHealthCardEffectivityDate(val);
+                                            const msg = validateDates(val, healthCardExpiryDate);
+                                            setFieldErrors(prev => ({ ...prev, healthCardDate: msg }));
                                         }}
-                                        maxLength={10}
-                                        className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
+                                        className="w-full py-2.5 px-3.5 border border-slate-200 rounded-xl font-inherit text-sm bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
                                     />
+                                </div>
+                                <div className="w-full md:w-40 flex flex-col gap-2">
+                                    <label className="text-sm font-semibold text-slate-900">Expiry Date</label>
+                                    <input
+                                        type="date"
+                                        value={healthCardExpiryDate || ''}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            setHealthCardExpiryDate(val);
+                                            const msg = validateDates(healthCardEffectivityDate, val);
+                                            setFieldErrors(prev => ({ ...prev, healthCardDate: msg }));
+                                        }}
+                                        className={`w-full py-2.5 px-3.5 border ${fieldErrors.healthCardDate ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-slate-50'} rounded-xl font-inherit text-sm transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100`}
+                                    />
+                                    {fieldErrors.healthCardDate && <p className="text-red-500 text-xs w-full">{fieldErrors.healthCardDate}</p>}
                                 </div>
                             </div>
 
-                            {/* Line 3: DOB (Calendar), Age (Calculated), Sex, Expiry Date */}
+                            {/* Line 3: DOB (Calendar), Age (Calculated), Sex */}
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                                 <div className="flex flex-col gap-2">
                                     <label className="text-sm font-semibold text-slate-900">Date of Birth <span className="text-red-500">*</span></label>
                                     <input
                                         type="date"
                                         value={visitorForm.dateOfBirth ? (() => {
-                                            // Convert MM-DD-YYYY to YYYY-MM-DD for date input
                                             const parts = visitorForm.dateOfBirth.split('-');
                                             if (parts.length === 3) {
                                                 return `${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
                                             }
                                             return '';
                                         })() : ''}
+                                        max={new Date().toISOString().split('T')[0]} // Native browser constraint
                                         onChange={(e) => {
-                                            // Convert YYYY-MM-DD to MM-DD-YYYY
                                             const dateValue = e.target.value;
                                             if (dateValue) {
                                                 const parts = dateValue.split('-');
                                                 const formatted = `${parts[1]}-${parts[2]}-${parts[0]}`;
+
+                                                // Future date check
+                                                const selectedDate = new Date(dateValue);
+                                                const today = new Date();
+                                                today.setHours(0, 0, 0, 0);
+
+                                                if (selectedDate > today) {
+                                                    setFieldErrors(prev => ({ ...prev, dob: 'Date of birth cannot be in the future' }));
+                                                } else {
+                                                    setFieldErrors(prev => { const n = { ...prev }; delete n.dob; return n; });
+                                                }
+
                                                 setVisitorForm({ ...visitorForm, dateOfBirth: formatted });
                                             } else {
                                                 setVisitorForm({ ...visitorForm, dateOfBirth: '' });
+                                                setFieldErrors(prev => ({ ...prev, dob: 'Date of birth is required' }));
                                             }
                                         }}
                                         required
-                                        className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
+                                        className={`w-full py-2.5 px-3.5 border ${fieldErrors.dob ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-slate-50'} rounded-xl font-inherit text-sm transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100`}
                                     />
+                                    {fieldErrors.dob && <p className="text-red-500 text-xs">{fieldErrors.dob}</p>}
                                 </div>
-                                <div className="flex flex-col gap-2">
+                                <div className="flex flex-col gap-2 w-full sm:w-24">
                                     <label className="text-sm font-semibold text-slate-900">Age</label>
                                     <input
                                         type="text"
@@ -518,74 +638,79 @@ const VisitorsSection = ({
                                             return isNaN(age) || age < 0 ? '' : age.toString();
                                         })()}
                                         readOnly
-                                        className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-100 text-slate-600 cursor-not-allowed"
+                                        className="w-full py-2 px-3 border border-slate-200 rounded-xl font-inherit text-sm bg-slate-100 text-slate-600 cursor-not-allowed"
                                     />
                                 </div>
-                                <div className="flex flex-col gap-2">
+                                <div className="flex flex-col gap-2 w-full sm:w-32">
                                     <label className="text-sm font-semibold text-slate-900">Sex <span className="text-red-500">*</span></label>
                                     <select
                                         value={visitorForm.gender}
-                                        onChange={(e) => setVisitorForm({ ...visitorForm, gender: e.target.value })}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            setVisitorForm({ ...visitorForm, gender: val });
+                                            if (!val) setFieldErrors(prev => ({ ...prev, gender: 'Sex is required' }));
+                                            else setFieldErrors(prev => { const n = { ...prev }; delete n.gender; return n; });
+                                        }}
                                         required
-                                        className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
+                                        className={`w-full py-2.5 px-3.5 border ${fieldErrors.gender ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-slate-50'} rounded-xl font-inherit text-sm transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100`}
                                     >
                                         <option value="">Select sex</option>
                                         <option value="male">Male</option>
                                         <option value="female">Female</option>
                                         <option value="other">Other</option>
                                     </select>
+                                    {fieldErrors.gender && <p className="text-red-500 text-xs">{fieldErrors.gender}</p>}
                                 </div>
-                                <div className="flex flex-col gap-2">
-                                    <label className="text-sm font-semibold text-slate-900">Expiry Date</label>
+                            </div>
+
+                            {/* Street, City, Province, Postal Code */}
+                            <div className="flex flex-col md:flex-row md:items-end gap-4">
+                                <div className="flex-1 flex flex-col gap-2">
+                                    <label className="text-sm font-semibold text-slate-900">Street <span className="text-red-500">*</span></label>
                                     <input
                                         type="text"
-                                        placeholder="MM-DD-YYYY"
-                                        value={healthCardExpiryDate}
+                                        placeholder="Street address"
+                                        value={visitorForm.addressLine}
                                         onChange={(e) => {
-                                            let value = e.target.value.replace(/\D/g, '');
-                                            if (value.length > 2) value = value.substring(0, 2) + '-' + value.substring(2);
-                                            if (value.length > 5) value = value.substring(0, 5) + '-' + value.substring(5, 9);
-                                            setHealthCardExpiryDate(value);
+                                            const val = e.target.value;
+                                            setVisitorForm({ ...visitorForm, addressLine: val });
+                                            if (!val.trim()) setFieldErrors(prev => ({ ...prev, street: 'Street is required' }));
+                                            else setFieldErrors(prev => { const n = { ...prev }; delete n.street; return n; });
                                         }}
-                                        maxLength={10}
-                                        className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
+                                        required
+                                        className={`w-full py-2.5 px-3.5 border ${fieldErrors.street ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-slate-50'} rounded-xl font-inherit text-sm transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100`}
                                     />
+                                    {fieldErrors.street && <p className="text-red-500 text-xs">{fieldErrors.street}</p>}
                                 </div>
-                            </div>
-
-                            {/* Street */}
-                            <div className="flex flex-col gap-2">
-                                <label className="text-sm font-semibold text-slate-900">Street <span className="text-red-500">*</span></label>
-                                <input
-                                    type="text"
-                                    placeholder="Street address"
-                                    value={visitorForm.addressLine}
-                                    onChange={(e) => setVisitorForm({ ...visitorForm, addressLine: e.target.value })}
-                                    required
-                                    className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
-                                />
-                            </div>
-
-                            {/* City, Province, Postal Code */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                                <div className="flex flex-col gap-2">
+                                <div className="w-full md:w-40 flex flex-col gap-2">
                                     <label className="text-sm font-semibold text-slate-900">City <span className="text-red-500">*</span></label>
                                     <input
                                         type="text"
                                         placeholder="City"
                                         value={visitorForm.city}
-                                        onChange={(e) => setVisitorForm({ ...visitorForm, city: e.target.value })}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            setVisitorForm({ ...visitorForm, city: val });
+                                            if (!val.trim()) setFieldErrors(prev => ({ ...prev, city: 'City is required' }));
+                                            else setFieldErrors(prev => { const n = { ...prev }; delete n.city; return n; });
+                                        }}
                                         required
-                                        className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
+                                        className={`w-full py-2.5 px-3.5 border ${fieldErrors.city ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-slate-50'} rounded-xl font-inherit text-sm transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100`}
                                     />
+                                    {fieldErrors.city && <p className="text-red-500 text-xs">{fieldErrors.city}</p>}
                                 </div>
-                                <div className="flex flex-col gap-2">
+                                <div className="w-full md:w-40 flex flex-col gap-2">
                                     <label className="text-sm font-semibold text-slate-900">Province <span className="text-red-500">*</span></label>
                                     <select
                                         value={visitorForm.state}
-                                        onChange={(e) => setVisitorForm({ ...visitorForm, state: e.target.value })}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            setVisitorForm({ ...visitorForm, state: val });
+                                            if (!val) setFieldErrors(prev => ({ ...prev, state: 'Province is required' }));
+                                            else setFieldErrors(prev => { const n = { ...prev }; delete n.state; return n; });
+                                        }}
                                         required
-                                        className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
+                                        className={`w-full py-2.5 px-3.5 border ${fieldErrors.state ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-slate-50'} rounded-xl font-inherit text-sm transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100`}
                                     >
                                         <option value="">Select province</option>
                                         <option value="Alberta">Alberta</option>
@@ -602,25 +727,57 @@ const VisitorsSection = ({
                                         <option value="Saskatchewan">Saskatchewan</option>
                                         <option value="Yukon">Yukon</option>
                                     </select>
+                                    {fieldErrors.state && <p className="text-red-500 text-xs">{fieldErrors.state}</p>}
                                 </div>
-                                <div className="flex flex-col gap-2">
+                                <div className="w-full md:w-32 flex flex-col gap-2">
                                     <label className="text-sm font-semibold text-slate-900">Postal Code</label>
                                     <input
                                         type="text"
-                                        placeholder="12345"
+                                        placeholder="A1B-2C3"
                                         value={visitorForm.postalCode}
-                                        onChange={(e) => {
-                                            const value = e.target.value.replace(/\D/g, '').substring(0, 5);
-                                            setVisitorForm({ ...visitorForm, postalCode: value });
-                                        }}
-                                        maxLength={5}
-                                        className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
+                                        onChange={handlePostalChange}
+                                        maxLength={7}
+                                        className="w-full py-2.5 px-3.5 border border-slate-200 rounded-xl font-inherit text-sm bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
                                     />
                                 </div>
                             </div>
 
-                            {/* Phone (H) and Phone (B) */}
-                            <div className="grid grid-cols-2 gap-4">
+                            {/* Guardian Info (optional) */}
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                <div className="flex flex-col gap-2">
+                                    <label className="text-sm font-semibold text-slate-900">Guardian ID</label>
+                                    <input
+                                        type="text"
+                                        placeholder="Guardian ID"
+                                        value={visitorForm.guardianId}
+                                        onChange={handleGuardianIdChange}
+                                        className="w-full py-2.5 px-3.5 border border-slate-200 rounded-xl font-inherit text-sm bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
+                                    />
+                                </div>
+                                <div className="flex flex-col gap-2">
+                                    <label className="text-sm font-semibold text-slate-900">Guardian Name</label>
+                                    <input
+                                        type="text"
+                                        placeholder="Guardian name"
+                                        value={visitorForm.guardianName}
+                                        onChange={(e) => setVisitorForm({ ...visitorForm, guardianName: e.target.value })}
+                                        className="w-full py-2.5 px-3.5 border border-slate-200 rounded-xl font-inherit text-sm bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
+                                    />
+                                </div>
+                                <div className="flex flex-col gap-2">
+                                    <label className="text-sm font-semibold text-slate-900">Guardian Contact</label>
+                                    <input
+                                        type="text"
+                                        placeholder="Guardian phone"
+                                        value={visitorForm.guardianPhone}
+                                        onChange={(e) => setVisitorForm({ ...visitorForm, guardianPhone: e.target.value })}
+                                        className="w-full py-2.5 px-3.5 border border-slate-200 rounded-xl font-inherit text-sm bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Phone (H), Phone (B), Phone (M) */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                                 <div className="flex flex-col gap-2">
                                     <label className="text-sm font-semibold text-slate-900">Phone (H)</label>
                                     <PhoneInput
@@ -634,9 +791,35 @@ const VisitorsSection = ({
                                         required
                                     />
                                 </div>
+                                <div className="flex flex-col gap-2">
+                                    <label className="text-sm font-semibold text-slate-900">Phone (M)</label>
+                                    <PhoneInput
+                                        onChange={(val) => setVisitorForm({ ...visitorForm, phoneM: val.fullNumber })}
+                                    />
+                                </div>
                             </div>
 
-                            <div className="flex gap-4 mt-4">
+                            {/* Notes and Memo */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div className="flex flex-col gap-2">
+                                    <label className="text-sm font-semibold text-slate-900">Notes</label>
+                                    <textarea
+                                        value={visitorForm.notes}
+                                        onChange={(e) => setVisitorForm({ ...visitorForm, notes: e.target.value })}
+                                        className="w-full min-h-[64px] py-2.5 px-3.5 border border-slate-200 rounded-xl font-inherit text-sm bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
+                                    />
+                                </div>
+                                <div className="flex flex-col gap-2">
+                                    <label className="text-sm font-semibold text-slate-900">Memo</label>
+                                    <textarea
+                                        value={visitorForm.memo}
+                                        onChange={(e) => setVisitorForm({ ...visitorForm, memo: e.target.value })}
+                                        className="w-full min-h-[64px] py-2.5 px-3.5 border border-slate-200 rounded-xl font-inherit text-sm bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="flex gap-3 mt-3 justify-end">
                                 <button
                                     type="button"
                                     onClick={() => {
@@ -662,14 +845,14 @@ const VisitorsSection = ({
                                         setHealthCardExpiryDate('');
                                         setError('');
                                     }}
-                                    className="flex-1 py-4 px-4 bg-slate-200 text-slate-800 border-none rounded-xl cursor-pointer hover:bg-slate-300 transition-colors"
+                                    className="px-4 py-2.5 bg-slate-200 text-slate-800 border-none rounded-xl cursor-pointer hover:bg-slate-300 transition-colors text-sm font-semibold"
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     type="submit"
                                     disabled={isCreatingVisitor}
-                                    className="flex-1 py-4 px-4 bg-primary text-white border-none rounded-xl font-semibold text-base cursor-pointer transition-all shadow-lg shadow-blue-300/30 hover:bg-primary-dark hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-400/40 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 flex items-center justify-center gap-2"
+                                    className="px-4 py-2.5 bg-primary text-white border-none rounded-xl font-semibold text-sm cursor-pointer transition-all shadow-lg shadow-blue-300/30 hover:bg-primary-dark hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-400/40 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 flex items-center justify-center gap-2"
                                 >
                                     {isCreatingVisitor ? (
                                         <>
@@ -705,6 +888,7 @@ const VisitorsSection = ({
                                         entityId={userData.entityId}
                                         entitySerial={userData.entitySerial}
                                         interactions={interactions}
+                                        officers={officers}
                                         onUploadSuccess={handleReportUploadSuccess}
                                     />
                                 )}
@@ -721,7 +905,7 @@ const VisitorsSection = ({
                                 </button>
                             </div>
                         </div>
-                        
+
                         <div className="space-y-6">
                             {/* Patient Information - Horizontal Layout */}
                             <div className="grid grid-cols-3 gap-6">
@@ -846,17 +1030,16 @@ const VisitorsSection = ({
                                                             </span>
                                                         </div>
                                                         <div className="flex items-center gap-2">
-                                                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border ${
-                                                                interaction.closed 
-                                                                    ? 'bg-green-50 text-green-700 border-green-200' 
-                                                                    : 'bg-red-50 text-red-700 border-red-200'
-                                                            }`}>
+                                                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border ${interaction.closed
+                                                                ? 'bg-green-50 text-green-700 border-green-200'
+                                                                : 'bg-red-50 text-red-700 border-red-200'
+                                                                }`}>
                                                                 {interaction.closed ? 'Closed' : 'Open'}
                                                             </span>
-                                                            <svg 
+                                                            <svg
                                                                 className={`w-4 h-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-                                                                fill="none" 
-                                                                stroke="currentColor" 
+                                                                fill="none"
+                                                                stroke="currentColor"
                                                                 viewBox="0 0 24 24"
                                                             >
                                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -864,95 +1047,147 @@ const VisitorsSection = ({
                                                         </div>
                                                     </button>
                                                     {isExpanded && (
-                                                        <div className="px-4 py-3 text-sm text-slate-700 space-y-4 bg-slate-50 border-t border-slate-200">
-                                                            {/* CC/Reason */}
-                                                            {interaction.ccReason && (interaction.ccReason.text || interaction.ccReason.scratchpad) && (
-                                                                <div>
-                                                                    <h5 className="font-semibold text-slate-900 mb-1">CC / Reason</h5>
-                                                                    {interaction.ccReason.text && (
-                                                                        <p className="text-xs text-slate-600 mb-2 whitespace-pre-wrap">{interaction.ccReason.text}</p>
-                                                                    )}
-                                                                    {interaction.ccReason.hasScratchpad && interaction.ccReason.scratchpad && (
-                                                                        <img 
-                                                                            src={getImageUrl(interaction.ccReason.scratchpad)} 
-                                                                            alt="CC/Reason" 
-                                                                            className="max-w-full h-auto rounded border border-slate-200"
-                                                                            onError={(e) => e.target.style.display = 'none'}
-                                                                        />
-                                                                    )}
+                                                        <div className="px-4 py-5 text-sm text-slate-700 space-y-6 bg-slate-50 border-t border-slate-200">
+                                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                                {/* CC/Reason */}
+                                                                <div className="space-y-2">
+                                                                    <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Chief Complaint / Reason</h5>
+                                                                    <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm min-h-[60px]">
+                                                                        {interaction.ccReason?.text && (
+                                                                            <p className="text-sm text-slate-700 whitespace-pre-wrap">{interaction.ccReason.text}</p>
+                                                                        )}
+                                                                        {interaction.ccReason?.hasScratchpad && interaction.ccReason?.scratchpad && (
+                                                                            <div className="mt-2">
+                                                                                <img
+                                                                                    src={getImageUrl(interaction.ccReason.scratchpad)}
+                                                                                    alt="CC/Reason"
+                                                                                    className="max-w-full h-auto rounded-lg border border-slate-100"
+                                                                                    onError={(e) => { e.target.style.display = 'none'; }}
+                                                                                />
+                                                                            </div>
+                                                                        )}
+                                                                        {!interaction.ccReason?.text && !interaction.ccReason?.scratchpad && (
+                                                                            <p className="text-xs text-slate-400 italic">No notes provided</p>
+                                                                        )}
+                                                                    </div>
                                                                 </div>
-                                                            )}
-                                                            {/* Subjective */}
-                                                            {interaction.subjective && (interaction.subjective.text || interaction.subjective.scratchpad) && (
-                                                                <div>
-                                                                    <h5 className="font-semibold text-slate-900 mb-1">S (Subjective)</h5>
-                                                                    {interaction.subjective.text && (
-                                                                        <p className="text-xs text-slate-600 mb-2 whitespace-pre-wrap">{interaction.subjective.text}</p>
-                                                                    )}
-                                                                    {interaction.subjective.hasScratchpad && interaction.subjective.scratchpad && (
-                                                                        <img 
-                                                                            src={getImageUrl(interaction.subjective.scratchpad)} 
-                                                                            alt="Subjective" 
-                                                                            className="max-w-full h-auto rounded border border-slate-200"
-                                                                            onError={(e) => e.target.style.display = 'none'}
-                                                                        />
-                                                                    )}
+
+                                                                {/* Subjective */}
+                                                                <div className="space-y-2">
+                                                                    <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Subjective (S)</h5>
+                                                                    <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm min-h-[60px]">
+                                                                        {interaction.subjective?.text && (
+                                                                            <p className="text-sm text-slate-700 whitespace-pre-wrap">{interaction.subjective.text}</p>
+                                                                        )}
+                                                                        {interaction.subjective?.hasScratchpad && interaction.subjective?.scratchpad && (
+                                                                            <div className="mt-2">
+                                                                                <img
+                                                                                    src={getImageUrl(interaction.subjective.scratchpad)}
+                                                                                    alt="Subjective"
+                                                                                    className="max-w-full h-auto rounded-lg border border-slate-100"
+                                                                                    onError={(e) => { e.target.style.display = 'none'; }}
+                                                                                />
+                                                                            </div>
+                                                                        )}
+                                                                        {!interaction.subjective?.text && !interaction.subjective?.scratchpad && (
+                                                                            <p className="text-xs text-slate-400 italic">No notes provided</p>
+                                                                        )}
+                                                                    </div>
                                                                 </div>
-                                                            )}
-                                                            {/* Objective */}
-                                                            {interaction.objective && (interaction.objective.text || interaction.objective.scratchpad) && (
-                                                                <div>
-                                                                    <h5 className="font-semibold text-slate-900 mb-1">O (Objective)</h5>
-                                                                    {interaction.objective.text && (
-                                                                        <p className="text-xs text-slate-600 mb-2 whitespace-pre-wrap">{interaction.objective.text}</p>
-                                                                    )}
-                                                                    {interaction.objective.hasScratchpad && interaction.objective.scratchpad && (
-                                                                        <img 
-                                                                            src={getImageUrl(interaction.objective.scratchpad)} 
-                                                                            alt="Objective" 
-                                                                            className="max-w-full h-auto rounded border border-slate-200"
-                                                                            onError={(e) => e.target.style.display = 'none'}
-                                                                        />
-                                                                    )}
+
+                                                                {/* Objective */}
+                                                                <div className="space-y-2">
+                                                                    <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Objective (O)</h5>
+                                                                    <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm min-h-[60px]">
+                                                                        {interaction.objective?.text && (
+                                                                            <p className="text-sm text-slate-700 whitespace-pre-wrap">{interaction.objective.text}</p>
+                                                                        )}
+                                                                        {interaction.objective?.hasScratchpad && interaction.objective?.scratchpad && (
+                                                                            <div className="mt-2">
+                                                                                <img
+                                                                                    src={getImageUrl(interaction.objective.scratchpad)}
+                                                                                    alt="Objective"
+                                                                                    className="max-w-full h-auto rounded-lg border border-slate-100"
+                                                                                    onError={(e) => { e.target.style.display = 'none'; }}
+                                                                                />
+                                                                            </div>
+                                                                        )}
+                                                                        {!interaction.objective?.text && !interaction.objective?.scratchpad && (
+                                                                            <p className="text-xs text-slate-400 italic">No notes provided</p>
+                                                                        )}
+                                                                    </div>
                                                                 </div>
-                                                            )}
-                                                            {/* Assessment and Plan */}
-                                                            {interaction.assessmentPlan && (interaction.assessmentPlan.text || interaction.assessmentPlan.scratchpad) && (
-                                                                <div>
-                                                                    <h5 className="font-semibold text-slate-900 mb-1">A and P (Assessment and Plan)</h5>
-                                                                    {interaction.assessmentPlan.text && (
-                                                                        <p className="text-xs text-slate-600 mb-2 whitespace-pre-wrap">{interaction.assessmentPlan.text}</p>
-                                                                    )}
-                                                                    {interaction.assessmentPlan.hasScratchpad && interaction.assessmentPlan.scratchpad && (
-                                                                        <img 
-                                                                            src={getImageUrl(interaction.assessmentPlan.scratchpad)} 
-                                                                            alt="Assessment and Plan" 
-                                                                            className="max-w-full h-auto rounded border border-slate-200"
-                                                                            onError={(e) => e.target.style.display = 'none'}
-                                                                        />
-                                                                    )}
+
+                                                                {/* Assessment & Plan */}
+                                                                <div className="space-y-2">
+                                                                    <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Assessment & Plan (A&P)</h5>
+                                                                    <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm min-h-[60px]">
+                                                                        {interaction.assessmentPlan?.text && (
+                                                                            <p className="text-sm text-slate-700 whitespace-pre-wrap">{interaction.assessmentPlan.text}</p>
+                                                                        )}
+                                                                        {interaction.assessmentPlan?.hasScratchpad && interaction.assessmentPlan?.scratchpad && (
+                                                                            <div className="mt-2">
+                                                                                <img
+                                                                                    src={getImageUrl(interaction.assessmentPlan.scratchpad)}
+                                                                                    alt="Assessment and Plan"
+                                                                                    className="max-w-full h-auto rounded-lg border border-slate-100"
+                                                                                    onError={(e) => { e.target.style.display = 'none'; }}
+                                                                                />
+                                                                            </div>
+                                                                        )}
+                                                                        {!interaction.assessmentPlan?.text && !interaction.assessmentPlan?.scratchpad && (
+                                                                            <p className="text-xs text-slate-400 italic">No notes provided</p>
+                                                                        )}
+                                                                    </div>
                                                                 </div>
-                                                            )}
-                                                            {/* Service Lines */}
-                                                            {interaction.serviceLines && interaction.serviceLines.length > 0 && (
-                                                                <div>
-                                                                    <h5 className="font-semibold text-slate-900 mb-2">Services</h5>
-                                                                    <div className="space-y-1">
+                                                            </div>
+
+                                                            {/* Service Lines (Billing) */}
+                                                            <div className="space-y-3 pt-4 border-t border-slate-200">
+                                                                <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Services & Billing</h5>
+                                                                {interaction.serviceLines && interaction.serviceLines.length > 0 ? (
+                                                                    <div className="grid grid-cols-1 gap-2">
                                                                         {interaction.serviceLines.map((line, idx) => (
-                                                                            <div key={idx} className="bg-white rounded p-2 text-xs border border-slate-200">
-                                                                                <div className="grid grid-cols-6 gap-2">
-                                                                                    <div className="font-medium text-slate-600">{line.serialNumber}</div>
-                                                                                    <div><span className="text-slate-500">Service:</span> {line.service}</div>
-                                                                                    <div><span className="text-slate-500">Suffix:</span> {line.suffix}</div>
-                                                                                    <div><span className="text-slate-500">Diagnostic:</span> {line.diagnostic}</div>
-                                                                                    <div><span className="text-slate-500">Fee:</span> ${line.totalFee || '0.00'}</div>
-                                                                                    <div><span className="text-slate-500">Acct #:</span> {line.accountingNumber || 'N/A'}</div>
+                                                                            <div key={idx} className="bg-white rounded-xl p-3 border border-slate-100 shadow-sm">
+                                                                                <div className="flex flex-wrap gap-4 items-start">
+                                                                                    <div className="flex-1 min-w-[150px]">
+                                                                                        <div className="text-[10px] font-bold text-slate-400 uppercase mb-1">Diagnostic</div>
+                                                                                        <div className="text-xs">
+                                                                                            <span className="font-bold text-blue-700 mr-2">{line.diagnostic}</span>
+                                                                                            <span className="text-slate-600">
+                                                                                                {diagnostics.find(d => d.code === line.diagnostic)?.description || 'No description'}
+                                                                                            </span>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <div className="flex-1 min-w-[150px]">
+                                                                                        <div className="text-[10px] font-bold text-slate-400 uppercase mb-1">Service</div>
+                                                                                        <div className="text-xs">
+                                                                                            <span className="font-bold text-blue-700 mr-2">{line.service}</span>
+                                                                                            <span className="text-slate-600">
+                                                                                                {services.find(s => s.code === line.service)?.description || 'No description'}
+                                                                                            </span>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <div className="w-16">
+                                                                                        <div className="text-[10px] font-bold text-slate-400 uppercase mb-1">Suffix</div>
+                                                                                        <div className="text-xs font-semibold text-slate-700">{line.suffix || '-'}</div>
+                                                                                    </div>
+                                                                                    <div className="w-20">
+                                                                                        <div className="text-[10px] font-bold text-slate-400 uppercase mb-1">Fee</div>
+                                                                                        <div className="text-xs font-bold text-slate-900">${line.totalFee || '0.00'}</div>
+                                                                                    </div>
+                                                                                    <div className="w-24">
+                                                                                        <div className="text-[10px] font-bold text-slate-400 uppercase mb-1">Acct #</div>
+                                                                                        <div className="text-xs font-medium text-slate-500">{line.accountingNumber || 'N/A'}</div>
+                                                                                    </div>
                                                                                 </div>
                                                                             </div>
                                                                         ))}
                                                                     </div>
-                                                                </div>
-                                                            )}
+                                                                ) : (
+                                                                    <p className="text-sm text-slate-400 italic">No services recorded</p>
+                                                                )}
+                                                            </div>
                                                         </div>
                                                     )}
                                                 </div>
@@ -974,89 +1209,95 @@ const VisitorsSection = ({
                                         No reports uploaded for this patient.
                                     </div>
                                 ) : (
-                                    <div className="space-y-3">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         {reports.map((report) => {
-                                            const reportDate = new Date(report.uploadedAt).toLocaleDateString();
-                                            const reportTime = new Date(report.uploadedAt).toLocaleTimeString();
-                                            const fileUrl = report.filePath.startsWith('http') 
-                                                ? report.filePath 
-                                                : `${import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000'}/${report.filePath}`;
-                                            
+                                            const procDate = new Date(report.procedureDate).toLocaleDateString(undefined, { dateStyle: 'medium' });
+                                            const genDate = new Date(report.reportGeneratedDate).toLocaleDateString(undefined, { dateStyle: 'medium' });
+                                            const fileUrl = report.fileMetadata.localPath.startsWith('http')
+                                                ? report.fileMetadata.localPath
+                                                : `${import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000'}/${report.fileMetadata.localPath}`;
+
+                                            const reportTypeLabel = REPORT_TYPES.find(t => t.value === report.reportType)?.label || report.reportType;
+
                                             return (
                                                 <div
                                                     key={report.id}
-                                                    className="border border-slate-200 rounded-lg p-4 bg-white hover:bg-slate-50 transition-colors"
+                                                    className="group relative bg-white border border-slate-200 rounded-2xl p-4 hover:border-blue-400 hover:shadow-xl hover:shadow-blue-50 transition-all"
                                                 >
-                                                    <div className="flex items-start justify-between">
-                                                        <div className="flex-1">
-                                                            <div className="flex items-center gap-2 mb-2">
-                                                                <span className="font-semibold text-slate-900">
-                                                                    {report.instituteName}
-                                                                </span>
-                                                                {report.interactionId && (
-                                                                    <span className="text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
-                                                                        {interactions.find(i => i.id === report.interactionId)?.interactionSerial || 'Associated'}
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                            <p className="text-xs text-slate-500 mb-2">
-                                                                {report.fileName} · {reportDate} {reportTime}
-                                                            </p>
-                                                            <div className="flex items-center gap-2">
-                                                                <a
-                                                                    href={fileUrl}
-                                                                    target="_blank"
-                                                                    rel="noopener noreferrer"
-                                                                    className="text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1"
-                                                                >
-                                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                                                                    </svg>
-                                                                    View Report
-                                                                </a>
-                                                                {report.fileType === 'pdf' && (
-                                                                    <a
-                                                                        href={fileUrl}
-                                                                        download
-                                                                        className="text-xs text-green-600 hover:text-green-700 font-medium flex items-center gap-1"
-                                                                    >
-                                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                                                                        </svg>
-                                                                        Download PDF
-                                                                    </a>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                        {report.fileType === 'image' && (
-                                                            <div className="ml-4">
+                                                    <div className="flex gap-4">
+                                                        {/* Document Icon / Image Preview */}
+                                                        <div className="flex-shrink-0 w-16 h-16 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden">
+                                                            {report.fileMetadata.mimeType.startsWith('image/') ? (
                                                                 <img
                                                                     src={fileUrl}
-                                                                    alt={report.fileName}
-                                                                    className="w-20 h-20 object-cover rounded border border-slate-200 cursor-pointer hover:opacity-80 transition-opacity"
+                                                                    alt="Preview"
+                                                                    className="w-full h-full object-cover group-hover:scale-110 transition-transform cursor-pointer"
                                                                     onClick={() => window.open(fileUrl, '_blank')}
-                                                                    onError={(e) => e.target.style.display = 'none'}
                                                                 />
-                                                            </div>
-                                                        )}
-                                                        <button
-                                                            onClick={() => handleDeleteReport(report.id)}
-                                                            disabled={deletingReportId === report.id}
-                                                            className="ml-2 p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                                            title="Delete report"
-                                                        >
-                                                            {deletingReportId === report.id ? (
-                                                                <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                                                </svg>
                                                             ) : (
-                                                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                                                </svg>
+                                                                <div className="text-center">
+                                                                    <div className="text-[10px] font-black text-red-600 mb-0.5">PDF</div>
+                                                                    <svg className="w-6 h-6 text-slate-400 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                                                    </svg>
+                                                                </div>
                                                             )}
-                                                        </button>
+                                                        </div>
+
+                                                        {/* Content */}
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex items-center justify-between mb-1">
+                                                                <span className="text-xs font-black text-blue-600 uppercase tracking-wider">{reportTypeLabel}</span>
+                                                                <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                    <a
+                                                                        href={fileUrl}
+                                                                        target="_blank"
+                                                                        rel="noopener noreferrer"
+                                                                        className="p-1.5 bg-slate-100 text-slate-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all"
+                                                                        title="View full document"
+                                                                    >
+                                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                                                        </svg>
+                                                                    </a>
+                                                                    <button
+                                                                        onClick={() => handleDeleteReport(report.id)}
+                                                                        className="p-1.5 bg-slate-100 text-red-500 rounded-lg hover:bg-red-600 hover:text-white transition-all"
+                                                                        title="Delete record"
+                                                                    >
+                                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                                        </svg>
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+
+                                                            <p className="text-sm font-bold text-slate-800 truncate mb-1" title={report.labMetadata?.labName}>
+                                                                {report.labMetadata?.labName || 'Laboratory Not Specified'}
+                                                            </p>
+
+                                                            <div className="flex flex-wrap items-center gap-y-1 gap-x-3 text-[10px] text-slate-500 font-medium">
+                                                                <div className="flex items-center gap-1">
+                                                                    <svg className="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                                                    </svg>
+                                                                    <span>Procedure: <span className="text-slate-900">{procDate}</span></span>
+                                                                </div>
+                                                                <div className="flex items-center gap-1">
+                                                                    <svg className="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                                                                    </svg>
+                                                                    <span>Report: <span className="text-slate-900">{genDate}</span></span>
+                                                                </div>
+                                                            </div>
+
+                                                            {report.notes && (
+                                                                <p className="mt-2 text-[11px] text-slate-500 line-clamp-1 italic">
+                                                                    {report.notes}
+                                                                </p>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                 </div>
                                             );

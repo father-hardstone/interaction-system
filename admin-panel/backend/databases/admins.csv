@@ -1,0 +1,2 @@
+id,serial,name,phone,password,otp,active,createdAt,editedAt,deletedAt
+682fbfd2-af0c-4889-b855-3e6900ee8b56,A1,Ibrahim,+923364854071,$2b$10$L09Lipo3NfhEGIUOyeh.bOF.HUMNWaka5QMHebExRejaqa3uZS1Z2,123456,true,2026-01-08T13:56:39.582Z,2026-01-08T13:56:39.582Z,

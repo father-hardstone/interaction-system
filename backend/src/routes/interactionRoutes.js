@@ -1,6 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const InteractionController = require('../controllers/InteractionController');
+const { authenticateToken, requireRoles } = require('../middleware/auth');
+
+// Interactions are used by entity + internal users (officer/receptionist)
+router.use(authenticateToken, requireRoles(['entity', 'officer', 'receptionist']));
 
 // Get all interactions for an entity
 router.get('/entity/:entityId', InteractionController.getInteractionsByEntity);

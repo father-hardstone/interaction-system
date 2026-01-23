@@ -1,9 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const ReportController = require('../controllers/ReportController');
+const { authenticateToken, requireRoles } = require('../middleware/auth');
 
-// Get all reports for a visitor
-router.get('/visitor/:visitorId', ReportController.getReportsByVisitor);
+router.use(authenticateToken, requireRoles(['entity', 'officer', 'receptionist']));
+
+// Get all reports for a patient
+router.get('/patient/:visitorId', ReportController.getReportsByPatient);
 
 // Get all reports for an entity
 router.get('/entity/:entityId', ReportController.getReportsByEntity);

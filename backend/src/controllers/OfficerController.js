@@ -1,5 +1,6 @@
 const OfficerService = require('../services/OfficerService');
 const ReceptionistService = require('../services/ReceptionistService');
+const EntityService = require('../services/EntityService');
 const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
@@ -40,7 +41,7 @@ class OfficerController {
                 o => o.entityId === entityId && (!o.deletedAt || o.deletedAt === '')
             );
             console.log('getOfficersByEntity - filtered officers:', entityOfficers.length);
-            
+
             // Remove passwords from response
             const safe = entityOfficers.map(({ password, ...rest }) => rest);
             res.json(safe);
@@ -199,11 +200,15 @@ class OfficerController {
                 return res.status(403).json({ error: "Invalid entity key" });
             }
 
+            // Fetch entity name for the token
+            const entity = await EntityService.findOne({ id: user.entityId });
+
             const token = jwt.sign({
                 id: user.id,
                 serial: user.serial,
                 entityId: user.entityId,
                 entitySerial: user.entitySerial,
+                entityName: entity ? entity.name : user.entitySerial,
                 name: user.name,
                 phone: user.phone,
                 email: user.email,

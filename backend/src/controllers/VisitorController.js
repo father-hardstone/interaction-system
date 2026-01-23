@@ -1,6 +1,7 @@
 const VisitorService = require('../services/VisitorService');
 const InteractionService = require('../services/InteractionService');
 const { v4: uuidv4 } = require('uuid');
+const EntityService = require('../services/EntityService');
 
 class VisitorController {
     // Get all visitors for a specific entity
@@ -41,6 +42,7 @@ class VisitorController {
                 addressLine,
                 city,
                 province,
+                state, // Accept state as alias for province
                 postalCode,
                 gender,
                 phone,
@@ -49,8 +51,17 @@ class VisitorController {
                 healthCardNumber,
                 healthCardVersion,
                 healthCardEffectivityDate,
-                healthCardExpiryDate
+                healthCardExpiryDate,
+                phoneM,
+                notes,
+                memo,
+                guardianName,
+                guardianId,
+                guardianPhone
             } = req.body;
+
+            // Normalize province/state
+            const region = province || state;
 
             console.log('createVisitor - Received data:', {
                 entityId,
@@ -62,8 +73,12 @@ class VisitorController {
             });
 
             // Validate required fields
-            if (!entityId || !entitySerial || !firstName || !lastName || !dateOfBirth || 
-                !addressLine || !city || !province || !gender || !phone || !healthCardNumber) {
+            if (!entityId || !entitySerial || !firstName || !lastName || !dateOfBirth ||
+                !addressLine || !city || !region || !gender || !phone || !healthCardNumber) {
+                console.error('createVisitor - Missing required fields:', {
+                    entityId, entitySerial, firstName, lastName, dateOfBirth,
+                    addressLine, city, region, gender, phone, healthCardNumber
+                });
                 return res.status(400).json({ error: "Missing required fields" });
             }
 
@@ -73,21 +88,52 @@ class VisitorController {
                 return res.status(400).json({ error: "Invalid entity serial format. Must start with 'E'" });
             }
 
-            // Validate health card number format (should be 10 digits, we'll format it)
+            // Validate health card number format (should be 10 digits, no dashes stored)
             const cleanHealthCard = healthCardNumber.replace(/-/g, '');
             if (cleanHealthCard.length !== 10 || !/^\d+$/.test(cleanHealthCard)) {
                 return res.status(400).json({ error: "Health card number must be exactly 10 digits" });
             }
 
-            // Format health card number with dashes (1234-5678-90)
-            const formattedHealthCard = `${cleanHealthCard.substring(0, 4)}-${cleanHealthCard.substring(4, 8)}-${cleanHealthCard.substring(8, 10)}`;
+            // Health card version: max 2 alphabetic
+            if (healthCardVersion && !/^[A-Za-z]{1,2}$/.test(healthCardVersion.trim())) {
+                return res.status(400).json({ error: "Health card version must be 1-2 alphabetic characters" });
+            }
+
+            // Postal code: Canadian mask A1B-2C3
+            if (postalCode && postalCode.trim().length > 0) {
+                const postalMask = /^[A-Za-z]\d[A-Za-z]-\d[A-Za-z]\d$/;
+                if (!postalMask.test(postalCode.trim())) {
+                    return res.status(400).json({ error: "Postal code must be in format A1B-2C3" });
+                }
+            }
+
+            // Dates: ensure expiry >= effectivity if both provided
+            const parseDate = (val) => (val ? new Date(val) : null);
+            const effDate = parseDate(healthCardEffectivityDate);
+            const expDate = parseDate(healthCardExpiryDate);
+            if (effDate && expDate && expDate < effDate) {
+                return res.status(400).json({ error: "Expiry date cannot be earlier than effective date" });
+            }
+
+            // Guardian autofill
+            let guardianNameFinal = guardianName || '';
+            let guardianPhoneFinal = guardianPhone || '';
+            if (guardianId) {
+                const guardian = await VisitorService.findOne({ id: guardianId });
+                if (guardian) {
+                    guardianNameFinal = guardian.firstName ? `${guardian.firstName} ${guardian.lastName || ''}`.trim() : guardianNameFinal;
+                    guardianPhoneFinal = guardian.phone || guardianPhoneFinal;
+                }
+            }
 
             const now = new Date().toISOString();
-            // Get composite serial (e.g., E1-V1, E1-V2, etc.)
-            const serial = await VisitorService.getNextSerialForEntity(entitySerial);
+            // Generate UUID for visitor ID
+            const visitorId = uuidv4();
+            // Get 6-digit serial number
+            const serial = await VisitorService.getNextSerialForEntity(entityId);
 
             const newVisitor = {
-                id: uuidv4(),
+                id: visitorId,
                 serial,
                 entityId,
                 entitySerial,
@@ -97,16 +143,22 @@ class VisitorController {
                 dateOfBirth,
                 addressLine: addressLine.trim(),
                 city: city.trim(),
-                province: province.trim(),
+                province: region.trim(),
                 postalCode: postalCode ? postalCode.trim() : '',
                 gender: gender.trim(),
                 phone: phone.trim(),
                 phoneH: phoneH ? phoneH.trim() : '',
+                phoneM: phoneM ? phoneM.trim() : '',
                 email: email ? email.trim() : '',
-                healthCardNumber: formattedHealthCard,
-                healthCardVersion: healthCardVersion ? healthCardVersion.trim() : '',
+                healthCardNumber: cleanHealthCard,
+                healthCardVersion: healthCardVersion ? healthCardVersion.trim().toUpperCase() : '',
                 healthCardEffectivityDate: healthCardEffectivityDate || '',
                 healthCardExpiryDate: healthCardExpiryDate || '',
+                notes: notes || '',
+                memo: memo || '',
+                guardianName: guardianNameFinal,
+                guardianId: guardianId || '',
+                guardianPhone: guardianPhoneFinal,
                 createdAt: now,
                 editedAt: now,
                 deletedAt: ''
@@ -121,6 +173,17 @@ class VisitorController {
 
             await VisitorService.create(newVisitor);
 
+            // push patient id into entity.patientIds
+            try {
+                const entity = await EntityService.findOne({ id: entityId });
+                if (entity) {
+                    const updatedList = Array.isArray(entity.patientIds) ? [...entity.patientIds, visitorId] : [visitorId];
+                    await EntityService.update(entityId, { patientIds: updatedList });
+                }
+            } catch (err) {
+                console.warn('Failed to update entity patientIds', err.message);
+            }
+
             // Create interaction for this visitor
             // ID is UUID, serial is composite (E1-V1-I1)
             const interactionSerial = await InteractionService.getNextSerialForEntity(entitySerial, serial);
@@ -130,7 +193,7 @@ class VisitorController {
                 entityId,
                 entitySerial,
                 visitorId: newVisitor.id,
-                visitorSerial: serial, // Store full composite serial
+                visitorSerial: serial,
                 officerId: '', // Will be assigned later by receptionist
                 officerSerial: '', // Will be assigned later by receptionist
                 createdAt: now,
@@ -159,13 +222,46 @@ class VisitorController {
             delete updates.entitySerial;
             delete updates.createdAt;
 
-            // Format health card if provided
+            // Format/validate health card if provided
             if (updates.healthCardNumber) {
                 const cleanHealthCard = updates.healthCardNumber.replace(/-/g, '');
                 if (cleanHealthCard.length !== 10 || !/^\d+$/.test(cleanHealthCard)) {
                     return res.status(400).json({ error: "Health card number must be exactly 10 digits" });
                 }
-                updates.healthCardNumber = `${cleanHealthCard.substring(0, 4)}-${cleanHealthCard.substring(4, 8)}-${cleanHealthCard.substring(8, 10)}`;
+                updates.healthCardNumber = cleanHealthCard;
+            }
+
+            // Version alpha 1-2 chars
+            if (updates.healthCardVersion) {
+                if (!/^[A-Za-z]{1,2}$/.test(updates.healthCardVersion.trim())) {
+                    return res.status(400).json({ error: "Health card version must be 1-2 alphabetic characters" });
+                }
+                updates.healthCardVersion = updates.healthCardVersion.trim().toUpperCase();
+            }
+
+            // Postal code mask
+            if (updates.postalCode) {
+                const postalMask = /^[A-Za-z]\d[A-Za-z]-\d[A-Za-z]\d$/;
+                if (!postalMask.test(updates.postalCode.trim())) {
+                    return res.status(400).json({ error: "Postal code must be in format A1B-2C3" });
+                }
+            }
+
+            // Dates: ensure expiry >= effectivity
+            const parseDate = (val) => (val ? new Date(val) : null);
+            const effDate = parseDate(updates.healthCardEffectivityDate);
+            const expDate = parseDate(updates.healthCardExpiryDate);
+            if (effDate && expDate && expDate < effDate) {
+                return res.status(400).json({ error: "Expiry date cannot be earlier than effective date" });
+            }
+
+            // Guardian autofill if guardianId provided
+            if (updates.guardianId) {
+                const guardian = await VisitorService.findOne({ id: updates.guardianId });
+                if (guardian) {
+                    updates.guardianName = guardian.firstName ? `${guardian.firstName} ${guardian.lastName || ''}`.trim() : (updates.guardianName || '');
+                    updates.guardianPhone = guardian.phone || updates.guardianPhone || '';
+                }
             }
 
             updates.editedAt = new Date().toISOString();
@@ -187,6 +283,18 @@ class VisitorController {
             if (!success) return res.status(404).json({ error: "Visitor not found" });
             res.json({ message: "Visitor deleted" });
         } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    }
+
+    // Get next serial for an entity
+    async getNextSerial(req, res) {
+        try {
+            const { entityId } = req.params;
+            const serial = await VisitorService.getNextSerialForEntity(entityId);
+            res.json({ serial });
+        } catch (e) {
+            console.error('getNextSerial error:', e);
             res.status(500).json({ error: e.message });
         }
     }

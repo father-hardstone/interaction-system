@@ -1,6 +1,8 @@
 import { Navigate, Outlet } from 'react-router-dom';
 import { jwtDecode } from 'jwt-decode';
 
+// NOTE: Admin workflow has moved to admin-panel/frontend.
+// This file is kept to avoid breaking imports during transition, but it is no longer used by main `frontend/src/App.jsx`.
 const ProtectedRoute = () => {
     const token = localStorage.getItem('token');
 
@@ -32,3 +34,4 @@ const ProtectedRoute = () => {
 };
 
 export default ProtectedRoute;
+

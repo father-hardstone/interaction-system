@@ -6,7 +6,6 @@ import { interactionService } from '../services/interactionService';
 import { officerService } from '../services/officerService';
 import { validateEmail } from '../utils/crypto';
 import UserSidebar from '../components/UserSidebar';
-import UserHeader from '../components/UserHeader';
 import ReceptionTab from '../components/ReceptionTab';
 import OfficerTab from '../components/OfficerTab';
 
@@ -24,6 +23,7 @@ const UserDashboard = () => {
     const [searchPhone, setSearchPhone] = useState('');
     const [searchHealthCard, setSearchHealthCard] = useState('');
     const [showVisitorModal, setShowVisitorModal] = useState(false);
+    const [editingVisitorId, setEditingVisitorId] = useState(null);
     const [visitorForm, setVisitorForm] = useState({
         firstName: '',
         middleName: '',
@@ -35,7 +35,13 @@ const UserDashboard = () => {
         postalCode: '',
         gender: '',
         email: '',
-        phoneH: ''
+        phoneH: '',
+        phoneM: '',
+        notes: '',
+        memo: '',
+        guardianName: '',
+        guardianId: '',
+        guardianPhone: ''
     });
     const [phoneData, setPhoneData] = useState({ fullNumber: '', valid: false });
     const [phoneHData, setPhoneHData] = useState({ fullNumber: '', valid: false });
@@ -55,46 +61,91 @@ const UserDashboard = () => {
     const [draggedInteraction, setDraggedInteraction] = useState(null);
     const [draggedOverOfficer, setDraggedOverOfficer] = useState(null);
     const [draggedOverUnassigned, setDraggedOverUnassigned] = useState(false);
-    
+
+    const [fieldErrors, setFieldErrors] = useState({});
+
+    // Filter state
+    const [interactionFilter, setInteractionFilter] = useState('today');
+
     // Loading states
     const [isCreatingVisitor, setIsCreatingVisitor] = useState(false);
     const [deletingVisitorId, setDeletingVisitorId] = useState(null);
     const [isDeletingRegistration, setIsDeletingRegistration] = useState(false);
     const [isCreatingInteraction, setIsCreatingInteraction] = useState(false);
     const [isAssigningInteraction, setIsAssigningInteraction] = useState(false);
-    
+
     // Optimistic UI states for drag and drop
     const [pendingInteractions, setPendingInteractions] = useState([]);
     const [pendingAssignments, setPendingAssignments] = useState({});
 
+    // Next visitor serial (for preview in create form)
+    const [nextVisitorSerial, setNextVisitorSerial] = useState('');
+
+    // 1. Initial Auth & Tab Setup
     useEffect(() => {
         const token = localStorage.getItem('token');
         if (token) {
             try {
                 const decoded = jwtDecode(token);
                 setUserData(decoded);
-                // Officers go to officer tab, receptionists go to reception tab
+                // Set initial tab ONLY ONCE when component mounts/login happens
                 if (decoded.role === 'officer') {
                     setActiveTab('officer');
                 } else if (decoded.role === 'receptionist') {
                     setActiveTab('reception');
                 }
-                
-                // Load visitors, interactions, and officers if user has entityId
-                console.log('UserDashboard useEffect - decoded token:', decoded);
-                console.log('UserDashboard useEffect - entityId:', decoded.entityId);
-                if (decoded.entityId) {
-                    loadVisitors(decoded.entityId);
-                    loadInteractions(decoded.entityId);
-                    loadOfficers(decoded.entityId);
-                } else {
-                    console.warn('UserDashboard - No entityId found in token');
-                }
             } catch (e) {
                 console.error('Failed to decode token');
             }
         }
+
+        // Listen for sidebar toggle event from NavBar
+        const handleToggleSidebar = () => setSidebarOpen(prev => !prev);
+        window.addEventListener('toggleSidebar', handleToggleSidebar);
+        return () => window.removeEventListener('toggleSidebar', handleToggleSidebar);
     }, []);
+
+    // 2. Load Constant Data (Visitors, Officers)
+    useEffect(() => {
+        if (userData?.entityId) {
+            loadVisitors(userData.entityId);
+            loadOfficers(userData.entityId);
+        }
+    }, [userData?.entityId]);
+
+    // 3a. Load Interactions when filter changes
+    useEffect(() => {
+        if (!userData?.entityId) return;
+        loadInteractions(userData.entityId, interactionFilter);
+    }, [userData?.entityId, interactionFilter]);
+
+    // 3b. Polling for updates (independent of filter changes to avoid interval stacking)
+    useEffect(() => {
+        if (!userData?.entityId) return;
+
+        const interval = setInterval(() => {
+            // Use the current filter value from state
+            loadInteractions(userData.entityId, interactionFilter);
+        }, 30000);
+
+        return () => clearInterval(interval);
+    }, [userData?.entityId]); // Only restart interval if entityId changes, NOT on filter change
+
+    // 4. Fetch next visitor serial when modal opens
+    useEffect(() => {
+        const fetchNextSerial = async () => {
+            if (showVisitorModal && !editingVisitorId && userData?.entityId) {
+                try {
+                    const serial = await visitorService.getNextSerial(userData.entityId);
+                    setNextVisitorSerial(serial);
+                } catch (e) {
+                    console.error('Failed to fetch next serial:', e);
+                    setNextVisitorSerial('');
+                }
+            }
+        };
+        fetchNextSerial();
+    }, [showVisitorModal, editingVisitorId, userData?.entityId]);
 
     const loadVisitors = async (entityId) => {
         try {
@@ -110,9 +161,9 @@ const UserDashboard = () => {
         }
     };
 
-    const loadInteractions = async (entityId) => {
+    const loadInteractions = async (entityId, filter = 'today') => {
         try {
-            const data = await interactionService.getByEntity(entityId);
+            const data = await interactionService.getByEntity(entityId, filter);
             setInteractions(data || []);
         } catch (e) {
             console.error('Failed to load interactions:', e);
@@ -138,9 +189,9 @@ const UserDashboard = () => {
     };
 
     const handleDragStart = (e, interaction) => {
-        if (userData?.role !== 'receptionist') {
+        if (userData?.role !== 'receptionist' && userData?.role !== 'officer') {
             e.preventDefault();
-            showWarning('Only receptionist can perform this action');
+            showWarning('Only receptionist and doctors can perform this action');
             return;
         }
         setDraggedInteraction(interaction);
@@ -159,11 +210,17 @@ const UserDashboard = () => {
         setDraggedOverOfficer(null);
     };
 
+    const handleDragEnd = () => {
+        setDraggedInteraction(null);
+        setDraggedOverOfficer(null);
+        setDraggedOverUnassigned(false);
+    };
+
     const handleDrop = async (e, officer = null) => {
         e.preventDefault();
-        
-        if (userData?.role !== 'receptionist') {
-            showWarning('Only receptionist can perform this action');
+
+        if (userData?.role !== 'receptionist' && userData?.role !== 'officer') {
+            showWarning('Only receptionist and doctors can perform this action');
             return;
         }
 
@@ -171,7 +228,7 @@ const UserDashboard = () => {
 
         const interactionId = draggedInteraction.id;
         const targetOfficerId = officer ? officer.id : null;
-        
+
         // Optimistic UI update - show immediately
         if (officer) {
             setPendingAssignments(prev => ({
@@ -184,7 +241,7 @@ const UserDashboard = () => {
                 [interactionId]: null
             }));
         }
-        
+
         setIsAssigningInteraction(true);
 
         try {
@@ -203,17 +260,17 @@ const UserDashboard = () => {
                     officer.serial
                 );
             }
-            
+
             // Reload interactions to get updated data
             await loadInteractions(userData.entityId);
-            
+
             // Clear optimistic update after successful assignment
             setPendingAssignments(prev => {
                 const newState = { ...prev };
                 delete newState[interactionId];
                 return newState;
             });
-            
+
             setDraggedInteraction(null);
             setDraggedOverOfficer(null);
             setDraggedOverUnassigned(false);
@@ -226,7 +283,7 @@ const UserDashboard = () => {
                 return newState;
             });
             if (err.response?.status === 403) {
-                showWarning('Only receptionist can perform this action');
+                showWarning('Only receptionist and doctors can perform this action');
             } else {
                 showWarning('Failed to update interaction assignment');
             }
@@ -256,49 +313,70 @@ const UserDashboard = () => {
     const getVisitorSerial = (visitorId) => {
         const visitor = visitors.find(v => v.id === visitorId);
         if (!visitor) return 'N/A';
-        return (visitor.serial && visitor.serial.includes('-')) 
-            ? visitor.serial 
+        return (visitor.serial && visitor.serial.includes('-'))
+            ? visitor.serial
             : (visitor.entitySerial ? `${visitor.entitySerial}-${visitor.serial}` : visitor.serial || '');
     };
 
     const formatHealthCardNumber = (value) => {
-        // Remove all non-digits
-        const digits = value.replace(/\D/g, '');
-        // Limit to 10 digits
-        const limited = digits.substring(0, 10);
-        // Format: 1234-5678-90
-        if (limited.length <= 4) {
-            return limited;
-        } else if (limited.length <= 8) {
-            return `${limited.substring(0, 4)}-${limited.substring(4)}`;
-        } else {
-            return `${limited.substring(0, 4)}-${limited.substring(4, 8)}-${limited.substring(8)}`;
-        }
+        // digits only, max 10
+        const digits = value.replace(/\D/g, '').substring(0, 10);
+        return digits;
     };
 
     const handleHealthCardChange = (e) => {
-        const formatted = formatHealthCardNumber(e.target.value);
-        setHealthCardNumber(formatted);
+        const val = e.target.value.replace(/[^0-9]/g, '');
+        setHealthCardNumber(val);
+
+        if (!val.trim()) setFieldErrors(prev => ({ ...prev, healthCard: 'Health card number is required' }));
+        else if (val.length < 10) setFieldErrors(prev => ({ ...prev, healthCard: 'Must be 10 digits' }));
+        else setFieldErrors(prev => { const n = { ...prev }; delete n.healthCard; return n; });
     };
 
     const handleCreateVisitor = async (e) => {
         e.preventDefault();
         setError('');
+        setFieldErrors({});
         setIsCreatingVisitor(true);
 
         // Validate required fields
-        if (!visitorForm.firstName || !visitorForm.lastName || !visitorForm.dateOfBirth ||
-            !visitorForm.addressLine || !visitorForm.city || !visitorForm.state ||
-            !visitorForm.gender || !phoneData.valid || !healthCardNumber) {
-            setError('Please fill in all required fields');
+        const newErrors = {};
+        if (!visitorForm.lastName?.trim()) newErrors.lastName = 'Last name is required';
+        if (!visitorForm.firstName?.trim()) newErrors.firstName = 'First name is required';
+        if (!visitorForm.dateOfBirth) newErrors.dob = 'Date of birth is required';
+        if (!visitorForm.addressLine?.trim()) newErrors.street = 'Street is required';
+        if (!visitorForm.city?.trim()) newErrors.city = 'City is required';
+        if (!visitorForm.state) newErrors.state = 'Province is required';
+        if (!visitorForm.gender) newErrors.gender = 'Sex is required';
+        if (!phoneData.valid) newErrors.phone = 'Valid phone number is required';
+        if (!healthCardNumber?.trim()) newErrors.healthCard = 'Health card number is required';
+        else if (healthCardNumber.length !== 10) newErrors.healthCard = 'Must be 10 digits';
+
+        // Date comparison validation
+        if (healthCardEffectivityDate && healthCardExpiryDate) {
+            const eff = new Date(healthCardEffectivityDate);
+            const exp = new Date(healthCardExpiryDate);
+            if (exp < eff) {
+                newErrors.healthCardDate = 'Expiry date cannot be before effectivity date';
+            }
+        }
+
+        if (Object.keys(newErrors).length > 0) {
+            setFieldErrors(newErrors);
             setIsCreatingVisitor(false);
             return;
         }
 
-        // Validate health card number (should be 10 digits after formatting)
-        const cleanHealthCard = healthCardNumber.replace(/-/g, '');
-        if (cleanHealthCard.length !== 10) {
+        // Validate health card number (10 digits, unique)
+        if (healthCardNumber.length !== 10) {
             setError('Health card number must be exactly 10 digits');
+            setIsCreatingVisitor(false);
+            return;
+        }
+        const duplicate = visitors.find(v => v.healthCardNumber === healthCardNumber && v.id !== editingVisitorId);
+        if (duplicate) {
+            setError('Health card number already exists');
+            setIsCreatingVisitor(false);
             return;
         }
 
@@ -325,7 +403,7 @@ const UserDashboard = () => {
             const month = parseInt(parts[0], 10);
             const day = parseInt(parts[1], 10);
             const year = parseInt(parts[2], 10);
-            
+
             // Check for absurd values
             if (month < 1 || month > 12) {
                 return { valid: false, error: `${fieldName} has an invalid month` };
@@ -336,20 +414,20 @@ const UserDashboard = () => {
             if (year < 1900 || year > 2100) {
                 return { valid: false, error: `${fieldName} has an invalid year` };
             }
-            
+
             // Create date object and check if it's valid
             const date = new Date(year, month - 1, day);
             if (date.getDate() !== day || date.getMonth() !== month - 1 || date.getFullYear() !== year) {
                 return { valid: false, error: `${fieldName} is not a valid date` };
             }
-            
+
             // Check if date is in the future
             const today = new Date();
             today.setHours(0, 0, 0, 0);
             if (date > today) {
                 return { valid: false, error: `${fieldName} cannot be in the future` };
             }
-            
+
             return { valid: true };
         };
 
@@ -360,96 +438,44 @@ const UserDashboard = () => {
             return;
         }
 
-        // Validate postal code (should be exactly 5 digits if provided)
+        // Validate postal code (Canadian mask A1B-2C3)
         if (visitorForm.postalCode && visitorForm.postalCode.trim().length > 0) {
-            const postalCodeDigits = visitorForm.postalCode.replace(/\D/g, '');
-            if (postalCodeDigits.length !== 5) {
-                setError('Postal code must be exactly 5 digits');
+            const postalMask = /^[A-Za-z]\d[A-Za-z]-\d[A-Za-z]\d$/;
+            if (!postalMask.test(visitorForm.postalCode.trim())) {
+                setError('Postal code must be in format A1B-2C3');
                 setIsCreatingVisitor(false);
                 return;
             }
         }
 
-        // Validate health card version (max 2 characters if provided)
-        if (healthCardVersion && healthCardVersion.trim().length > 2) {
-            setError('Health card version must be maximum 2 characters');
+        // Validate health card version (1-2 alphabetic)
+        if (healthCardVersion && !/^[A-Za-z]{1,2}$/.test(healthCardVersion.trim())) {
+            setError('Health card version must be 1-2 alphabetic characters');
             setIsCreatingVisitor(false);
             return;
         }
 
-        // Validate effectivity date if provided
-        if (healthCardEffectivityDate && healthCardEffectivityDate.trim().length > 0) {
-            if (!dateRegex.test(healthCardEffectivityDate)) {
-                setError('Effectivity date must be in MM-DD-YYYY format');
-                setIsCreatingVisitor(false);
-                return;
-            }
-            const effectivityValidation = validateDate(healthCardEffectivityDate, 'Effectivity date');
-            if (!effectivityValidation.valid) {
-                setError(effectivityValidation.error);
-                setIsCreatingVisitor(false);
-                return;
-            }
+        // Dates: ISO from date inputs; ensure expiry >= effectivity
+        const effDate = healthCardEffectivityDate ? new Date(healthCardEffectivityDate) : null;
+        const expDate = healthCardExpiryDate ? new Date(healthCardExpiryDate) : null;
+        if (effDate && isNaN(effDate.getTime())) {
+            setError('Effectivity date is invalid');
+            setIsCreatingVisitor(false);
+            return;
         }
-
-        // Validate expiry date if provided
-        if (healthCardExpiryDate && healthCardExpiryDate.trim().length > 0) {
-            if (!dateRegex.test(healthCardExpiryDate)) {
-                setError('Expiry date must be in MM-DD-YYYY format');
-                setIsCreatingVisitor(false);
-                return;
-            }
-            
-            // Validate expiry date format and values (but allow future dates)
-            const expiryParts = healthCardExpiryDate.split('-');
-            const expiryMonth = parseInt(expiryParts[0], 10);
-            const expiryDay = parseInt(expiryParts[1], 10);
-            const expiryYear = parseInt(expiryParts[2], 10);
-            
-            // Check for absurd values
-            if (expiryMonth < 1 || expiryMonth > 12) {
-                setError('Expiry date has an invalid month');
-                setIsCreatingVisitor(false);
-                return;
-            }
-            if (expiryDay < 1 || expiryDay > 31) {
-                setError('Expiry date has an invalid day');
-                setIsCreatingVisitor(false);
-                return;
-            }
-            if (expiryYear < 1900 || expiryYear > 2100) {
-                setError('Expiry date has an invalid year');
-                setIsCreatingVisitor(false);
-                return;
-            }
-            
-            // Create date object and check if it's valid
-            const expiryDate = new Date(expiryYear, expiryMonth - 1, expiryDay);
-            if (expiryDate.getDate() !== expiryDay || expiryDate.getMonth() !== expiryMonth - 1 || expiryDate.getFullYear() !== expiryYear) {
-                setError('Expiry date is not a valid date');
-                setIsCreatingVisitor(false);
-                return;
-            }
-
-            // Check if expiry date is after effectivity date
-            if (healthCardEffectivityDate && healthCardEffectivityDate.trim().length > 0) {
-                const effectivityParts = healthCardEffectivityDate.split('-');
-                const effectivityDate = new Date(
-                    parseInt(effectivityParts[2], 10),
-                    parseInt(effectivityParts[0], 10) - 1,
-                    parseInt(effectivityParts[1], 10)
-                );
-                
-                if (expiryDate <= effectivityDate) {
-                    setError('Expiry date must be after effectivity date');
-                    setIsCreatingVisitor(false);
-                    return;
-                }
-            }
+        if (expDate && isNaN(expDate.getTime())) {
+            setError('Expiry date is invalid');
+            setIsCreatingVisitor(false);
+            return;
+        }
+        if (effDate && expDate && expDate < effDate) {
+            setError('Expiry date must be after or equal to effectivity date');
+            setIsCreatingVisitor(false);
+            return;
         }
 
         try {
-            await visitorService.create({
+            const payload = {
                 entityId: userData.entityId,
                 entitySerial: userData.entitySerial,
                 firstName: visitorForm.firstName.trim(),
@@ -458,17 +484,29 @@ const UserDashboard = () => {
                 dateOfBirth: visitorForm.dateOfBirth,
                 addressLine: visitorForm.addressLine.trim(),
                 city: visitorForm.city.trim(),
-                province: visitorForm.state.trim(), // Frontend uses 'state' but backend expects 'province'
+                province: visitorForm.state.trim(),
                 postalCode: visitorForm.postalCode.trim(),
                 gender: visitorForm.gender,
                 phone: phoneData.fullNumber,
                 phoneH: phoneHData.fullNumber || '',
+                phoneM: visitorForm.phoneM || '',
                 email: visitorForm.email.trim(),
-                healthCardNumber: cleanHealthCard,
-                healthCardVersion: healthCardVersion.trim(),
+                healthCardNumber: healthCardNumber,
+                healthCardVersion: healthCardVersion.trim().toUpperCase(),
                 healthCardEffectivityDate: healthCardEffectivityDate,
-                healthCardExpiryDate: healthCardExpiryDate
-            });
+                healthCardExpiryDate: healthCardExpiryDate,
+                notes: visitorForm.notes,
+                memo: visitorForm.memo,
+                guardianName: visitorForm.guardianName,
+                guardianId: visitorForm.guardianId,
+                guardianPhone: visitorForm.guardianPhone
+            };
+
+            if (editingVisitorId) {
+                await visitorService.update(editingVisitorId, payload);
+            } else {
+                await visitorService.create(payload);
+            }
 
             // Reset form
             setVisitorForm({
@@ -482,7 +520,13 @@ const UserDashboard = () => {
                 postalCode: '',
                 gender: '',
                 email: '',
-                phoneH: ''
+                phoneH: '',
+                phoneM: '',
+                notes: '',
+                memo: '',
+                guardianName: '',
+                guardianId: '',
+                guardianPhone: ''
             });
             setPhoneData({ fullNumber: '', valid: false });
             setPhoneHData({ fullNumber: '', valid: false });
@@ -492,31 +536,48 @@ const UserDashboard = () => {
             setHealthCardExpiryDate('');
             setShowVisitorModal(false);
             setError('');
+            setEditingVisitorId(null);
 
             // Reload visitors and interactions (a new visitor creates an interaction)
             await loadVisitors(userData.entityId);
-            await loadInteractions(userData.entityId);
+            if (!editingVisitorId) {
+                await loadInteractions(userData.entityId);
+            }
         } catch (err) {
-            setError(err.response?.data?.error || 'Failed to create visitor');
+            setError(err.response?.data?.error || (editingVisitorId ? 'Failed to update patient' : 'Failed to create visitor'));
         } finally {
             setIsCreatingVisitor(false);
         }
     };
 
-    const handleDeleteVisitor = async (visitorId) => {
-        if (window.confirm('Are you sure you want to delete this patient?')) {
-            setDeletingVisitorId(visitorId);
-            try {
-                await visitorService.delete(visitorId);
-                if (userData?.entityId) {
-                    await loadVisitors(userData.entityId);
-                }
-            } catch (e) {
-                alert('Failed to delete patient');
-            } finally {
-                setDeletingVisitorId(null);
-            }
-        }
+    const handleEditVisitor = (visitor) => {
+        setEditingVisitorId(visitor.id);
+        setVisitorForm({
+            firstName: visitor.firstName || '',
+            middleName: visitor.middleName || '',
+            lastName: visitor.lastName || '',
+            dateOfBirth: visitor.dateOfBirth || '',
+            addressLine: visitor.addressLine || '',
+            city: visitor.city || '',
+            state: visitor.province || visitor.state || '',
+            postalCode: visitor.postalCode || '',
+            gender: visitor.gender || '',
+            email: visitor.email || '',
+            phoneH: visitor.phoneH || '',
+            phoneM: visitor.phoneM || '',
+            notes: visitor.notes || '',
+            memo: visitor.memo || '',
+            guardianName: visitor.guardianName || '',
+            guardianId: visitor.guardianId || '',
+            guardianPhone: visitor.guardianPhone || ''
+        });
+        setPhoneData({ fullNumber: visitor.phone || '', valid: true });
+        setPhoneHData({ fullNumber: visitor.phoneH || '', valid: !!(visitor.phoneH) });
+        setHealthCardNumber(formatHealthCardNumber(visitor.healthCardNumber || ''));
+        setHealthCardVersion(visitor.healthCardVersion || '');
+        setHealthCardEffectivityDate(visitor.healthCardEffectivityDate || '');
+        setHealthCardExpiryDate(visitor.healthCardExpiryDate || '');
+        setShowVisitorModal(true);
     };
 
     const handlePatientClick = (patient) => {
@@ -529,7 +590,7 @@ const UserDashboard = () => {
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('text/plain', 'patient'); // Use text/plain for better compatibility
         e.dataTransfer.setData('patient', 'true');
-        
+
         // Create a custom drag image (box/card style)
         const dragImage = document.createElement('div');
         dragImage.className = 'bg-white border-2 border-blue-300 rounded-xl p-3 shadow-lg';
@@ -545,7 +606,7 @@ const UserDashboard = () => {
         `;
         document.body.appendChild(dragImage);
         e.dataTransfer.setDragImage(dragImage, 90, 45);
-        
+
         // Remove the drag image after a short delay
         setTimeout(() => {
             if (document.body.contains(dragImage)) {
@@ -557,26 +618,30 @@ const UserDashboard = () => {
     const handlePatientDrop = async (e) => {
         e.preventDefault();
         e.stopPropagation();
-        
+
         if (!draggedPatient) {
             console.log('No dragged patient found');
             return;
         }
 
-        console.log('Dropping patient:', draggedPatient);
+        await handleRegisterPatient(draggedPatient);
+        setDraggedPatient(null);
+    };
+
+    const handleRegisterPatient = async (patient) => {
+        if (!patient) return;
+
+        console.log('Registering patient:', patient);
 
         // Optimistic UI - create temporary interaction placeholder
         const tempId = `temp-${Date.now()}`;
-        const visitorSerial = draggedPatient.entitySerial 
-            ? `${draggedPatient.entitySerial}-${draggedPatient.serial}` 
-            : draggedPatient.serial;
         const optimisticInteraction = {
             id: tempId,
             interactionSerial: 'Loading...',
             entityId: userData.entityId,
             entitySerial: userData.entitySerial,
-            visitorId: draggedPatient.id,
-            visitorSerial: draggedPatient.serial,
+            visitorId: patient.id,
+            visitorSerial: patient.serial,
             officerId: '',
             officerSerial: '',
             createdAt: new Date().toISOString(),
@@ -584,47 +649,35 @@ const UserDashboard = () => {
             deletedAt: '',
             isPending: true,
             // Store visitor data for display
-            _visitor: draggedPatient
+            _visitor: patient
         };
-        
+
         setPendingInteractions(prev => [...prev, optimisticInteraction]);
         setIsCreatingInteraction(true);
 
         try {
             // Create a new interaction for this patient
-            // The backend will generate the interaction serial and timestamp
-            // Send just the serial number, not the composite format
-            const visitorSerial = draggedPatient.serial;
-
-            console.log('Creating interaction with:', {
-                entityId: userData.entityId,
-                entitySerial: userData.entitySerial,
-                visitorId: draggedPatient.id,
-                visitorSerial: visitorSerial
-            });
+            const visitorSerial = patient.serial;
 
             const response = await interactionService.create({
                 entityId: userData.entityId,
                 entitySerial: userData.entitySerial,
-                visitorId: draggedPatient.id,
+                visitorId: patient.id,
                 visitorSerial: visitorSerial
             });
 
             console.log('Successfully created interaction:', response);
-            
+
             // Remove optimistic update
             setPendingInteractions(prev => prev.filter(i => i.id !== tempId));
-            
+
             // Reload interactions to show the new one
-            await loadInteractions(userData.entityId);
-            setDraggedPatient(null);
+            await loadInteractions(userData.entityId, interactionFilter);
         } catch (err) {
             console.error('Failed to create interaction:', err);
-            console.error('Error details:', err.response?.data || err.message);
             // Remove optimistic update on error
             setPendingInteractions(prev => prev.filter(i => i.id !== tempId));
             showWarning('Failed to create registration: ' + (err.response?.data?.error || err.message));
-            setDraggedPatient(null);
         } finally {
             setIsCreatingInteraction(false);
         }
@@ -632,7 +685,7 @@ const UserDashboard = () => {
 
     const handleDeleteRegistration = async () => {
         if (!registrationToDelete) return;
-        
+
         setIsDeletingRegistration(true);
         try {
             await interactionService.delete(registrationToDelete.id);
@@ -658,14 +711,21 @@ const UserDashboard = () => {
 
     const handleLogout = () => {
         localStorage.removeItem('token');
+        localStorage.removeItem('entityName');
+        localStorage.removeItem('userRole');
+        localStorage.removeItem('userName');
+        localStorage.removeItem('entityId');
+        localStorage.removeItem('entitySerial');
         navigate('/user/login');
     };
 
     return (
-        <div className="flex h-[calc(100vh-64px)] relative overflow-x-hidden">
+        <div
+            className="flex h-[calc(100vh-64px)] relative overflow-x-hidden"
+        >
             {/* Mobile Overlay */}
             {sidebarOpen && (
-                <div 
+                <div
                     className="fixed inset-0 bg-black/50 z-40 lg:hidden"
                     onClick={() => setSidebarOpen(false)}
                 />
@@ -684,12 +744,6 @@ const UserDashboard = () => {
 
             {/* Main Content */}
             <main className="flex-1 overflow-x-hidden overflow-y-auto bg-slate-50">
-                <UserHeader 
-                    activeTab={activeTab} 
-                    sidebarOpen={sidebarOpen}
-                    setSidebarOpen={setSidebarOpen}
-                />
-
                 <div className="p-4 sm:p-6 lg:p-8">
                     {activeTab === 'reception' && (
                         <ReceptionTab
@@ -728,7 +782,9 @@ const UserDashboard = () => {
                             handleHealthCardChange={handleHealthCardChange}
                             error={error}
                             setError={setError}
-                            handleDeleteVisitor={handleDeleteVisitor}
+                            fieldErrors={fieldErrors}
+                            setFieldErrors={setFieldErrors}
+                            onEditVisitor={handleEditVisitor}
                             handlePatientClick={handlePatientClick}
                             selectedPatient={selectedPatient}
                             showPatientDetailModal={showPatientDetailModal}
@@ -753,12 +809,20 @@ const UserDashboard = () => {
                             handleDeleteRegistration={handleDeleteRegistration}
                             getVisitorName={getVisitorName}
                             getVisitorSerial={getVisitorSerial}
+
                             formatDate={formatDate}
+                            interactionFilter={interactionFilter}
+                            setInteractionFilter={setInteractionFilter}
+
                             isDeletingRegistration={isDeletingRegistration}
                             isCreatingInteraction={isCreatingInteraction}
                             isAssigningInteraction={isAssigningInteraction}
                             pendingInteractions={pendingInteractions}
                             pendingAssignments={pendingAssignments}
+                            handleDragEnd={handleDragEnd}
+                            draggedInteraction={draggedInteraction}
+                            handleRegisterPatient={handleRegisterPatient}
+                            nextVisitorSerial={nextVisitorSerial}
                         />
                     )}
 
