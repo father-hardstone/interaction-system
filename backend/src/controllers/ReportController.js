@@ -4,14 +4,14 @@ const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 
 class ReportController {
-    // Get all reports for a visitor
-    async getReportsByVisitor(req, res) {
+    // Get all reports for a patient
+    async getReportsByPatient(req, res) {
         try {
-            const { visitorId } = req.params;
-            const reports = await ReportService.getByVisitor(visitorId);
+            const { visitorId } = req.params; // Using visitorId as patientId
+            const reports = await ReportService.getByPatient(visitorId);
             res.json(reports);
         } catch (error) {
-            console.error('getReportsByVisitor error:', error);
+            console.error('getReportsByPatient error:', error);
             res.status(500).json({ error: error.message });
         }
     }
@@ -43,91 +43,74 @@ class ReportController {
     // Upload a report
     async uploadReport(req, res) {
         try {
-            const { 
-                entityId, 
-                entitySerial, 
-                visitorId, 
-                visitorSerial, 
-                interactionId, 
-                interactionSerial,
-                instituteName,
-                fileData,
+            const {
+                entityId,
+                patientId,
+                interactionId,
+                reportType,
+                procedureDate,
+                reportGeneratedDate,
+                labMetadata,
+                notes,
+                fileData, // base64
                 fileName,
-                fileType
+                mimeType,
+                uploadedBy
             } = req.body;
 
             // Validate required fields
-            if (!entityId || !entitySerial || !visitorId || !visitorSerial || !instituteName || !fileData || !fileName) {
+            if (!entityId || !patientId || !reportType || !procedureDate || !reportGeneratedDate || !fileData || !fileName || !mimeType) {
                 return res.status(400).json({ error: 'Missing required fields' });
             }
 
-            // Get next report number
-            const reportNumber = await ReportService.getNextReportNumber(
-                entityId, 
-                visitorId, 
-                interactionId || null
-            );
+            const reportId = uuidv4();
+            const year = new Date(procedureDate).getFullYear().toString();
+            const reportDateStr = procedureDate.replace(/-/g, ''); // yyyymmdd
+            const fileExtension = path.extname(fileName).toLowerCase();
+            const storageFilename = `${reportId}_${reportDateStr}${fileExtension}`;
 
-            // Clean serials for filename (same logic as ImageController)
-            const cleanEntitySerial = entitySerial.split('-')[0].replace(/^[A-Za-z]+/i, '').toLowerCase();
-            const cleanVisitorSerial = visitorSerial.includes('-') 
-                ? visitorSerial.split('-').pop().replace(/^[A-Za-z]+/i, '').toLowerCase()
-                : visitorSerial.replace(/^[A-Za-z]+/i, '').toLowerCase();
-            
-            let filename;
-            let fileExtension = path.extname(fileName).toLowerCase() || (fileType === 'pdf' ? '.pdf' : '.png');
-            
-            if (interactionId && interactionSerial) {
-                // Associated with interaction: e2-v3-i2-R1.pdf
-                const cleanInteractionSerial = interactionSerial.includes('-')
-                    ? interactionSerial.split('-').pop().replace(/^[A-Za-z]+/i, '').toLowerCase()
-                    : interactionSerial.replace(/^[A-Za-z]+/i, '').toLowerCase();
-                filename = `${cleanEntitySerial}-${cleanVisitorSerial}-${cleanInteractionSerial}-R${reportNumber}${fileExtension}`;
-            } else {
-                // Independent upload: e2-v3-R1.pdf
-                filename = `${cleanEntitySerial}-${cleanVisitorSerial}-R${reportNumber}${fileExtension}`;
-            }
-
-            // Create reports directory if it doesn't exist
-            const reportsDir = path.join(__dirname, '../../uploads/reports');
-            await fs.mkdir(reportsDir, { recursive: true });
+            // storage path: backend/uploads/{entityId}/{patientId}/reports/{year}/{filename}
+            const relativeDir = path.join('uploads', entityId, patientId, 'reports', year);
+            const absoluteDir = path.join(__dirname, '../../', relativeDir);
+            await fs.mkdir(absoluteDir, { recursive: true });
 
             // Handle file data (base64)
             let buffer;
             if (fileData.startsWith('data:')) {
-                // Base64 data URL
                 const base64Data = fileData.replace(/^data:[^;]+;base64,/, '');
                 buffer = Buffer.from(base64Data, 'base64');
             } else {
-                // Assume it's already base64
                 buffer = Buffer.from(fileData, 'base64');
             }
 
             // Save file
-            const filePath = path.join(reportsDir, filename);
-            await fs.writeFile(filePath, buffer);
+            const absoluteFilePath = path.join(absoluteDir, storageFilename);
+            const relativeFilePath = path.join(relativeDir, storageFilename).replace(/\\/g, '/');
+            await fs.writeFile(absoluteFilePath, buffer);
 
             // Create report record
-            const reportId = uuidv4();
             const reportData = {
                 id: reportId,
                 entityId,
-                entitySerial,
-                visitorId,
-                visitorSerial,
+                patientId,
                 interactionId: interactionId || '',
-                interactionSerial: interactionSerial || '',
-                instituteName,
-                filePath: `uploads/reports/${filename}`,
-                fileName: filename,
-                fileType: fileType || (fileExtension === '.pdf' ? 'pdf' : 'image'),
-                reportNumber,
-                uploadedAt: new Date().toISOString()
+                reportType,
+                procedureDate,
+                reportGeneratedDate,
+                fileMetadata: {
+                    localPath: relativeFilePath,
+                    filename: fileName,
+                    mimeType: mimeType,
+                    size: buffer.length
+                },
+                labMetadata: labMetadata || {},
+                notes: notes || '',
+                uploadedBy: uploadedBy || ''
             };
 
             const report = await ReportService.create(reportData);
 
-            console.log('Report uploaded:', report.filePath);
+            console.log('Report uploaded:', report.fileMetadata.localPath);
             res.json(report);
         } catch (error) {
             console.error('uploadReport error:', error);
@@ -140,7 +123,7 @@ class ReportController {
         try {
             const { id } = req.params;
             const report = await ReportService.findOne({ id });
-            
+
             if (!report) {
                 return res.status(404).json({ error: 'Report not found' });
             }

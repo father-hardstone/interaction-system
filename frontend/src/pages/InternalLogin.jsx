@@ -20,6 +20,7 @@ const InternalLogin = () => {
     const [password, setPassword] = useState('');
     const [entityKey, setEntityKey] = useState('');
     const [error, setError] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
     const navigate = useNavigate();
 
     // Load entity key from localStorage on mount
@@ -58,6 +59,7 @@ const InternalLogin = () => {
         e.preventDefault();
         setError('');
         setEmailError('');
+        if (isSubmitting) return;
 
         if (!hasValidIdentifier()) {
             setError('Please enter either a valid email address or phone number');
@@ -88,9 +90,10 @@ const InternalLogin = () => {
         }
 
         try {
+            setIsSubmitting(true);
             // Encrypt password before sending
             const encryptedPassword = encryptPassword(password);
-            
+
             const payload = {
                 password: encryptedPassword,
                 entityKey: entityKey.trim()
@@ -104,15 +107,25 @@ const InternalLogin = () => {
 
             const res = await officerService.login(payload);
             localStorage.setItem('token', res.token);
-            
+
             // Save entity key to localStorage for future logins
             localStorage.setItem('entityKey', entityKey.trim());
 
             const decoded = jwtDecode(res.token);
+
+            // Store relevant data in localStorage
+            localStorage.setItem('entityName', decoded.entityName || '');
+            localStorage.setItem('userRole', decoded.role || '');
+            localStorage.setItem('userName', decoded.name || '');
+            localStorage.setItem('entityId', decoded.entityId || '');
+            localStorage.setItem('entitySerial', decoded.entitySerial || '');
+
             const entitySerial = decoded.entitySerial || decoded.serial;
             navigate(`/${entitySerial.toLowerCase()}/user/dashboard`);
         } catch (err) {
             setError(err.response?.data?.error || 'Login failed');
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -175,8 +188,22 @@ const InternalLogin = () => {
                         />
                     </div>
 
-                    <button type="submit" className="mt-4 py-4 px-4 bg-primary text-white border-none rounded-xl font-semibold text-base cursor-pointer transition-all shadow-lg shadow-blue-300/30 hover:bg-primary-dark hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-400/40">
-                        Login
+                    <button
+                        type="submit"
+                        disabled={isSubmitting}
+                        className="mt-4 py-4 px-4 bg-primary text-white border-none rounded-xl font-semibold text-base cursor-pointer transition-all shadow-lg shadow-blue-300/30 hover:bg-primary-dark hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-400/40 disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                        {isSubmitting ? (
+                            <span className="flex items-center justify-center gap-2">
+                                <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Signing in...
+                            </span>
+                        ) : (
+                            'Login'
+                        )}
                     </button>
                 </form>
 

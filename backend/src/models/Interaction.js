@@ -88,6 +88,14 @@ const interactionSchema = new mongoose.Schema({
     closed: {
         type: Boolean,
         default: false
+    },
+    ongoing: {
+        type: Boolean,
+        default: false
+    },
+    incomplete: {
+        type: Boolean,
+        default: false
     }
 }, {
     timestamps: false,

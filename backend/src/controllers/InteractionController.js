@@ -8,12 +8,25 @@ class InteractionController {
     async getInteractionsByEntity(req, res) {
         try {
             const { entityId } = req.params;
-            console.log('getInteractionsByEntity - entityId:', entityId);
-            const all = await InteractionService.getAll();
-            console.log('getInteractionsByEntity - total interactions:', all.length);
-            const filtered = all.filter(
-                i => i.entityId === entityId && (!i.deletedAt || i.deletedAt === '')
-            );
+            const { filter } = req.query; // 'today', 'older', 'all'
+            console.log('getInteractionsByEntity - entityId:', entityId, 'filter:', filter);
+
+            const query = {
+                entityId,
+                deletedAt: ''
+            };
+
+            if (filter === 'today') {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                query.createdAt = { $gte: today.toISOString() };
+            } else if (filter === 'older') {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                query.createdAt = { $lt: today.toISOString() };
+            }
+
+            const filtered = await InteractionService.findMany(query);
             console.log('getInteractionsByEntity - filtered interactions:', filtered.length);
 
             res.json(filtered);
@@ -43,9 +56,9 @@ class InteractionController {
                 return res.status(401).json({ error: 'Invalid token' });
             }
 
-            // Check if user is a receptionist
-            if (decoded.role !== 'receptionist') {
-                return res.status(403).json({ error: 'Only receptionists can assign interactions to officers' });
+            // Check if user is a receptionist or officer
+            if (decoded.role !== 'receptionist' && decoded.role !== 'officer') {
+                return res.status(403).json({ error: 'Only receptionists and officers can assign interactions' });
             }
 
             // Check if interaction can be moved (not started, completed, or closed)
@@ -55,8 +68,8 @@ class InteractionController {
             }
 
             if (existing.started || existing.completed || existing.closed) {
-                return res.status(400).json({ 
-                    error: 'Cannot move interaction that has been started, completed, or closed' 
+                return res.status(400).json({
+                    error: 'Cannot move interaction that has been started, completed, or closed'
                 });
             }
 
@@ -89,14 +102,14 @@ class InteractionController {
     async createInteraction(req, res) {
         try {
             const { entityId, entitySerial, visitorId, visitorSerial } = req.body;
-            
+
             console.log('createInteraction - Received data:', {
                 entityId,
                 entitySerial,
                 visitorId,
                 visitorSerial
             });
-            
+
             if (!entityId || !entitySerial || !visitorId || !visitorSerial) {
                 return res.status(400).json({ error: 'Missing required fields' });
             }
@@ -104,7 +117,7 @@ class InteractionController {
             // Generate interaction serial
             const interactionSerial = await InteractionService.getNextSerialForEntity(entitySerial, visitorSerial);
             console.log('createInteraction - Generated interactionSerial:', interactionSerial);
-            
+
             if (!interactionSerial) {
                 return res.status(500).json({ error: 'Failed to generate interaction serial' });
             }
@@ -112,7 +125,7 @@ class InteractionController {
             const { v4: uuidv4 } = require('uuid');
             const interactionId = uuidv4();
             console.log('createInteraction - Generated id:', interactionId);
-            
+
             const now = new Date().toISOString();
 
             const interactionData = {
@@ -144,7 +157,7 @@ class InteractionController {
     async deleteInteraction(req, res) {
         try {
             const { id } = req.params;
-            
+
             // Check if interaction can be deleted (not started, completed, or closed)
             const existing = await InteractionService.findOne({ id });
             if (!existing) {
@@ -152,8 +165,8 @@ class InteractionController {
             }
 
             if (existing.started || existing.completed || existing.closed) {
-                return res.status(400).json({ 
-                    error: 'Cannot delete interaction that has been started, completed, or closed' 
+                return res.status(400).json({
+                    error: 'Cannot delete interaction that has been started, completed, or closed'
                 });
             }
 
@@ -178,7 +191,10 @@ class InteractionController {
                 objective,
                 assessmentPlan,
                 serviceLines,
-                started
+                started,
+                ongoing,
+                incomplete,
+                completed
             } = req.body;
 
             // Validate interaction exists
@@ -187,11 +203,9 @@ class InteractionController {
                 return res.status(404).json({ error: 'Interaction not found' });
             }
 
-            // Build update object
             const updates = {
                 editedAt: new Date().toISOString(),
-                completed: true, // Mark as completed when saved
-                // closed remains false until later step
+                completed: completed === true || (completed === undefined && existing.completed === true),
             };
 
             // Set started flag if provided (when doctor starts interaction)
@@ -200,6 +214,19 @@ class InteractionController {
             } else {
                 // If not explicitly set, ensure it's true when saving (interaction was started)
                 updates.started = true;
+            }
+
+            if (ongoing !== undefined) {
+                updates.ongoing = ongoing;
+            }
+            if (incomplete !== undefined) {
+                updates.incomplete = incomplete;
+            }
+
+            // If we are completing/saving, mark as no longer ongoing
+            if (!incomplete && !ongoing && updates.completed) {
+                updates.ongoing = false;
+                updates.incomplete = false;
             }
 
             // Add notes if provided

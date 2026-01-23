@@ -6,11 +6,16 @@ const { authenticateToken, requireRoles } = require('../middleware/auth');
 // Internal login for officers
 router.post('/login', OfficerController.login);
 
-// Everything else requires ENTITY auth (entity manages officers)
-router.use(authenticateToken, requireRoles(['entity']));
+// Read: allow entity + internal users to fetch officer list
+router.get(
+    '/entity/:entityId',
+    authenticateToken,
+    requireRoles(['entity', 'officer', 'receptionist']),
+    OfficerController.getOfficersByEntity
+);
 
-// Get all officers for an entity
-router.get('/entity/:entityId', OfficerController.getOfficersByEntity);
+// Mutations: entity manages officers
+router.use(authenticateToken, requireRoles(['entity']));
 
 // Create a new officer
 router.post('/', OfficerController.createOfficer);

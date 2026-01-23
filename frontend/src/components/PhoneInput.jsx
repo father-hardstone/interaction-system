@@ -27,7 +27,7 @@ const PhoneInput = ({ value, onChange, required }) => {
         // Show formatting characters (brackets, spaces, dashes) progressively as digits are typed
         let display = '';
         let digitIdx = 0;
-        
+
         for (let i = 0; i < format.length; i++) {
             if (format[i] === '#') {
                 if (digitIdx < digits.length) {
@@ -83,10 +83,10 @@ const PhoneInput = ({ value, onChange, required }) => {
 
     return (
         <div className="flex gap-3 w-full">
-            <select 
-                value={selectedCountry.code} 
-                onChange={handleCountryChange} 
-                className="w-[30%] min-w-[80px] max-w-[120px] bg-[url('data:image/svg+xml,%3csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 20 20\'%3e%3cpath stroke=\'%236b7280\' stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'1.5\' d=\'M6 8l4 4 4-4\'/%3e%3c/svg%3e')] bg-[right_0.5rem_center] bg-no-repeat bg-[length:1.5em_1.5em] pr-10 appearance-none py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-sm bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
+            <select
+                value={selectedCountry.code}
+                onChange={handleCountryChange}
+                className="w-[30%] min-w-[80px] max-w-[120px] bg-[url('data:image/svg+xml,%3csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 20 20\'%3e%3cpath stroke=\'%236b7280\' stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'1.5\' d=\'M6 8l4 4 4-4\'/%3e%3c/svg%3e')] bg-[right_0.5rem_center] bg-no-repeat bg-[length:1.5em_1.5em] pr-10 appearance-none py-2.5 px-3.5 border border-slate-200 rounded-xl font-inherit text-sm bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
             >
                 {COUNTRIES.map(c => (
                     <option key={c.code} value={c.code}>
@@ -99,7 +99,7 @@ const PhoneInput = ({ value, onChange, required }) => {
                 placeholder=""
                 value={formatNumber(phoneNumber, selectedCountry.format)}
                 onChange={handleNumberChange}
-                className="flex-1 py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
+                className="flex-1 py-2.5 px-3.5 border border-slate-200 rounded-xl font-inherit text-sm bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
                 required={required}
                 maxLength={selectedCountry.format.length}
             />

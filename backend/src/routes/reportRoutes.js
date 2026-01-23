@@ -5,8 +5,8 @@ const { authenticateToken, requireRoles } = require('../middleware/auth');
 
 router.use(authenticateToken, requireRoles(['entity', 'officer', 'receptionist']));
 
-// Get all reports for a visitor
-router.get('/visitor/:visitorId', ReportController.getReportsByVisitor);
+// Get all reports for a patient
+router.get('/patient/:visitorId', ReportController.getReportsByPatient);
 
 // Get all reports for an entity
 router.get('/entity/:entityId', ReportController.getReportsByEntity);

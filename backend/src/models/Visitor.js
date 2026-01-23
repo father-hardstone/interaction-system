@@ -4,7 +4,7 @@ const visitorSchema = new mongoose.Schema({
     id: {
         type: String,
         required: true,
-        unique: true
+        unique: true // 6-digit numeric string
     },
     serial: {
         type: String,
@@ -62,6 +62,10 @@ const visitorSchema = new mongoose.Schema({
         type: String,
         default: ''
     },
+    phoneM: {
+        type: String,
+        default: ''
+    },
     email: {
         type: String,
         default: ''
@@ -79,6 +83,26 @@ const visitorSchema = new mongoose.Schema({
         default: ''
     },
     healthCardExpiryDate: {
+        type: String,
+        default: ''
+    },
+    notes: {
+        type: String,
+        default: ''
+    },
+    memo: {
+        type: String,
+        default: ''
+    },
+    guardianName: {
+        type: String,
+        default: ''
+    },
+    guardianId: {
+        type: String,
+        default: ''
+    },
+    guardianPhone: {
         type: String,
         default: ''
     },
@@ -102,7 +126,7 @@ const visitorSchema = new mongoose.Schema({
 visitorSchema.index({ entityId: 1 });
 visitorSchema.index({ serial: 1 });
 visitorSchema.index({ phone: 1 });
-visitorSchema.index({ healthCardNumber: 1 });
+visitorSchema.index({ healthCardNumber: 1 }, { unique: true });
 
 const Visitor = mongoose.model('Visitor', visitorSchema);
 

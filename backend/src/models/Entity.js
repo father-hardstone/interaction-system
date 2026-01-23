@@ -42,6 +42,10 @@ const entitySchema = new mongoose.Schema({
         default: 'false',
         enum: ['true', 'false']
     },
+    patientIds: {
+        type: [String],
+        default: []
+    },
     createdAt: {
         type: String,
         default: () => new Date().toISOString()

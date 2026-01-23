@@ -22,6 +22,11 @@ class InteractionService {
         return interaction ? interaction.toObject() : null;
     }
 
+    async findMany(query) {
+        const interactions = await Interaction.find({ ...query, deletedAt: '' });
+        return interactions.map(i => i.toObject());
+    }
+
     async update(id, updates) {
         updates.editedAt = new Date().toISOString();
         const interaction = await Interaction.findOneAndUpdate(
@@ -35,7 +40,7 @@ class InteractionService {
     async delete(id) {
         const interaction = await Interaction.findOneAndUpdate(
             { id },
-            { 
+            {
                 deletedAt: new Date().toISOString()
             },
             { new: true }
@@ -65,7 +70,7 @@ class InteractionService {
     async getNextSerialForEntity(entitySerial, visitorSerial) {
         try {
             console.log('getNextSerialForEntity - Input:', { entitySerial, visitorSerial });
-            
+
             // visitorSerial should be just the serial number (e.g., "1"), not composite
             // If it's composite (e.g., "E1-1"), extract just the serial part
             let serialNumber = visitorSerial;
@@ -74,12 +79,12 @@ class InteractionService {
                 const parts = visitorSerial.split('-');
                 serialNumber = parts[parts.length - 1];
             }
-            
+
             const all = await this.getAll();
             let max = 0;
             const prefix = `${entitySerial}-${serialNumber}-I`;
             console.log('getNextSerialForEntity - Prefix:', prefix);
-            
+
             all.forEach(item => {
                 if (item.interactionSerial && item.interactionSerial.startsWith(prefix)) {
                     // Extract number from composite serial (e.g., "E1-V1-I1" -> 1)
@@ -89,7 +94,7 @@ class InteractionService {
                     }
                 }
             });
-            
+
             const result = `${prefix}${max + 1}`;
             console.log('getNextSerialForEntity - Result:', result);
             return result;

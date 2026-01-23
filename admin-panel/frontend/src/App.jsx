@@ -1,24 +1,50 @@
-import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import AdminHome from './pages/AdminHome';
 import ProtectedRoute from './components/ProtectedRoute';
 import PublicOnlyRoute from './components/PublicOnlyRoute';
+import AdminProfileMenu from './components/AdminProfileMenu';
+import { jwtDecode } from 'jwt-decode';
+
+const NavBar = () => {
+  const location = useLocation();
+
+  const token = localStorage.getItem('token');
+  let isAuthedAdmin = false;
+  if (token) {
+    try {
+      const decoded = jwtDecode(token);
+      const currentTime = Date.now() / 1000;
+      isAuthedAdmin = !!(decoded.exp && decoded.exp > currentTime && decoded.role === 'admin');
+    } catch {
+      isAuthedAdmin = false;
+    }
+  }
+
+  const showDashboardLabel = isAuthedAdmin && location.pathname.startsWith('/admin/dashboard');
+
+  return (
+    <nav className="flex justify-between items-center gap-8 px-6 py-4 bg-white/80 backdrop-blur-lg sticky top-0 z-[100] border-b border-white/30 w-full">
+      <Link to="/" className="flex items-center gap-2 text-gray-800">
+        <span className="font-bold text-xl">Interaction System</span>
+        {showDashboardLabel && (
+          <>
+            <span className="text-lg text-slate-500">|</span>
+            <span className="text-base text-slate-600">Admin Dashboard</span>
+          </>
+        )}
+      </Link>
+      {isAuthedAdmin && <AdminProfileMenu />}
+    </nav>
+  );
+};
 
 function App() {
   return (
     <Router>
       <div className="w-full min-h-screen flex flex-col overflow-x-hidden">
-        {/* Navigation removed from auth pages as requested. 
-            We can keep a simple logo or minimal header if needed, 
-            but the request was to remove buttons from top bar.
-            I will keep a minimal header just for Home/Brand navigation if not on auth pages?
-            Or just remove the nav links completely since they are now in the cards.
-        */}
-        <nav className="flex justify-between items-center gap-8 px-6 py-4 bg-white/80 backdrop-blur-lg sticky top-0 z-[100] border-b border-white/30 w-full">
-          <Link to="/" className="font-bold text-xl text-gray-800">Interaction System</Link>
-          {/* Empty right side, or maybe just simple Home link if deep in app */}
-        </nav>
+        <NavBar />
 
         <Routes>
           {/* Public-only Auth Routes (if logged in as admin, redirect to dashboard) */}
