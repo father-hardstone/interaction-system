@@ -119,6 +119,10 @@ const interactionSchema = new mongoose.Schema({
     incomplete: {
         type: Boolean,
         default: false
+    },
+    billed: {
+        type: Boolean,
+        default: false
     }
 }, {
     timestamps: false,

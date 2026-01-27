@@ -59,7 +59,8 @@ class InteractionService {
             {
                 officerId: officerId || '',
                 officerSerial: officerSerial || '',
-                editedAt: new Date().toISOString()
+                editedAt: new Date().toISOString(),
+                billed: false  // Ensure billed is false when assigning/unassigning
             },
             { new: true }
         );

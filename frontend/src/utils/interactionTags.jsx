@@ -42,8 +42,14 @@ export const getInteractionTags = (interaction) => {
         });
     }
 
-    // Billed tag (if serviceLines exist with fees or accounting numbers)
-    if (interaction.serviceLines && interaction.serviceLines.length > 0) {
+    // Billed tag (check explicit billed field first, then fallback to serviceLines check)
+    if (interaction.billed === true) {
+        tags.push({
+            label: 'Billed',
+            className: 'bg-purple-50 text-purple-600 border-purple-100'
+        });
+    } else if (interaction.billed === undefined && interaction.serviceLines && interaction.serviceLines.length > 0) {
+        // Fallback: check serviceLines for backward compatibility with old data
         const hasBilling = interaction.serviceLines.some(line => 
             (line.totalFee && line.totalFee > 0) || line.accountingNumber
         );
