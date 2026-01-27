@@ -77,7 +77,8 @@ class InteractionController {
             // Update interaction
             const updates = {
                 officerId: officerId || '',
-                officerSerial: officerSerial || ''
+                officerSerial: officerSerial || '',
+                billed: false  // Ensure billed is false when assigning/unassigning
             };
 
             const updated = await InteractionService.update(id, updates);
@@ -151,7 +152,8 @@ class InteractionController {
                 officerSerial: '',
                 createdAt: now,
                 editedAt: now,
-                deletedAt: ''
+                deletedAt: '',
+                billed: false
             };
 
             console.log('createInteraction - Interaction data to save:', interactionData);
@@ -210,7 +212,8 @@ class InteractionController {
                 started,
                 ongoing,
                 incomplete,
-                completed
+                completed,
+                billed
             } = req.body;
 
             // Validate interaction exists
@@ -221,8 +224,16 @@ class InteractionController {
 
             const updates = {
                 editedAt: new Date().toISOString(),
-                completed: completed === true || (completed === undefined && existing.completed === true),
+                completed: completed === true || (completed === undefined && existing.completed === true)
             };
+
+            // Set billed flag - default to false unless explicitly set to true
+            if (billed !== undefined) {
+                updates.billed = billed === true;
+            } else {
+                // If not explicitly provided, ensure it's false when saving details
+                updates.billed = false;
+            }
 
             // Set started flag if provided (when doctor starts interaction)
             if (started !== undefined) {

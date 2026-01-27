@@ -279,7 +279,8 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
                 started: true,
                 ongoing: true,
                 incomplete: false,
-                completed: false
+                completed: false,
+                billed: false
             });
             setActiveViewTab('ongoing');
         } catch (error) {
@@ -298,7 +299,8 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
                 started: false,
                 ongoing: false,
                 incomplete: false,
-                completed: false
+                completed: false,
+                billed: false
             });
             setShowCancelModal(false);
             resetInteractionFields();
@@ -435,6 +437,7 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
             ongoing: false,
             incomplete: false,
             completed: false,
+            billed: false,  // Ensure billed is false when saving interaction data
             ...statusOverride
         };
 
