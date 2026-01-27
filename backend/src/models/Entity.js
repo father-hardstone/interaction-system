@@ -46,6 +46,14 @@ const entitySchema = new mongoose.Schema({
         type: [String],
         default: []
     },
+    profilePicture: {
+        type: String,
+        default: ''
+    },
+    icon: {
+        type: String,
+        default: ''
+    },
     createdAt: {
         type: String,
         default: () => new Date().toISOString()

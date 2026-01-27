@@ -1,109 +1,68 @@
 import { useState, useEffect } from 'react';
 
-const COUNTRIES = [
-    { code: 'US', name: 'United States', dialCode: '+1', length: 10, format: '(###) ###-####', flag: '🇺🇸' },
-    { code: 'CA', name: 'Canada', dialCode: '+1', length: 10, format: '(###) ###-####', flag: '🇨🇦' },
-    { code: 'PK', name: 'Pakistan', dialCode: '+92', length: 10, format: '(###) #######', flag: '🇵🇰' },
-    { code: 'SA', name: 'Saudi Arabia', dialCode: '+966', length: 9, format: '(5#) ###-####', flag: '🇸🇦' },
-];
+// Always use +1 (US/Canada) format - simple format: ###-###-####
+const COUNTRY = { dialCode: '+1', length: 10 };
 
-const PhoneInput = ({ value, onChange, required }) => {
-    const [selectedCountry, setSelectedCountry] = useState(COUNTRIES[0]);
+const PhoneInput = ({ value, onChange, required, disabled }) => {
     const [phoneNumber, setPhoneNumber] = useState('');
 
     // Extract initial values if provided
     useEffect(() => {
-        // If value is passed (e.g. edit mode), we might need to parse it. 
-        // For now, simple state management is fine.
-    }, []);
+        if (value && value.startsWith('+')) {
+            // Extract digits after +1
+            const digits = value.replace(/^\+1/, '').replace(/\D/g, '');
+            setPhoneNumber(digits);
+        } else if (!value) {
+            setPhoneNumber('');
+        }
+    }, [value]);
 
-    const formatNumber = (digits, format) => {
-        // If no digits, return empty string (no formatting shown)
+    const formatNumber = (digits) => {
         if (!digits || digits.length === 0) {
             return '';
         }
-
-        // Build formatted display as digits are entered
-        // Show formatting characters (brackets, spaces, dashes) progressively as digits are typed
-        let display = '';
-        let digitIdx = 0;
-
-        for (let i = 0; i < format.length; i++) {
-            if (format[i] === '#') {
-                if (digitIdx < digits.length) {
-                    display += digits[digitIdx];
-                    digitIdx++;
-                } else {
-                    // No more digits, stop here (don't show trailing formatting)
-                    break;
-                }
-            } else {
-                // Formatting character - show it if we've already placed a digit before it
-                // and there are more digits to place after it
-                if (digitIdx > 0 && digitIdx < digits.length) {
-                    // Check if there's a digit placeholder coming up
-                    let hasUpcomingDigit = false;
-                    for (let j = i + 1; j < format.length; j++) {
-                        if (format[j] === '#') {
-                            hasUpcomingDigit = true;
-                            break;
-                        }
-                    }
-                    if (hasUpcomingDigit) {
-                        display += format[i];
-                    }
-                }
-            }
+        
+        // Simple format: ###-###-####
+        if (digits.length <= 3) {
+            return digits;
+        } else if (digits.length <= 6) {
+            return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+        } else {
+            return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6, 10)}`;
         }
-        return display;
-    };
-
-    const handleCountryChange = (e) => {
-        const country = COUNTRIES.find(c => c.code === e.target.value);
-        setSelectedCountry(country);
-        setPhoneNumber(''); // Reset number on country change to avoid format conflicts
-        onChange({ fullNumber: '', valid: false });
     };
 
     const handleNumberChange = (e) => {
         const input = e.target.value;
-        // Extract only digits
-        const digits = input.replace(/\D/g, '');
+        // Remove +1 prefix if user types it, then extract only digits
+        let digits = input.replace(/^\+1\s*/, '').replace(/\D/g, '');
 
         // Limit to max length
-        if (digits.length > selectedCountry.length) return;
+        if (digits.length > COUNTRY.length) {
+            digits = digits.slice(0, COUNTRY.length);
+        }
 
         setPhoneNumber(digits);
 
-        const valid = digits.length === selectedCountry.length;
-        const fullNumber = `${selectedCountry.dialCode}${digits}`;
+        const valid = digits.length === COUNTRY.length;
+        const fullNumber = `${COUNTRY.dialCode}${digits}`;
 
         onChange({ fullNumber, valid, raw: digits });
     };
 
+    const displayValue = phoneNumber ? `+1 ${formatNumber(phoneNumber)}` : '';
+
     return (
-        <div className="flex gap-3 w-full">
-            <select
-                value={selectedCountry.code}
-                onChange={handleCountryChange}
-                className="w-[30%] min-w-[80px] max-w-[120px] bg-[url('data:image/svg+xml,%3csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 20 20\'%3e%3cpath stroke=\'%236b7280\' stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'1.5\' d=\'M6 8l4 4 4-4\'/%3e%3c/svg%3e')] bg-[right_0.5rem_center] bg-no-repeat bg-[length:1.5em_1.5em] pr-10 appearance-none py-2.5 px-3.5 border border-slate-200 rounded-xl font-inherit text-sm bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
-            >
-                {COUNTRIES.map(c => (
-                    <option key={c.code} value={c.code}>
-                        {c.flag} {c.dialCode}
-                    </option>
-                ))}
-            </select>
-            <input
-                type="text"
-                placeholder=""
-                value={formatNumber(phoneNumber, selectedCountry.format)}
-                onChange={handleNumberChange}
-                className="flex-1 py-2.5 px-3.5 border border-slate-200 rounded-xl font-inherit text-sm bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
-                required={required}
-                maxLength={selectedCountry.format.length}
-            />
-        </div>
+        <input
+            type="text"
+            placeholder="+1 416-880-0766"
+            value={displayValue}
+            onChange={handleNumberChange}
+            disabled={disabled}
+            className={`w-full py-2.5 px-3.5 border border-slate-200 rounded-xl font-inherit text-sm ${disabled ? 'bg-slate-100 cursor-not-allowed text-slate-500' : 'bg-slate-50 text-slate-900'} transition-all focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100`}
+            required={required}
+            maxLength={15} // +1 ###-###-#### = 15 chars
+        />
     );
 };
 

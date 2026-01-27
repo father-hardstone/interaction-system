@@ -53,5 +53,22 @@ export const entityService = {
     delete: async (id) => {
         const response = await api.delete(`/entities/${id}`);
         return response.data;
+    },
+
+    // Entity Settings (Self-service)
+    getSettings: async () => {
+        const response = await api.get('/entities/settings');
+        return response.data;
+    },
+
+    updateSettings: async (data) => {
+        const response = await api.put('/entities/settings', data);
+        return response.data;
+    },
+
+    // Get entity by ID (for authenticated users)
+    getById: async (id) => {
+        const response = await api.get(`/entities/${id}`);
+        return response.data;
     }
 };

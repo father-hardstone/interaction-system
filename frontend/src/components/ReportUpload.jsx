@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { reportService } from '../services/reportService';
 import api from '../services/api';
+import supabaseStorageService from '../services/supabaseService';
 
 const REPORT_TYPES = [
     { value: 'blood_test', label: 'Blood Test' },
@@ -179,9 +180,23 @@ const ReportUpload = ({
 
             reader.onloadend = async () => {
                 try {
+                    setUploadProgress(30);
+                    
+                    // Generate report ID using crypto.randomUUID() (built-in browser API)
+                    const reportId = crypto.randomUUID();
+                    
+                    // Upload file to Supabase first
+                    setUploadProgress(50);
+                    const supabasePath = await supabaseStorageService.uploadReport(
+                        selectedFile,
+                        entityId,
+                        visitor.id,
+                        reportId
+                    );
+                    
                     setUploadProgress(70);
-                    const base64Data = reader.result;
 
+                    // Send report metadata with Supabase path to backend
                     const reportData = {
                         entityId,
                         patientId: visitor.id,
@@ -195,9 +210,11 @@ const ReportUpload = ({
                             externalReportId
                         },
                         notes,
-                        fileData: base64Data,
+                        supabasePath: supabasePath, // Supabase path instead of fileData
                         fileName: selectedFile.name,
                         mimeType: selectedFile.type,
+                        fileSize: selectedFile.size,
+                        reportId: reportId,
                         uploadedBy: 'system' // Should be current user
                     };
 
@@ -315,7 +332,10 @@ const ReportUpload = ({
                                                 <option value="">Independent</option>
                                                 {completedInteractions.map((interaction) => (
                                                     <option key={interaction.id} value={interaction.id}>
-                                                        {interaction.interactionSerial} ({new Date(interaction.editedAt || interaction.createdAt).toLocaleDateString()})
+                                                        {interaction.interactionSerial} ({(() => {
+                                                            const d = new Date(interaction.editedAt || interaction.createdAt);
+                                                            return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}-${d.getFullYear()}`;
+                                                        })()})
                                                     </option>
                                                 ))}
                                             </select>

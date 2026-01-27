@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import PhoneInput from '../components/PhoneInput';
+import PasswordInput from '../components/PasswordInput';
 import { officerService } from '../services/officerService';
+import { entityService } from '../services/entityService';
+import supabaseStorageService from '../services/supabaseService';
 import { validateEmail } from '../utils/crypto';
 import { jwtDecode } from 'jwt-decode';
 import CryptoJS from 'crypto-js';
@@ -117,8 +120,31 @@ const InternalLogin = () => {
             localStorage.setItem('entityName', decoded.entityName || '');
             localStorage.setItem('userRole', decoded.role || '');
             localStorage.setItem('userName', decoded.name || '');
-            localStorage.setItem('entityId', decoded.entityId || '');
+            const entityId = decoded.entityId || '';
+            localStorage.setItem('entityId', entityId);
             localStorage.setItem('entitySerial', decoded.entitySerial || '');
+
+            // Fetch and cache entity icon immediately after login
+            if (entityId) {
+                try {
+                    const entityData = await entityService.getById(entityId);
+                    if (entityData.icon && !entityData.icon.startsWith('data:image') && !entityData.icon.startsWith('http')) {
+                        const url = await supabaseStorageService.getFileUrl('CRM testing', entityData.icon);
+                        if (url) {
+                            const cacheKey = `entityIcon_${entityId}`;
+                            localStorage.setItem(cacheKey, url);
+                            localStorage.setItem('cachedEntityId', entityId);
+                        }
+                    } else if (entityData.icon && (entityData.icon.startsWith('http') || entityData.icon.startsWith('data:image'))) {
+                        const cacheKey = `entityIcon_${entityId}`;
+                        localStorage.setItem(cacheKey, entityData.icon);
+                        localStorage.setItem('cachedEntityId', entityId);
+                    }
+                } catch (err) {
+                    // Silently fail - icon will be fetched by NavBar if needed
+                    console.error('Failed to preload entity icon:', err);
+                }
+            }
 
             const entitySerial = decoded.entitySerial || decoded.serial;
             navigate(`/${entitySerial.toLowerCase()}/user/dashboard`);
@@ -166,13 +192,11 @@ const InternalLogin = () => {
 
                     <div className="flex flex-col gap-2">
                         <label className="text-sm font-semibold text-slate-900">Password <span className="text-error">*</span></label>
-                        <input
-                            type="password"
+                        <PasswordInput
                             placeholder="Enter your password"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
                             required
-                            className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
                         />
                     </div>
 

@@ -114,6 +114,18 @@ class InteractionController {
                 return res.status(400).json({ error: 'Missing required fields' });
             }
 
+            // Check if there's already an active (non-completed) interaction for this visitor
+            const existingActive = await InteractionService.findOne({
+                visitorId: visitorId,
+                entityId: entityId,
+                completed: { $ne: true },
+                deletedAt: ''
+            });
+
+            if (existingActive) {
+                return res.status(400).json({ error: 'Patient already has an active registration' });
+            }
+
             // Generate interaction serial
             const interactionSerial = await InteractionService.getNextSerialForEntity(entitySerial, visitorSerial);
             console.log('createInteraction - Generated interactionSerial:', interactionSerial);
@@ -191,6 +203,10 @@ class InteractionController {
                 objective,
                 assessmentPlan,
                 serviceLines,
+                referral,
+                medications,
+                followup,
+                savedNotes,
                 started,
                 ongoing,
                 incomplete,
@@ -262,7 +278,6 @@ class InteractionController {
                 };
             }
 
-            // Add service lines if provided
             if (serviceLines !== undefined) {
                 updates.serviceLines = serviceLines.map(line => ({
                     serialNumber: line.serialNumber || 1,
@@ -271,6 +286,41 @@ class InteractionController {
                     diagnostic: line.diagnostic || '',
                     totalFee: parseFloat(line.totalFee) || 0,
                     accountingNumber: line.accountingNumber || ''
+                }));
+            }
+
+            if (referral !== undefined) {
+                updates.referral = {
+                    type: referral.type || '',
+                    reason: referral.reason || '',
+                    to: referral.to || '',
+                    date: referral.date || ''
+                };
+            }
+
+            if (medications !== undefined) {
+                updates.medications = medications.map(med => ({
+                    name: med.name || '',
+                    dosage: med.dosage || '',
+                    suspension: med.suspension || '',
+                    frequency: med.frequency || '',
+                    duration: med.duration || '',
+                    refills: parseInt(med.refills) || 0,
+                    instructions: med.instructions || ''
+                }));
+            }
+
+            if (followup !== undefined) {
+                updates.followup = {
+                    required: followup.required || false,
+                    date: followup.date || ''
+                };
+            }
+
+            if (savedNotes !== undefined) {
+                updates.savedNotes = savedNotes.map(note => ({
+                    text: note.text || '',
+                    timestamp: note.timestamp || ''
                 }));
             }
 

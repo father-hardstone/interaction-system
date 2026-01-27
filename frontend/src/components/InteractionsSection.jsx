@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import api from '../services/api';
 import { useDropZone } from '../hooks/useDragAndDrop';
+import { renderInteractionTags } from '../utils/interactionTags';
 
 const InteractionsSection = ({
     interactions,
@@ -21,6 +22,7 @@ const InteractionsSection = ({
     handleDeleteRegistration,
     getVisitorName,
     getVisitorSerial,
+    getVisitorHealthCard,
     formatDate,
     isDeletingRegistration,
     isCreatingInteraction,
@@ -31,55 +33,12 @@ const InteractionsSection = ({
 
     draggedInteraction,
     interactionFilter,
-    setInteractionFilter
+    setInteractionFilter,
+    onInteractionClick
 }) => {
-    const [selectedInteraction, setSelectedInteraction] = useState(null);
-    const [showInteractionDetailModal, setShowInteractionDetailModal] = useState(false);
     const [draggedOverDelete, setDraggedOverDelete] = useState(false);
-    const [viewingMedia, setViewingMedia] = useState(null); // { type: 'image' | 'pdf', url: string, title?: string }
 
-    // Helper to get image URL (if it's a path, prepend API URL)
-    const getImageUrl = (imagePath) => {
-        try {
-            if (!imagePath) return null;
-            if (imagePath.startsWith('data:image') || imagePath.startsWith('http')) {
-                return imagePath;
-            }
-            // If it's a relative path, construct full URL
-            const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-            return `${API_URL.replace('/api', '')}/${imagePath}`;
-        } catch (error) {
-            console.error('Error getting image URL:', error);
-            return null;
-        }
-    };
 
-    // Safe handler to open interaction detail modal
-    const handleInteractionClick = (interaction, canDrag) => {
-        if (!canDrag && interaction) {
-            try {
-                console.log('Opening interaction detail:', interaction);
-                // Ensure interaction has all required properties with defaults
-                const safeInteraction = {
-                    ...interaction,
-                    ccReason: interaction.ccReason || null,
-                    subjective: interaction.subjective || null,
-                    objective: interaction.objective || null,
-                    assessmentPlan: interaction.assessmentPlan || null,
-                    serviceLines: Array.isArray(interaction.serviceLines) ? interaction.serviceLines : [],
-                    completed: interaction.completed || false,
-                    closed: interaction.closed || false,
-                    started: interaction.started || false
-                };
-                setSelectedInteraction(safeInteraction);
-                setShowInteractionDetailModal(true);
-            } catch (error) {
-                console.error('Error opening interaction detail:', error);
-                console.error('Interaction object:', interaction);
-                alert('Error opening interaction details. Please check the console.');
-            }
-        }
-    };
 
     return (
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden overflow-x-hidden">
@@ -135,9 +94,9 @@ const InteractionsSection = ({
             </div>
 
             {/* Drag and Drop Area */}
-            <div className="p-4 sm:p-6 flex flex-col lg:flex-row gap-6 min-h-[520px] h-full">
+            <div className="p-4 sm:p-6 flex flex-col lg:flex-row gap-6 min-h-[520px] lg:min-h-0 lg:h-full">
                 {/* Left Side - Unassigned Interactions */}
-                <div className="flex-1 flex flex-col min-w-0">
+                <div className="flex-[3] flex flex-col min-w-0">
                     <div className="flex justify-between items-center mb-4">
                         <h3 className="text-sm font-semibold text-slate-700">Unassigned Registrations</h3>
                         <div
@@ -174,19 +133,9 @@ const InteractionsSection = ({
                         onDrop={(e) => {
                             e.preventDefault();
                             setDraggedOverUnassigned(false);
-
-                            // Patient drop suspended for now as per subtab separation
-                            /*
-                            const patientData = e.dataTransfer?.getData('patient') || e.dataTransfer?.getData('text/plain') || (e.type === 'touchend' ? 'patient' : '');
-                            if (patientData === 'true' || patientData === 'patient' || e.type === 'touchend') {
-                                handlePatientDrop(e);
-                            } else {
-                                handleDrop(e, null);
-                            }
-                            */
                             handleDrop(e, null);
                         }}
-                        className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 p-3 sm:p-4 rounded-xl transition-colors flex-1 min-h-[300px] sm:min-h-[420px] ${draggedOverUnassigned ? 'bg-blue-50 border-2 border-blue-300 border-dashed' : 'bg-slate-50'
+                        className={`grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 p-4 rounded-xl transition-colors flex-1 min-h-[420px] ${draggedOverUnassigned ? 'bg-blue-50 border-2 border-blue-300 border-dashed' : 'bg-slate-50'
                             }`}
                     >
                         {/* Show existing interactions first */}
@@ -195,6 +144,16 @@ const InteractionsSection = ({
                             .map((interaction) => {
                                 const canDrag = (userData?.role === 'receptionist' || userData?.role === 'officer') && !interaction.started && !interaction.completed && !interaction.closed;
                                 const isBeingDeleted = draggedOverDelete && draggedInteraction?.id === interaction.id;
+
+                                // Calculate Last Visit
+                                const patientHistory = interactions
+                                    .filter(past => past.visitorId === interaction.visitorId && past.completed && past.id !== interaction.id)
+                                    .sort((a, b) => new Date(b.editedAt || b.createdAt) - new Date(a.editedAt || a.createdAt));
+
+                                const lastVisitDate = patientHistory.length > 0
+                                    ? formatDate(patientHistory[0].editedAt || patientHistory[0].createdAt, false)
+                                    : 'New Patient';
+
                                 return (
                                     <div
                                         key={interaction.id}
@@ -204,61 +163,45 @@ const InteractionsSection = ({
                                             handleDragEnd(e);
                                             setDraggedOverDelete(false);
                                         }}
-                                        className={`bg-white border-2 rounded-xl p-4 transition-all shadow-sm aspect-square flex flex-col justify-between ${isBeingDeleted
-                                            ? 'border-red-400 bg-red-50 scale-95 opacity-80'
-                                            : canDrag
-                                                ? 'border-blue-200 cursor-move hover:bg-blue-50 hover:border-blue-300 hover:shadow-md'
-                                                : 'border-blue-200 cursor-not-allowed opacity-60'
-                                            }`}
+                                        onClick={() => onInteractionClick(interaction)}
+                                        className={`group/card relative bg-white border border-slate-200 rounded-2xl p-5 transition-all hover:shadow-xl hover:shadow-blue-500/5 hover:-translate-y-1 active:scale-[0.98] flex flex-col justify-between h-fit overflow-hidden ${isBeingDeleted ? 'ring-2 ring-red-500 bg-red-50' : 'hover:border-blue-400'}`}
                                     >
-                                        <div>
-                                            <div className={`text-xs font-semibold mb-2 ${isBeingDeleted ? 'text-red-700' : 'text-blue-700'}`}>
-                                                {interaction.interactionSerial || 'N/A'}
+                                        <div className="absolute top-0 right-0 w-32 h-32 bg-blue-50/20 rounded-full -mr-12 -mt-12 transition-transform group-hover/card:scale-110"></div>
+
+                                        <div className="relative flex flex-col h-full gap-3">
+                                            <div className="flex justify-between items-start">
+                                                <span className="text-xs font-black text-blue-600 bg-blue-50/80 px-2.5 py-1 rounded-lg border border-blue-100 uppercase tracking-widest">
+                                                    {interaction.interactionSerial || 'REG-PENDING'}
+                                                </span>
+                                                {canDrag && (
+                                                    <div className="flex items-center gap-1.5 opacity-0 group-hover/card:opacity-100 transition-opacity">
+                                                        <svg className="w-4 h-4 text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M4 6h16M4 12h16M4 18h16" />
+                                                        </svg>
+                                                    </div>
+                                                )}
                                             </div>
-                                            <div className="text-sm font-medium text-slate-900 mb-1">
-                                                {getVisitorName(interaction.visitorId)}
+
+                                            <div className="space-y-2 flex-1">
+                                                <div className="text-lg font-black text-slate-900 group-hover/card:text-blue-700 transition-colors truncate uppercase tracking-tighter">
+                                                    {getVisitorName(interaction.visitorId)}
+                                                </div>
+                                                <div className="text-sm font-black text-slate-600 font-mono tracking-wider">
+                                                    {getVisitorHealthCard(interaction.visitorId)}
+                                                </div>
+                                                <div className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+                                                    {formatDate(interaction.createdAt, false)}
+                                                </div>
                                             </div>
-                                            <div className="text-xs text-slate-600 mb-2">
-                                                {getVisitorSerial(interaction.visitorId)}
-                                            </div>
-                                            {/* Status tags */}
-                                            {(interaction.completed || interaction.closed) && (
-                                                <div className="flex gap-1.5 mt-2 flex-wrap">
-                                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border ${interaction.completed
-                                                        ? 'bg-green-50 text-green-700 border-green-200'
-                                                        : 'bg-red-50 text-red-700 border-red-200'
-                                                        }`}>
-                                                        {interaction.completed ? (
-                                                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                                                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                                            </svg>
-                                                        ) : (
-                                                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                                                                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                                                            </svg>
-                                                        )}
-                                                        Completed
-                                                    </span>
-                                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border ${interaction.closed
-                                                        ? 'bg-green-50 text-green-700 border-green-200'
-                                                        : 'bg-red-50 text-red-700 border-red-200'
-                                                        }`}>
-                                                        {interaction.closed ? (
-                                                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                                                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                                            </svg>
-                                                        ) : (
-                                                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                                                                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                                                            </svg>
-                                                        )}
-                                                        Closed
+
+                                            <div className="pt-3 border-t border-slate-50">
+                                                <div className="flex flex-col">
+                                                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Last Visit</span>
+                                                    <span className={`text-sm font-black uppercase tracking-widest ${lastVisitDate === 'New Patient' ? 'text-emerald-500' : 'text-blue-600'}`}>
+                                                        {lastVisitDate}
                                                     </span>
                                                 </div>
-                                            )}
-                                        </div>
-                                        <div className="text-xs text-slate-500">
-                                            {formatDate(interaction.createdAt)}
+                                            </div>
                                         </div>
                                     </div>
                                 );
@@ -300,12 +243,12 @@ const InteractionsSection = ({
                 </div>
 
                 {/* Vertical Divider */}
-                <div className="w-px bg-slate-200"></div>
+                <div className="w-px bg-slate-200 hidden lg:block"></div>
 
                 {/* Right Side - Officers (Columns) */}
-                <div className="flex-1 flex flex-col">
+                <div className="flex-[1] flex flex-col min-w-0 lg:max-w-[400px]">
                     <h3 className="text-sm font-semibold text-slate-700 mb-4">Doctors</h3>
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 flex-1">
+                    <div className="flex flex-col gap-4 flex-1 overflow-y-auto">
                         {officers
                             .filter(o => o.active !== 'false' && (!o.deletedAt || o.deletedAt === ''))
                             .map((officer) => (
@@ -359,59 +302,32 @@ const InteractionsSection = ({
                                                         key={interaction.id}
                                                         draggable={canDrag}
                                                         onDragStart={(e) => canDrag ? handleDragStart(e, interaction) : e.preventDefault()}
-                                                        onClick={(e) => {
-                                                            if (!canDrag) {
-                                                                e.preventDefault();
-                                                                e.stopPropagation();
-                                                                handleInteractionClick(interaction, canDrag);
-                                                            }
-                                                        }}
-                                                        className={`bg-white border border-slate-200 rounded-lg p-2.5 text-xs shadow-sm transition-all ${canDrag ? 'cursor-move hover:shadow-md hover:border-blue-300' : 'cursor-pointer hover:shadow-md hover:border-blue-300 opacity-60'
-                                                            }`}
+                                                        onClick={() => onInteractionClick(interaction)}
+                                                        className={`group/item relative bg-white border border-slate-100 rounded-xl p-3 shadow-sm transition-all hover:border-blue-300 hover:shadow-lg hover:shadow-blue-500/5 cursor-pointer active:scale-95 ${canDrag ? 'cursor-move' : ''}`}
                                                     >
-                                                        <div className="font-semibold text-blue-700 mb-1">
-                                                            {interaction.interactionSerial || 'N/A'}
-                                                        </div>
-                                                        {/* Status tags */}
-                                                        {(interaction.completed || interaction.closed) && (
-                                                            <div className="flex gap-1 mb-1.5 flex-wrap">
-                                                                <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-medium border ${interaction.completed
-                                                                    ? 'bg-green-50 text-green-700 border-green-200'
-                                                                    : 'bg-red-50 text-red-700 border-red-200'
-                                                                    }`}>
-                                                                    {interaction.completed ? (
-                                                                        <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
-                                                                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                                                        </svg>
-                                                                    ) : (
-                                                                        <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
-                                                                            <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                                                                        </svg>
-                                                                    )}
-                                                                    Completed
-                                                                </span>
-                                                                <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-medium border ${interaction.closed
-                                                                    ? 'bg-green-50 text-green-700 border-green-200'
-                                                                    : 'bg-red-50 text-red-700 border-red-200'
-                                                                    }`}>
-                                                                    {interaction.closed ? (
-                                                                        <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
-                                                                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                                                        </svg>
-                                                                    ) : (
-                                                                        <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
-                                                                            <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                                                                        </svg>
-                                                                    )}
-                                                                    Closed
-                                                                </span>
+                                                        <div className="flex justify-between items-start mb-2">
+                                                            <span className="text-[8px] font-black text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 uppercase tracking-tighter">
+                                                                {interaction.interactionSerial || 'REG-PENDING'}
+                                                            </span>
+                                                            <div className="flex gap-1 flex-wrap justify-end">
+                                                                {renderInteractionTags(interaction, { size: 'text-[7px]' })}
                                                             </div>
-                                                        )}
-                                                        <div className="text-slate-700 font-medium mb-1">
-                                                            {getVisitorName(interaction.visitorId)}
                                                         </div>
-                                                        <div className="text-slate-500 text-[10px]">
-                                                            {formatDate(interaction.createdAt)}
+
+                                                        <div className="space-y-0.5">
+                                                            <label className="text-[8px] font-bold text-slate-400 uppercase tracking-widest block">Patient</label>
+                                                            <div className="text-xs font-black text-slate-900 truncate uppercase">
+                                                                {getVisitorName(interaction.visitorId)}
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="mt-2 text-[8px] text-slate-400 flex justify-between items-center italic">
+                                                            <span>{formatDate(interaction.createdAt)}</span>
+                                                            {canDrag && (
+                                                                <svg className="w-2.5 h-2.5 text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M4 6h16M4 12h16M4 18h16" />
+                                                                </svg>
+                                                            )}
                                                         </div>
                                                     </div>
                                                 );
@@ -425,7 +341,7 @@ const InteractionsSection = ({
                                 </div>
                             ))}
                         {officers.filter(o => o.active !== 'false' && (!o.deletedAt || o.deletedAt === '')).length === 0 && (
-                            <div className="col-span-1 md:col-span-2 text-center py-8 text-slate-400 text-sm">
+                            <div className="text-center py-8 text-slate-400 text-sm">
                                 No officers available
                             </div>
                         )}
@@ -467,251 +383,6 @@ const InteractionsSection = ({
                                 ) : (
                                     'Yes'
                                 )}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Interaction Detail Modal */}
-            {showInteractionDetailModal && selectedInteraction && (
-                <div
-                    className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50"
-                    onClick={() => {
-                        setShowInteractionDetailModal(false);
-                        setSelectedInteraction(null);
-                    }}
-                >
-                    <div
-                        className="bg-white rounded-xl shadow-xl max-w-6xl w-full max-h-[90vh] flex flex-col overflow-hidden"
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50">
-                            <div>
-                                <h3 className="text-lg font-semibold text-slate-900">
-                                    Interaction Details
-                                </h3>
-                                <p className="text-xs text-slate-500 mt-0.5">
-                                    {selectedInteraction?.interactionSerial || 'N/A'} · {selectedInteraction?.visitorId && getVisitorName ? getVisitorName(selectedInteraction.visitorId) : 'Unknown'}
-                                </p>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setShowInteractionDetailModal(false);
-                                    setSelectedInteraction(null);
-                                }}
-                                className="text-slate-500 hover:text-slate-900"
-                            >
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                            </button>
-                        </div>
-
-                        <div className="px-6 py-4 overflow-y-auto flex-1 space-y-6 text-sm">
-                            {/* Status Tags */}
-                            <div className="flex gap-2">
-                                <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium border ${selectedInteraction?.completed
-                                    ? 'bg-green-50 text-green-700 border-green-200'
-                                    : 'bg-red-50 text-red-700 border-red-200'
-                                    }`}>
-                                    {selectedInteraction?.completed ? (
-                                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                        </svg>
-                                    ) : (
-                                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                                            <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                                        </svg>
-                                    )}
-                                    Completed
-                                </span>
-                                <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium border ${(selectedInteraction?.closed === true)
-                                    ? 'bg-green-50 text-green-700 border-green-200'
-                                    : 'bg-red-50 text-red-700 border-red-200'
-                                    }`}>
-                                    {(selectedInteraction?.closed === true) ? (
-                                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                        </svg>
-                                    ) : (
-                                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                                            <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                                        </svg>
-                                    )}
-                                    Closed
-                                </span>
-                            </div>
-
-                            {/* Interaction Notes */}
-                            {selectedInteraction?.ccReason && (selectedInteraction.ccReason?.text || selectedInteraction.ccReason?.scratchpad) && (
-                                <div className="border-t border-slate-100 pt-4">
-                                    <h4 className="text-sm font-semibold text-slate-900 mb-2">CC / Reason</h4>
-                                    {selectedInteraction.ccReason?.text && (
-                                        <p className="text-sm text-slate-700 mb-2 whitespace-pre-wrap">{selectedInteraction.ccReason.text}</p>
-                                    )}
-                                    {selectedInteraction.ccReason?.hasScratchpad && selectedInteraction.ccReason?.scratchpad && (
-                                        <div className="mt-2">
-                                            <img
-                                                src={getImageUrl(selectedInteraction.ccReason.scratchpad)}
-                                                alt="CC/Reason handwriting"
-                                                className="max-w-full h-auto rounded-lg border border-slate-200 cursor-pointer hover:border-blue-400 transition-colors"
-                                                onClick={() => setViewingMedia({ type: 'image', url: getImageUrl(selectedInteraction.ccReason.scratchpad), title: 'Chief Complaint Handwriting' })}
-                                                onError={(e) => {
-                                                    e.target.style.display = 'none';
-                                                }}
-                                            />
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
-                            {selectedInteraction?.subjective && (selectedInteraction.subjective?.text || selectedInteraction.subjective?.scratchpad) && (
-                                <div className="border-t border-slate-100 pt-4">
-                                    <h4 className="text-sm font-semibold text-slate-900 mb-2">S (Subjective)</h4>
-                                    {selectedInteraction.subjective?.text && (
-                                        <p className="text-sm text-slate-700 mb-2 whitespace-pre-wrap">{selectedInteraction.subjective.text}</p>
-                                    )}
-                                    {selectedInteraction.subjective?.hasScratchpad && selectedInteraction.subjective?.scratchpad && (
-                                        <div className="mt-2">
-                                            <img
-                                                src={getImageUrl(selectedInteraction.subjective.scratchpad)}
-                                                alt="Subjective handwriting"
-                                                className="max-w-full h-auto rounded-lg border border-slate-200 cursor-pointer hover:border-blue-400 transition-colors"
-                                                onClick={() => setViewingMedia({ type: 'image', url: getImageUrl(selectedInteraction.subjective.scratchpad), title: 'Subjective Handwriting' })}
-                                                onError={(e) => {
-                                                    e.target.style.display = 'none';
-                                                }}
-                                            />
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
-                            {selectedInteraction?.objective && (selectedInteraction.objective?.text || selectedInteraction.objective?.scratchpad) && (
-                                <div className="border-t border-slate-100 pt-4">
-                                    <h4 className="text-sm font-semibold text-slate-900 mb-2">O (Objective)</h4>
-                                    {selectedInteraction.objective?.text && (
-                                        <p className="text-sm text-slate-700 mb-2 whitespace-pre-wrap">{selectedInteraction.objective.text}</p>
-                                    )}
-                                    {selectedInteraction.objective?.hasScratchpad && selectedInteraction.objective?.scratchpad && (
-                                        <div className="mt-2">
-                                            <img
-                                                src={getImageUrl(selectedInteraction.objective.scratchpad)}
-                                                alt="Objective handwriting"
-                                                className="max-w-full h-auto rounded-lg border border-slate-200 cursor-pointer hover:border-blue-400 transition-colors"
-                                                onClick={() => setViewingMedia({ type: 'image', url: getImageUrl(selectedInteraction.objective.scratchpad), title: 'Objective Handwriting' })}
-                                                onError={(e) => {
-                                                    e.target.style.display = 'none';
-                                                }}
-                                            />
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
-                            {selectedInteraction?.assessmentPlan && (selectedInteraction.assessmentPlan?.text || selectedInteraction.assessmentPlan?.scratchpad) && (
-                                <div className="border-t border-slate-100 pt-4">
-                                    <h4 className="text-sm font-semibold text-slate-900 mb-2">A and P (Assessment and Plan)</h4>
-                                    {selectedInteraction.assessmentPlan?.text && (
-                                        <p className="text-sm text-slate-700 mb-2 whitespace-pre-wrap">{selectedInteraction.assessmentPlan.text}</p>
-                                    )}
-                                    {selectedInteraction.assessmentPlan?.hasScratchpad && selectedInteraction.assessmentPlan?.scratchpad && (
-                                        <div className="mt-2">
-                                            <img
-                                                src={getImageUrl(selectedInteraction.assessmentPlan.scratchpad)}
-                                                alt="Assessment and Plan handwriting"
-                                                className="max-w-full h-auto rounded-lg border border-slate-200 cursor-pointer hover:border-blue-400 transition-colors"
-                                                onClick={() => setViewingMedia({ type: 'image', url: getImageUrl(selectedInteraction.assessmentPlan.scratchpad), title: 'Assessment & Plan Handwriting' })}
-                                                onError={(e) => {
-                                                    e.target.style.display = 'none';
-                                                }}
-                                            />
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
-                            {/* Service Lines */}
-                            {selectedInteraction?.serviceLines && Array.isArray(selectedInteraction.serviceLines) && selectedInteraction.serviceLines.length > 0 && (
-                                <div className="border-t border-slate-100 pt-4">
-                                    <h4 className="text-sm font-semibold text-slate-900 mb-3">Services</h4>
-                                    <div className="space-y-2">
-                                        {selectedInteraction.serviceLines.map((line, idx) => (
-                                            <div key={idx} className="bg-slate-50 rounded-lg p-3 text-xs">
-                                                <div className="grid grid-cols-6 gap-2">
-                                                    <div className="font-medium text-slate-600">{line?.serialNumber || idx + 1}</div>
-                                                    <div><span className="text-slate-500">Service:</span> {line?.service || 'N/A'}</div>
-                                                    <div><span className="text-slate-500">Suffix:</span> {line?.suffix || 'N/A'}</div>
-                                                    <div><span className="text-slate-500">Diagnostic:</span> {line?.diagnostic || 'N/A'}</div>
-                                                    <div><span className="text-slate-500">Total Fee:</span> ${line?.totalFee || '0.00'}</div>
-                                                    <div><span className="text-slate-500">Accounting #:</span> {line?.accountingNumber || 'N/A'}</div>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Metadata */}
-                            <div className="border-t border-slate-100 pt-4 text-xs text-slate-500">
-                                <div>Created: {selectedInteraction?.createdAt && formatDate ? formatDate(selectedInteraction.createdAt) : (selectedInteraction?.createdAt || 'N/A')}</div>
-                                {selectedInteraction?.editedAt && (
-                                    <div>Last edited: {formatDate ? formatDate(selectedInteraction.editedAt) : selectedInteraction.editedAt}</div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-            {/* Media Viewer Modal */}
-            {viewingMedia && (
-                <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
-                    <div
-                        className="absolute inset-0 bg-slate-900/90 backdrop-blur-sm"
-                        onClick={() => setViewingMedia(null)}
-                    ></div>
-                    <div className="relative bg-white rounded-2xl shadow-2xl w-full h-full max-w-5xl flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200">
-                        {/* Modal Header */}
-                        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-white">
-                            <h3 className="text-base font-bold text-slate-900 truncate pr-8">
-                                {viewingMedia.title || 'Preview'}
-                            </h3>
-                            <button
-                                onClick={() => setViewingMedia(null)}
-                                className="p-2 rounded-full hover:bg-slate-100 text-slate-500 hover:text-slate-900 transition-colors"
-                            >
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                            </button>
-                        </div>
-
-                        {/* Modal Content */}
-                        <div className="flex-1 overflow-hidden bg-slate-50 flex items-center justify-center p-2 sm:p-4">
-                            {viewingMedia.type === 'pdf' ? (
-                                <iframe
-                                    src={`${viewingMedia.url}#toolbar=0&navpanes=0&scrollbar=0`}
-                                    className="w-full h-full rounded-lg bg-white border border-slate-200"
-                                    title={viewingMedia.title}
-                                />
-                            ) : (
-                                <img
-                                    src={viewingMedia.url}
-                                    alt={viewingMedia.title}
-                                    className="max-w-full max-h-full object-contain rounded-lg shadow-sm"
-                                />
-                            )}
-                        </div>
-
-                        {/* Modal Footer */}
-                        <div className="px-6 py-4 border-t border-slate-100 bg-white flex justify-end">
-                            <button
-                                onClick={() => setViewingMedia(null)}
-                                className="px-5 py-2 rounded-xl bg-slate-900 text-white text-sm font-bold hover:bg-slate-800 transition-colors"
-                            >
-                                Close
                             </button>
                         </div>
                     </div>
