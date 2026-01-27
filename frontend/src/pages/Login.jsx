@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { authService } from '../services/authService';
 import { entityService } from '../services/entityService';
+import supabaseStorageService from '../services/supabaseService';
 import { useNavigate, Link } from 'react-router-dom';
 import PhoneInput from '../components/PhoneInput';
 import OtpInput from '../components/OtpInput';
+import PasswordInput from '../components/PasswordInput';
 import { hashPassword } from '../utils/crypto';
 import { validateEmail } from '../utils/crypto';
 import { jwtDecode } from 'jwt-decode';
@@ -150,12 +152,35 @@ const Login = ({ type = 'admin' }) => {
             if (isEntity) {
                 // Decode token to get serial for URL
                 const decoded = jwtDecode(res.token);
+                const entityId = decoded.id || '';
                 // Store relevant data in localStorage
                 localStorage.setItem('entityName', decoded.name || decoded.entityName || '');
                 localStorage.setItem('userRole', 'entity');
                 localStorage.setItem('userName', decoded.name || '');
-                localStorage.setItem('entityId', decoded.id || '');
+                localStorage.setItem('entityId', entityId);
                 localStorage.setItem('entitySerial', decoded.serial || '');
+
+                // Fetch and cache entity icon immediately after login
+                if (entityId) {
+                    try {
+                        const entityData = await entityService.getSettings();
+                        if (entityData.icon && !entityData.icon.startsWith('data:image') && !entityData.icon.startsWith('http')) {
+                            const url = await supabaseStorageService.getFileUrl('CRM testing', entityData.icon);
+                            if (url) {
+                                const cacheKey = `entityIcon_${entityId}`;
+                                localStorage.setItem(cacheKey, url);
+                                localStorage.setItem('cachedEntityId', entityId);
+                            }
+                        } else if (entityData.icon && (entityData.icon.startsWith('http') || entityData.icon.startsWith('data:image'))) {
+                            const cacheKey = `entityIcon_${entityId}`;
+                            localStorage.setItem(cacheKey, entityData.icon);
+                            localStorage.setItem('cachedEntityId', entityId);
+                        }
+                    } catch (err) {
+                        // Silently fail - icon will be fetched by NavBar if needed
+                        console.error('Failed to preload entity icon:', err);
+                    }
+                }
 
                 navigate(`/entity/${decoded.serial.toLowerCase()}/dashboard`);
             } else {
@@ -208,13 +233,11 @@ const Login = ({ type = 'admin' }) => {
 
                             <div className="flex flex-col gap-2">
                                 <label className="text-sm font-semibold text-slate-900">Password <span className="text-error">*</span></label>
-                                <input
-                                    type="password"
+                                <PasswordInput
                                     placeholder="Enter your password"
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
                                     required
-                                    className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
                                 />
                             </div>
 

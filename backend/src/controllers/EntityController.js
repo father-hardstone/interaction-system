@@ -241,6 +241,83 @@ class EntityController {
             res.status(500).json({ error: e.message });
         }
     }
+
+    // --- Entity Settings (Self-service) ---
+
+    async updateEntitySettings(req, res) {
+        try {
+            // Get entity ID from authenticated user
+            const entityId = req.user.id;
+            if (!entityId) {
+                return res.status(401).json({ error: "Unauthorized" });
+            }
+
+            const { name, profilePicture, icon } = req.body;
+            const updates = {};
+
+            // Only update fields that are provided
+            if (name !== undefined) updates.name = name;
+            if (profilePicture !== undefined) updates.profilePicture = profilePicture || '';
+            if (icon !== undefined) updates.icon = icon || '';
+
+            if (Object.keys(updates).length === 0) {
+                return res.status(400).json({ error: "No fields to update" });
+            }
+
+            const updated = await EntityService.update(entityId, updates);
+            if (!updated) return res.status(404).json({ error: "Entity not found" });
+
+            // Return updated entity without password
+            const { password, ...safeEntity } = updated;
+            res.json(safeEntity);
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    }
+
+    async getEntitySettings(req, res) {
+        try {
+            // Get entity ID from authenticated user
+            const entityId = req.user.id;
+            if (!entityId) {
+                return res.status(401).json({ error: "Unauthorized" });
+            }
+
+            const entity = await EntityService.findOne({ id: entityId });
+            if (!entity) return res.status(404).json({ error: "Entity not found" });
+
+            // Return entity without password
+            const { password, ...safeEntity } = entity;
+            res.json(safeEntity);
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    }
+
+    async getEntityById(req, res) {
+        try {
+            // Allow authenticated users (officers/receptionists) to get entity info
+            const { id } = req.params;
+            if (!id) {
+                return res.status(400).json({ error: "Entity ID is required" });
+            }
+
+            const entity = await EntityService.findOne({ id });
+            if (!entity) return res.status(404).json({ error: "Entity not found" });
+
+            // Return only safe fields (name, icon, profilePicture, serial)
+            const { password, ...safeEntity } = entity;
+            res.json({
+                id: safeEntity.id,
+                name: safeEntity.name,
+                icon: safeEntity.icon || '',
+                profilePicture: safeEntity.profilePicture || '',
+                serial: safeEntity.serial
+            });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    }
 }
 
 module.exports = new EntityController();

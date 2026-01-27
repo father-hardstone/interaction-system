@@ -1,0 +1,75 @@
+import React, { useState } from 'react';
+import DrawingPad from './DrawingPad';
+
+const SoapBlock = ({ label, value, onChange, padValue, onPadChange, required = false, placeholder }) => {
+    // Default to 'handwriting' as requested
+    const [mode, setMode] = useState('handwriting');
+
+    return (
+        <div className="space-y-3 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative group transition-all hover:shadow-md">
+            <div className="flex justify-between items-center mb-1">
+                <div className="flex items-center gap-3">
+                    <div className={`w-1 h-8 rounded-full shadow-sm ${required ? 'bg-blue-600' : 'bg-slate-200'}`}></div>
+                    <div>
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] block mb-0.5">{label}</label>
+                        <div className="text-xs font-black text-slate-900 uppercase tracking-tighter">Clinical Narrative</div>
+                    </div>
+                    {required && (
+                        <span className="text-[8px] font-black text-blue-600 bg-blue-50/50 px-2 py-0.5 rounded-full border border-blue-100 uppercase tracking-widest ml-1">Required</span>
+                    )}
+                </div>
+
+                {/* Switch Toggle */}
+                <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200 shadow-inner">
+                    <button
+                        type="button"
+                        onClick={() => setMode('text')}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-black rounded-lg transition-all ${mode === 'text' ? 'bg-white text-blue-600 shadow-sm scale-105' : 'text-slate-400 hover:text-slate-600'}`}
+                    >
+                        TEXT
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setMode('handwriting')}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-black rounded-lg transition-all ${mode === 'handwriting' ? 'bg-white text-blue-600 shadow-sm scale-105' : 'text-slate-400 hover:text-slate-600'}`}
+                    >
+                        DRAW
+                    </button>
+                </div>
+            </div>
+
+            <div className="relative">
+                {mode === 'text' ? (
+                    <textarea
+                        className="w-full p-4 border border-slate-200 rounded-xl text-sm bg-slate-50 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-50 transition-all min-h-[180px] resize-none placeholder:text-slate-300 font-medium leading-relaxed"
+                        placeholder={placeholder}
+                        value={value}
+                        onChange={(e) => onChange(e.target.value)}
+                    />
+                ) : (
+                    <div className="animate-in fade-in zoom-in-95 duration-200">
+                        <DrawingPad
+                            label={`${label} Handwriting`}
+                            value={padValue}
+                            onChange={onPadChange}
+                            minHeight="400px"
+                        />
+                    </div>
+                )}
+            </div>
+
+            {/* Hidden content indicator */}
+            {((mode === 'handwriting' && value) || (mode === 'text' && padValue)) && (
+                <div className="flex items-center gap-1.5 py-1 px-2 bg-slate-50 border border-slate-100 rounded-lg w-fit">
+                    <div className="flex -space-x-1">
+                        <div className={`w-2 h-2 rounded-full border border-white ${value ? 'bg-blue-400' : 'bg-transparent'}`}></div>
+                        <div className={`w-2 h-2 rounded-full border border-white ${padValue ? 'bg-emerald-400' : 'bg-transparent'}`}></div>
+                    </div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Mixed inputs recorded</span>
+                </div>
+            )}
+        </div>
+    );
+};
+
+export default SoapBlock;

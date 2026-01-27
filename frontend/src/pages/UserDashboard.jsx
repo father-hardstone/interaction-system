@@ -8,6 +8,9 @@ import { validateEmail } from '../utils/crypto';
 import UserSidebar from '../components/UserSidebar';
 import ReceptionTab from '../components/ReceptionTab';
 import OfficerTab from '../components/OfficerTab';
+import InteractionDetailsModal from '../components/InteractionDetailsModal';
+import MediaViewerModal from '../components/MediaViewerModal';
+import { reportService } from '../services/reportService';
 
 const UserDashboard = () => {
     const navigate = useNavigate();
@@ -22,6 +25,7 @@ const UserDashboard = () => {
     const [searchSerial, setSearchSerial] = useState('');
     const [searchPhone, setSearchPhone] = useState('');
     const [searchHealthCard, setSearchHealthCard] = useState('');
+    const [searchDob, setSearchDob] = useState('');
     const [showVisitorModal, setShowVisitorModal] = useState(false);
     const [editingVisitorId, setEditingVisitorId] = useState(null);
     const [visitorForm, setVisitorForm] = useState({
@@ -45,6 +49,7 @@ const UserDashboard = () => {
     });
     const [phoneData, setPhoneData] = useState({ fullNumber: '', valid: false });
     const [phoneHData, setPhoneHData] = useState({ fullNumber: '', valid: false });
+    const [guardianPhoneData, setGuardianPhoneData] = useState({ fullNumber: '', valid: false });
     const [healthCardNumber, setHealthCardNumber] = useState('');
     const [healthCardVersion, setHealthCardVersion] = useState('');
     const [healthCardEffectivityDate, setHealthCardEffectivityDate] = useState('');
@@ -54,6 +59,7 @@ const UserDashboard = () => {
     const [draggedPatient, setDraggedPatient] = useState(null);
     const [showDeleteRegistrationModal, setShowDeleteRegistrationModal] = useState(false);
     const [registrationToDelete, setRegistrationToDelete] = useState(null);
+    const [showLogoutModal, setShowLogoutModal] = useState(false);
     const [error, setError] = useState('');
     const [interactions, setInteractions] = useState([]);
     const [officers, setOfficers] = useState([]);
@@ -80,6 +86,13 @@ const UserDashboard = () => {
 
     // Next visitor serial (for preview in create form)
     const [nextVisitorSerial, setNextVisitorSerial] = useState('');
+
+    // Interaction & Media details
+    const [selectedInteraction, setSelectedInteraction] = useState(null);
+    const [showInteractionDetailModal, setShowInteractionDetailModal] = useState(false);
+    const [patientReports, setPatientReports] = useState([]);
+    const [isLoadingReports, setIsLoadingReports] = useState(false);
+    const [viewingMedia, setViewingMedia] = useState(null);
 
     // 1. Initial Auth & Tab Setup
     useEffect(() => {
@@ -292,16 +305,19 @@ const UserDashboard = () => {
         }
     };
 
-    const formatDate = (dateString) => {
+    const formatDate = (dateString, includeTime = true) => {
         if (!dateString) return 'N/A';
         const date = new Date(dateString);
-        return date.toLocaleString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
+        const mm = String(date.getMonth() + 1).padStart(2, '0');
+        const dd = String(date.getDate()).padStart(2, '0');
+        const yyyy = date.getFullYear();
+        const datePart = `${mm}-${dd}-${yyyy}`;
+
+        if (!includeTime) return datePart;
+
+        const hh = String(date.getHours()).padStart(2, '0');
+        const min = String(date.getMinutes()).padStart(2, '0');
+        return `${datePart} ${hh}:${min}`;
     };
 
     const getVisitorName = (visitorId) => {
@@ -309,13 +325,103 @@ const UserDashboard = () => {
         if (!visitor) return 'Unknown';
         return `${visitor.firstName} ${visitor.middleName ? visitor.middleName + ' ' : ''}${visitor.lastName}`;
     };
-
     const getVisitorSerial = (visitorId) => {
         const visitor = visitors.find(v => v.id === visitorId);
         if (!visitor) return 'N/A';
         return (visitor.serial && visitor.serial.includes('-'))
             ? visitor.serial
             : (visitor.entitySerial ? `${visitor.entitySerial}-${visitor.serial}` : visitor.serial || '');
+    };
+
+    const getVisitorHealthCard = (visitorId) => {
+        const visitor = visitors.find(v => v.id === visitorId);
+        return visitor?.healthCardNumber || 'N/A';
+    };
+
+    const getOfficerName = (officerId) => {
+        if (!officerId) return 'Unassigned';
+        const officer = officers.find(o => o.id === officerId);
+        if (!officer) return 'Unassigned';
+        return officer.name || 'Unassigned';
+    };
+
+    const handleRegisterFollowup = async (interaction) => {
+        if (!interaction) return;
+
+        // Get visitor data
+        const visitor = visitors.find(v => v.id === interaction.visitorId);
+        if (!visitor) {
+            showWarning('Patient not found');
+            return;
+        }
+
+        // Check if patient already has an active (incomplete) registration
+        const isAlreadyRegistered = interactions.some(i => i.visitorId === interaction.visitorId && !i.completed && i.id !== interaction.id);
+        if (isAlreadyRegistered) {
+            showWarning(`${visitor.firstName} ${visitor.lastName} is already registered and hasn't completed their visit.`);
+            return;
+        }
+
+        console.log('Registering followup for interaction:', interaction);
+
+        // Optimistic UI - create temporary interaction placeholder
+        const tempId = `temp-${Date.now()}`;
+        const visitorSerial = visitor.serial;
+        const optimisticInteraction = {
+            id: tempId,
+            interactionSerial: 'Loading...',
+            entityId: userData.entityId,
+            entitySerial: userData.entitySerial,
+            visitorId: visitor.id,
+            visitorSerial: visitorSerial,
+            officerId: interaction.officerId || '',
+            officerSerial: interaction.officerSerial || '',
+            createdAt: new Date().toISOString(),
+            editedAt: new Date().toISOString(),
+            deletedAt: '',
+            isPending: true,
+            _visitor: visitor
+        };
+
+        setPendingInteractions(prev => [...prev, optimisticInteraction]);
+        setIsCreatingInteraction(true);
+
+        try {
+            // Create a new interaction for this patient
+            const response = await interactionService.create({
+                entityId: userData.entityId,
+                entitySerial: userData.entitySerial,
+                visitorId: visitor.id,
+                visitorSerial: visitorSerial
+            });
+
+            console.log('Successfully created followup interaction:', response);
+
+            // If the original interaction had an officer assigned, assign the new one to the same officer
+            if (interaction.officerId && interaction.officerSerial) {
+                const officer = officers.find(o => o.id === interaction.officerId);
+                if (officer) {
+                    await interactionService.assignOfficer(
+                        response.id,
+                        officer.id,
+                        officer.serial
+                    );
+                }
+            }
+
+            // Remove optimistic update
+            setPendingInteractions(prev => prev.filter(i => i.id !== tempId));
+
+            // Reload interactions to show the new one
+            await loadInteractions(userData.entityId, interactionFilter);
+        } catch (err) {
+            console.error('Failed to create followup interaction:', err);
+            // Remove optimistic update on error
+            setPendingInteractions(prev => prev.filter(i => i.id !== tempId));
+            showWarning('Failed to create followup registration: ' + (err.response?.data?.error || err.message));
+        } finally {
+            setIsCreatingInteraction(false);
+        }
     };
 
     const formatHealthCardNumber = (value) => {
@@ -330,7 +436,14 @@ const UserDashboard = () => {
 
         if (!val.trim()) setFieldErrors(prev => ({ ...prev, healthCard: 'Health card number is required' }));
         else if (val.length < 10) setFieldErrors(prev => ({ ...prev, healthCard: 'Must be 10 digits' }));
-        else setFieldErrors(prev => { const n = { ...prev }; delete n.healthCard; return n; });
+        else {
+            const duplicate = visitors.find(v => v.healthCardNumber === val && v.id !== editingVisitorId);
+            if (duplicate) {
+                setFieldErrors(prev => ({ ...prev, healthCard: `Already exists (${duplicate.firstName} ${duplicate.lastName})` }));
+            } else {
+                setFieldErrors(prev => { const n = { ...prev }; delete n.healthCard; return n; });
+            }
+        }
     };
 
     const handleCreateVisitor = async (e) => {
@@ -499,7 +612,7 @@ const UserDashboard = () => {
                 memo: visitorForm.memo,
                 guardianName: visitorForm.guardianName,
                 guardianId: visitorForm.guardianId,
-                guardianPhone: visitorForm.guardianPhone
+                guardianPhone: guardianPhoneData.fullNumber,
             };
 
             if (editingVisitorId) {
@@ -530,6 +643,7 @@ const UserDashboard = () => {
             });
             setPhoneData({ fullNumber: '', valid: false });
             setPhoneHData({ fullNumber: '', valid: false });
+            setGuardianPhoneData({ fullNumber: '', valid: false });
             setHealthCardNumber('');
             setHealthCardVersion('');
             setHealthCardEffectivityDate('');
@@ -548,6 +662,39 @@ const UserDashboard = () => {
         } finally {
             setIsCreatingVisitor(false);
         }
+    };
+
+    const handleOpenAddModal = () => {
+        setEditingVisitorId(null);
+        setVisitorForm({
+            firstName: '',
+            middleName: '',
+            lastName: '',
+            dateOfBirth: '',
+            addressLine: '',
+            city: '',
+            state: '',
+            postalCode: '',
+            gender: '',
+            email: '',
+            phoneH: '',
+            phoneM: '',
+            notes: '',
+            memo: '',
+            guardianName: '',
+            guardianId: '',
+            guardianPhone: ''
+        });
+        setPhoneData({ fullNumber: '', valid: false });
+        setPhoneHData({ fullNumber: '', valid: false });
+        setGuardianPhoneData({ fullNumber: '', valid: false });
+        setHealthCardNumber('');
+        setHealthCardVersion('');
+        setHealthCardEffectivityDate('');
+        setHealthCardExpiryDate('');
+        setError('');
+        setFieldErrors({});
+        setShowVisitorModal(true);
     };
 
     const handleEditVisitor = (visitor) => {
@@ -571,8 +718,9 @@ const UserDashboard = () => {
             guardianId: visitor.guardianId || '',
             guardianPhone: visitor.guardianPhone || ''
         });
-        setPhoneData({ fullNumber: visitor.phone || '', valid: true });
-        setPhoneHData({ fullNumber: visitor.phoneH || '', valid: !!(visitor.phoneH) });
+        setPhoneData({ fullNumber: visitor.phone || '', valid: !!visitor.phone });
+        setPhoneHData({ fullNumber: visitor.phoneH || '', valid: !!visitor.phoneH });
+        setGuardianPhoneData({ fullNumber: visitor.guardianPhone || '', valid: !!visitor.guardianPhone });
         setHealthCardNumber(formatHealthCardNumber(visitor.healthCardNumber || ''));
         setHealthCardVersion(visitor.healthCardVersion || '');
         setHealthCardEffectivityDate(visitor.healthCardEffectivityDate || '');
@@ -630,6 +778,13 @@ const UserDashboard = () => {
 
     const handleRegisterPatient = async (patient) => {
         if (!patient) return;
+
+        // Check if patient already has an active (incomplete) registration
+        const isAlreadyRegistered = interactions.some(i => i.visitorId === patient.id && !i.completed);
+        if (isAlreadyRegistered) {
+            showWarning(`${patient.firstName} ${patient.lastName} is already registered and hasn't completed their visit.`);
+            return;
+        }
 
         console.log('Registering patient:', patient);
 
@@ -709,7 +864,45 @@ const UserDashboard = () => {
         }
     };
 
+    const handleInteractionClick = async (interaction) => {
+        if (!interaction) return;
+        setSelectedInteraction(interaction);
+        setShowInteractionDetailModal(true);
+
+        // Fetch reports for the patient associated with this interaction
+        if (interaction.visitorId) {
+            setIsLoadingReports(true);
+            try {
+                const reports = await reportService.getByPatient(interaction.visitorId);
+                setPatientReports(reports || []);
+            } catch (error) {
+                console.error('Error fetching reports for interaction click:', error);
+                setPatientReports([]);
+            } finally {
+                setIsLoadingReports(false);
+            }
+        }
+    };
+
+    const getImageUrl = (imagePath) => {
+        if (!imagePath) return null;
+        if (imagePath.startsWith('data:image') || imagePath.startsWith('http')) {
+            return imagePath;
+        }
+        // Supabase paths are handled by components that fetch URLs async
+        if (imagePath.includes('/interactions/')) {
+            return null; // Components will fetch Supabase URL
+        }
+        // Local file path
+        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+        return `${API_URL.replace('/api', '')}/${imagePath}`;
+    };
+
     const handleLogout = () => {
+        setShowLogoutModal(true);
+    };
+
+    const confirmLogout = () => {
         localStorage.removeItem('token');
         localStorage.removeItem('entityName');
         localStorage.removeItem('userRole');
@@ -744,7 +937,7 @@ const UserDashboard = () => {
 
             {/* Main Content */}
             <main className="flex-1 overflow-x-hidden overflow-y-auto bg-slate-50">
-                <div className="p-4 sm:p-6 lg:p-8">
+                <div className="pt-[128px] min-h-[calc(100vh-128px)] p-4 sm:p-6 lg:p-8">
                     {activeTab === 'reception' && (
                         <ReceptionTab
                             visitors={visitors}
@@ -762,14 +955,19 @@ const UserDashboard = () => {
                             setSearchPhone={setSearchPhone}
                             searchHealthCard={searchHealthCard}
                             setSearchHealthCard={setSearchHealthCard}
+                            searchDob={searchDob}
+                            setSearchDob={setSearchDob}
                             showVisitorModal={showVisitorModal}
                             setShowVisitorModal={setShowVisitorModal}
+                            onOpenAddModal={handleOpenAddModal}
                             visitorForm={visitorForm}
                             setVisitorForm={setVisitorForm}
                             phoneData={phoneData}
                             setPhoneData={setPhoneData}
                             phoneHData={phoneHData}
                             setPhoneHData={setPhoneHData}
+                            guardianPhoneData={guardianPhoneData}
+                            setGuardianPhoneData={setGuardianPhoneData}
                             healthCardNumber={healthCardNumber}
                             setHealthCardNumber={setHealthCardNumber}
                             healthCardVersion={healthCardVersion}
@@ -784,6 +982,7 @@ const UserDashboard = () => {
                             setError={setError}
                             fieldErrors={fieldErrors}
                             setFieldErrors={setFieldErrors}
+                            editingVisitorId={editingVisitorId}
                             onEditVisitor={handleEditVisitor}
                             handlePatientClick={handlePatientClick}
                             selectedPatient={selectedPatient}
@@ -809,10 +1008,16 @@ const UserDashboard = () => {
                             handleDeleteRegistration={handleDeleteRegistration}
                             getVisitorName={getVisitorName}
                             getVisitorSerial={getVisitorSerial}
+                            getVisitorHealthCard={getVisitorHealthCard}
+                            getOfficerName={getOfficerName}
+                            onInteractionClick={handleInteractionClick}
 
-                            formatDate={formatDate}
                             interactionFilter={interactionFilter}
                             setInteractionFilter={setInteractionFilter}
+
+                            getImageUrl={getImageUrl}
+                            setViewingMedia={setViewingMedia}
+                            formatDate={formatDate}
 
                             isDeletingRegistration={isDeletingRegistration}
                             isCreatingInteraction={isCreatingInteraction}
@@ -823,6 +1028,7 @@ const UserDashboard = () => {
                             draggedInteraction={draggedInteraction}
                             handleRegisterPatient={handleRegisterPatient}
                             nextVisitorSerial={nextVisitorSerial}
+                            handleRegisterFollowup={handleRegisterFollowup}
                         />
                     )}
 
@@ -831,11 +1037,81 @@ const UserDashboard = () => {
                             userData={userData}
                             interactions={interactions}
                             visitors={visitors}
+                            onRefreshInteractions={() => loadInteractions(userData.entityId, interactionFilter)}
+                            onInteractionClick={handleInteractionClick}
                         />
                     )}
                 </div>
             </main>
 
+            {/* Interaction Detail Modal */}
+            {showInteractionDetailModal && (
+                <InteractionDetailsModal
+                    interaction={selectedInteraction}
+                    onClose={() => setShowInteractionDetailModal(false)}
+                    getVisitorName={getVisitorName}
+                    getVisitorSerial={getVisitorSerial}
+                    formatDate={formatDate}
+                    getImageUrl={getImageUrl}
+                    setViewingMedia={setViewingMedia}
+                    patientReports={patientReports}
+                />
+            )}
+
+            {/* Media Viewer Modal */}
+            <MediaViewerModal
+                viewingMedia={viewingMedia}
+                setViewingMedia={setViewingMedia}
+            />
+
+            {warningMessage && (
+                <div className="fixed top-20 right-4 bg-red-800/95 text-white px-6 py-4 rounded-xl shadow-2xl z-[9999] animate-[slideUp_0.3s_ease-out] border border-red-400/50 backdrop-blur-md flex items-center gap-4 transition-all">
+                    <div className="bg-white/20 p-2 rounded-lg shrink-0">
+                        <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                    </div>
+                    <div>
+                        <div className="text-[10px] font-black uppercase tracking-widest opacity-60 mb-0.5">System Alert</div>
+                        <span className="font-bold text-sm tracking-tight">{warningMessage}</span>
+                    </div>
+                </div>
+            )}
+
+            {/* Logout Confirmation Modal */}
+            {showLogoutModal && (
+                <div className="fixed inset-0 bg-black/50 flex justify-center items-center z-[2000]" onClick={() => setShowLogoutModal(false)}>
+                    <div className="bg-white w-full max-w-[400px] p-6 sm:p-8 rounded-3xl shadow-lg animate-[slideUp_0.4s_ease-out]" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center gap-4 mb-6">
+                            <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                                </svg>
+                            </div>
+                            <div>
+                                <h2 className="text-xl font-bold text-slate-900">Logout</h2>
+                                <p className="text-sm text-slate-600 mt-1">
+                                    Are you sure you want to log out of the interaction system?
+                                </p>
+                            </div>
+                        </div>
+                        <div className="flex gap-4">
+                            <button
+                                onClick={() => setShowLogoutModal(false)}
+                                className="flex-1 py-3 px-4 bg-slate-200 text-slate-800 rounded-xl font-semibold hover:bg-slate-300 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={confirmLogout}
+                                className="flex-1 py-3 px-4 bg-red-500 text-white rounded-xl font-semibold hover:bg-red-600 transition-colors"
+                            >
+                                Logout
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

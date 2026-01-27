@@ -4,6 +4,7 @@ import { jwtDecode } from 'jwt-decode';
 import { officerService } from '../services/officerService';
 import { receptionistService } from '../services/receptionistService';
 import PhoneInput from '../components/PhoneInput';
+import PasswordInput from '../components/PasswordInput';
 import { validateEmail } from '../utils/crypto';
 
 const EntityDashboard = () => {
@@ -441,13 +442,11 @@ const EntityDashboard = () => {
 
                             <div className="flex flex-col gap-2">
                                 <label className="text-sm font-semibold text-slate-900">Password <span className="text-red-500">*</span></label>
-                                <input
-                                    type="password"
+                                <PasswordInput
                                     placeholder="Create a password for the officer"
                                     value={newOfficer.password}
                                     onChange={(e) => setNewOfficer({ ...newOfficer, password: e.target.value })}
                                     required
-                                    className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
                                 />
                             </div>
 
@@ -517,13 +516,11 @@ const EntityDashboard = () => {
 
                             <div className="flex flex-col gap-2">
                                 <label className="text-sm font-semibold text-slate-900">Password <span className="text-red-500">*</span></label>
-                                <input
-                                    type="password"
+                                <PasswordInput
                                     placeholder="Create a password for the receptionist"
                                     value={newReceptionist.password}
                                     onChange={(e) => setNewReceptionist({ ...newReceptionist, password: e.target.value })}
                                     required
-                                    className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
                                 />
                             </div>
 

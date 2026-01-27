@@ -52,43 +52,20 @@ class ReportController {
                 reportGeneratedDate,
                 labMetadata,
                 notes,
-                fileData, // base64
+                supabasePath, // Supabase storage path
                 fileName,
                 mimeType,
+                fileSize,
+                reportId, // Report ID from frontend
                 uploadedBy
             } = req.body;
 
             // Validate required fields
-            if (!entityId || !patientId || !reportType || !procedureDate || !reportGeneratedDate || !fileData || !fileName || !mimeType) {
+            if (!entityId || !patientId || !reportType || !procedureDate || !reportGeneratedDate || !supabasePath || !fileName || !mimeType || !reportId) {
                 return res.status(400).json({ error: 'Missing required fields' });
             }
 
-            const reportId = uuidv4();
-            const year = new Date(procedureDate).getFullYear().toString();
-            const reportDateStr = procedureDate.replace(/-/g, ''); // yyyymmdd
-            const fileExtension = path.extname(fileName).toLowerCase();
-            const storageFilename = `${reportId}_${reportDateStr}${fileExtension}`;
-
-            // storage path: backend/uploads/{entityId}/{patientId}/reports/{year}/{filename}
-            const relativeDir = path.join('uploads', entityId, patientId, 'reports', year);
-            const absoluteDir = path.join(__dirname, '../../', relativeDir);
-            await fs.mkdir(absoluteDir, { recursive: true });
-
-            // Handle file data (base64)
-            let buffer;
-            if (fileData.startsWith('data:')) {
-                const base64Data = fileData.replace(/^data:[^;]+;base64,/, '');
-                buffer = Buffer.from(base64Data, 'base64');
-            } else {
-                buffer = Buffer.from(fileData, 'base64');
-            }
-
-            // Save file
-            const absoluteFilePath = path.join(absoluteDir, storageFilename);
-            const relativeFilePath = path.join(relativeDir, storageFilename).replace(/\\/g, '/');
-            await fs.writeFile(absoluteFilePath, buffer);
-
-            // Create report record
+            // Create report record with Supabase path
             const reportData = {
                 id: reportId,
                 entityId,
@@ -98,10 +75,10 @@ class ReportController {
                 procedureDate,
                 reportGeneratedDate,
                 fileMetadata: {
-                    localPath: relativeFilePath,
+                    supabasePath: supabasePath, // Supabase storage path
                     filename: fileName,
                     mimeType: mimeType,
-                    size: buffer.length
+                    size: fileSize || 0
                 },
                 labMetadata: labMetadata || {},
                 notes: notes || '',
@@ -110,7 +87,7 @@ class ReportController {
 
             const report = await ReportService.create(reportData);
 
-            console.log('Report uploaded:', report.fileMetadata.localPath);
+            console.log('Report uploaded to Supabase:', report.fileMetadata.supabasePath);
             res.json(report);
         } catch (error) {
             console.error('uploadReport error:', error);

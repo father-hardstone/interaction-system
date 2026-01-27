@@ -31,7 +31,7 @@ const reportSchema = new mongoose.Schema({
         required: true
     },
     fileMetadata: {
-        localPath: { type: String, required: true },
+        supabasePath: { type: String, required: true }, // Supabase storage path
         filename: { type: String, required: true },
         mimeType: { type: String, required: true },
         size: { type: Number, required: true }

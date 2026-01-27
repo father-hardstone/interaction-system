@@ -27,6 +27,7 @@ const accessControlRoutes = require('./src/routes/accessControlRoutes');
 // NOTE: Admin workflows are separated into admin-panel/backend.
 // Main backend only exposes entity/officer/receptionist/user workflows.
 const entityAuthRoutes = require('./src/routes/entityAuthRoutes');
+const entitySettingsRoutes = require('./src/routes/entitySettingsRoutes');
 const officerRoutes = require('./src/routes/officerRoutes');
 const receptionistRoutes = require('./src/routes/receptionistRoutes');
 const visitorRoutes = require('./src/routes/visitorRoutes');
@@ -48,6 +49,8 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Entity auth only (register/login/verify-otp)
 app.use('/api/entities', entityAuthRoutes);
+// Entity settings (protected routes)
+app.use('/api/entities', entitySettingsRoutes);
 app.use('/api/officers', officerRoutes);
 app.use('/api/receptionists', receptionistRoutes);
 app.use('/api/visitors', visitorRoutes);

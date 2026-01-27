@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { authService } from '../services/authService';
 import { useNavigate, Link } from 'react-router-dom';
 import PhoneInput from '../components/PhoneInput';
+import PasswordInput from '../components/PasswordInput';
 import { hashPassword } from '../utils/crypto';
 
 const Register = () => {
@@ -62,14 +63,12 @@ const Register = () => {
 
                     <div className="flex flex-col gap-2">
                         <label className="text-sm font-semibold text-slate-900">Password</label>
-                        <input
-                            type="password"
+                        <PasswordInput
                             name="password"
                             placeholder="Create a strong password"
                             value={formData.password}
                             onChange={handleChange}
                             required
-                            className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
                         />
                     </div>
 
