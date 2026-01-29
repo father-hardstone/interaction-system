@@ -91,9 +91,16 @@ const interactionSchema = new mongoose.Schema({
         refills: { type: Number, default: 0 },
         instructions: { type: String, default: '' }
     }],
-    followup: {
+    // Parent interaction: "does this require followup?" + link to child when registered
+    followupRequired: {
         required: { type: Boolean, default: false },
-        date: { type: String, default: '' }
+        date: { type: String, default: '' },
+        followupInteractionId: { type: String, default: '' }
+    },
+    // Child (followup) interaction: "this is a followup" + link to parent
+    followup: {
+        isFollowup: { type: Boolean, default: false },
+        parentInteractionId: { type: String, default: '' }
     },
     savedNotes: [{
         text: { type: String, default: '' },

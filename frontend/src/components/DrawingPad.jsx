@@ -171,6 +171,14 @@ const DrawingPad = ({ label, value, onChange, minHeight = '200px' }) => {
         setShowModal(false);
     };
 
+    const handleCloseWithoutSave = (e) => {
+        if (e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        setShowModal(false);
+    };
+
     // Modal canvas setup (same as regular canvas)
     useEffect(() => {
         if (!showModal || !isMobile) return;
@@ -280,7 +288,7 @@ const DrawingPad = ({ label, value, onChange, minHeight = '200px' }) => {
                 <div
                     ref={containerRef}
                     className={`relative w-full border border-slate-200 rounded-lg bg-white overflow-hidden ${isMobile ? 'cursor-pointer' : ''}`}
-                    style={{ resize: isMobile ? 'none' : 'vertical', minHeight }}
+                    style={{ resize: isMobile ? 'none' : 'vertical', minHeight, touchAction: 'none' }}
                     onClick={isMobile ? handleOpenModal : undefined}
                 >
                     {isMobile && (
@@ -320,23 +328,17 @@ const DrawingPad = ({ label, value, onChange, minHeight = '200px' }) => {
             {/* Mobile Fullscreen Modal */}
             {showModal && isMobile && (
                 <div className="fixed inset-0 z-[9999] bg-white flex flex-col">
-                    <div className="flex items-center justify-between p-4 border-b border-slate-200 bg-slate-50">
+                    <div className="p-4 border-b border-slate-200 bg-slate-50 shrink-0">
                         <h3 className="text-lg font-semibold text-slate-900">{label}</h3>
-                        <button
-                            onClick={handleCloseModal}
-                            className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium text-sm hover:bg-blue-700 transition-colors"
-                        >
-                            Save & Close
-                        </button>
                     </div>
                     <div
                         ref={modalContainerRef}
-                        className="flex-1 w-full bg-white overflow-hidden"
+                        className="flex-1 w-full bg-white overflow-hidden touch-none"
                         style={{ touchAction: 'none' }}
                     >
                         <canvas
                             ref={modalCanvasRef}
-                            className="absolute inset-0 w-full h-full touch-manipulation"
+                            className="relative inset-0 w-full h-full touch-manipulation"
                             style={{ imageRendering: 'auto' }}
                             onTouchStart={startDrawModal}
                             onTouchMove={drawModal}
@@ -347,20 +349,34 @@ const DrawingPad = ({ label, value, onChange, minHeight = '200px' }) => {
                             onMouseLeave={endDrawModal}
                         />
                     </div>
-                    <div className="p-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
+                    <div className="relative z-10 p-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between gap-3 shrink-0">
                         <button
                             type="button"
                             onClick={handleClear}
-                            className="px-4 py-2 bg-red-50 text-red-600 rounded-lg font-medium text-sm hover:bg-red-100 transition-colors"
+                            className="px-4 py-2.5 bg-red-50 text-red-600 rounded-lg font-medium text-sm hover:bg-red-100 active:bg-red-200 transition-colors"
                         >
                             Clear
                         </button>
+                        <div className="flex items-center gap-3">
                         <button
+                            type="button"
+                            onClick={handleCloseWithoutSave}
+                            className="w-12 h-12 rounded-full bg-red-100 hover:bg-red-200 active:bg-red-300 text-red-600 flex items-center justify-center transition-colors shrink-0 touch-manipulation select-none"
+                            title="Close without saving"
+                            aria-label="Close without saving"
+                        >
+                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                        <button
+                            type="button"
                             onClick={handleCloseModal}
-                            className="px-6 py-2 bg-blue-600 text-white rounded-lg font-semibold text-sm hover:bg-blue-700 transition-colors"
+                            className="px-6 py-2.5 bg-blue-600 text-white rounded-lg font-semibold text-sm hover:bg-blue-700 active:bg-blue-800 transition-colors"
                         >
                             Save & Close
                         </button>
+                        </div>
                     </div>
                 </div>
             )}

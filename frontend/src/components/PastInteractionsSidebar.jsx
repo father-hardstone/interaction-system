@@ -15,27 +15,43 @@ const PastInteractionsSidebar = ({
     getImageUrl,
     setViewingMedia,
     patientReports,
-    handleOpenPatientDetails
+    handleOpenPatientDetails,
+    onCloseOverlay,
+    isOverlay = false
 }) => {
     const pastInteractions = interactions
         .filter(i => i.visitorId === activePatientVisitorId && i.id !== activeInteractionId && i.completed)
         .sort((a, b) => new Date(b.editedAt || b.createdAt) - new Date(a.editedAt || a.createdAt));
 
     return (
-        <aside className="w-full xl:w-96 bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col h-full overflow-hidden">
-            <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
+        <aside className="w-full xl:w-[307px] bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col h-full overflow-hidden shrink-0">
+            <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center shrink-0">
                 <div>
                     <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest">Patient History</h3>
                     <p className="text-[10px] text-slate-400 font-bold uppercase mt-0.5">Total: {pastInteractions.length} Sessions</p>
                 </div>
-                <div className="bg-blue-100 p-1.5 rounded-lg">
-                    <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
+                <div className="flex items-center gap-2">
+                    {isOverlay && onCloseOverlay && (
+                        <button
+                            type="button"
+                            onClick={onCloseOverlay}
+                            className="p-2 rounded-lg hover:bg-slate-200 transition-colors text-slate-600"
+                            title="Close"
+                        >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    )}
+                    <div className="bg-blue-100 p-1.5 rounded-lg">
+                        <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                    </div>
                 </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
                 {pastInteractions.length === 0 ? (
                     <div className="text-center py-12 px-6">
                         <div className="bg-slate-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 border border-slate-100">
@@ -110,7 +126,10 @@ const PastInteractionsSidebar = ({
 
             <div className="p-4 bg-slate-50 border-t border-slate-100 rounded-b-xl">
                 <button
-                    onClick={() => handleOpenPatientDetails(activePatientVisitorId)}
+                    onClick={() => {
+                        handleOpenPatientDetails(activePatientVisitorId);
+                        onCloseOverlay?.();
+                    }}
                     className="w-full py-2.5 rounded-lg bg-white border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-100 transition-colors shadow-sm flex items-center justify-center gap-2"
                 >
                     <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">

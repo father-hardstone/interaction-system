@@ -1,6 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import supabaseStorageService from '../services/supabaseService';
 
+const formatAccountingNumber = (v) => {
+    const d = String(v || '').replace(/\D/g, '').slice(0, 6);
+    if (d.length <= 2) return d;
+    if (d.length <= 4) return `${d.slice(0, 2)}-${d.slice(2)}`;
+    return `${d.slice(0, 2)}-${d.slice(2, 4)}-${d.slice(4)}`;
+};
+
 const InteractionDataView = ({
     interaction,
     getImageUrl,
@@ -321,7 +328,7 @@ const InteractionDataView = ({
             )}
 
             {/* ROW 7: Follow-up */}
-            {interaction.followup && interaction.followup.required && (
+            {((interaction.followupRequired?.required) || (interaction.followup?.required)) && (
                 <div className="group">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] block mb-2 transition-colors group-hover:text-orange-600">Required follow-up</label>
                     <div className="bg-orange-50/50 border border-orange-100 rounded-2xl p-4 flex items-center justify-between shadow-sm transition-all hover:shadow-md hover:bg-white">
@@ -333,7 +340,7 @@ const InteractionDataView = ({
                             </div>
                             <span className="font-black text-orange-900 uppercase text-xs tracking-tighter">Next appointment recommended</span>
                         </div>
-                        <span className="font-black text-slate-700 bg-white px-3 py-1.5 rounded-xl border border-orange-200 shadow-sm">{formatSimpleDate(interaction.followup.date)}</span>
+                        <span className="font-black text-slate-700 bg-white px-3 py-1.5 rounded-xl border border-orange-200 shadow-sm">{formatSimpleDate((interaction.followupRequired || interaction.followup)?.date)}</span>
                     </div>
                 </div>
             )}
@@ -388,7 +395,7 @@ const InteractionDataView = ({
                                             {(line.suffix || line.accountingNumber) && (
                                                 <div className="text-[10px] text-slate-400 mt-0.5">
                                                     {line.suffix && <span className="mr-2">Suffix: {line.suffix}</span>}
-                                                    {line.accountingNumber && <span>Acct: {line.accountingNumber}</span>}
+                                                    {line.accountingNumber && <span>Acct: {formatAccountingNumber(line.accountingNumber)}</span>}
                                                 </div>
                                             )}
                                         </td>

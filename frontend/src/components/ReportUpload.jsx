@@ -21,7 +21,8 @@ const ReportUpload = ({
     entitySerial,
     interactions = [],
     officers = [],
-    onUploadSuccess
+    onUploadSuccess,
+    buttonLabel = 'Upload Report'
 }) => {
     const [showModal, setShowModal] = useState(false);
     const [reportType, setReportType] = useState('');
@@ -270,7 +271,7 @@ const ReportUpload = ({
                 onClick={() => setShowModal(true)}
                 className="px-4 py-2 bg-primary text-white rounded-xl font-semibold text-sm hover:bg-primary-dark transition-colors shadow-sm"
             >
-                Upload Report
+                {buttonLabel}
             </button>
 
             {showModal && (
