@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import useOfficerTab from '../hooks/useOfficerTab';
 import ScheduledInteractionsTable from './ScheduledInteractionsTable';
 import IncompleteInteractionsTable from './IncompleteInteractionsTable';
@@ -9,7 +9,7 @@ import CancelInteractionModal from './CancelInteractionModal';
 import MediaViewerModal from './MediaViewerModal';
 import PastInteractionsSidebar from './PastInteractionsSidebar';
 
-const OfficerTab = ({ userData, interactions, visitors, onRefreshInteractions, onInteractionClick }) => {
+const OfficerTab = ({ userData, interactions, visitors, isLoadingInteractions = false, onRefreshInteractions, onInteractionClick }) => {
     const {
         selectedPatient,
         showPatientDetailModal,
@@ -66,6 +66,8 @@ const OfficerTab = ({ userData, interactions, visitors, onRefreshInteractions, o
         setFollowup
     } = useOfficerTab(userData, interactions, visitors, onRefreshInteractions);
 
+    const [showPatientHistoryOverlay, setShowPatientHistoryOverlay] = useState(false);
+
     const getImageUrl = (imagePath) => {
         if (!imagePath) return null;
         if (imagePath.startsWith('data:image') || imagePath.startsWith('http')) {
@@ -104,7 +106,7 @@ const OfficerTab = ({ userData, interactions, visitors, onRefreshInteractions, o
     };
 
     return (
-        <div className="space-y-6">
+        <div className="flex flex-col min-h-0 flex-1 space-y-6 overflow-hidden">
             {/* Tab Navigation */}
             <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl w-fit">
                 <button
@@ -131,6 +133,7 @@ const OfficerTab = ({ userData, interactions, visitors, onRefreshInteractions, o
             {activeViewTab === 'scheduled' && (
                 <ScheduledInteractionsTable
                     scheduledInteractions={scheduledInteractions}
+                    isLoading={isLoadingInteractions}
                     handleOpenPatientDetails={handleOpenPatientDetails}
                     getVisitorName={getVisitorName}
                     getVisitorSerial={getVisitorSerial}
@@ -146,6 +149,7 @@ const OfficerTab = ({ userData, interactions, visitors, onRefreshInteractions, o
             {activeViewTab === 'incomplete' && (
                 <IncompleteInteractionsTable
                     incompleteInteractions={incompleteInteractions}
+                    isLoading={isLoadingInteractions}
                     handleOpenPatientDetails={handleOpenPatientDetails}
                     getVisitorName={getVisitorName}
                     getVisitorSerial={getVisitorSerial}
@@ -158,9 +162,25 @@ const OfficerTab = ({ userData, interactions, visitors, onRefreshInteractions, o
 
             {/* Ongoing Tab */}
             {activeViewTab === 'ongoing' && (
-                <div className="flex flex-col xl:flex-row gap-6 items-start h-[calc(100vh-140px)]">
-                    <div className="flex-1 w-full lg:min-w-0 h-full overflow-hidden">
+                <div className="flex flex-col xl:flex-row gap-6 items-stretch h-[calc(100vh-140px)] min-h-0 overflow-hidden">
+                    <div className="flex-1 w-full xl:min-w-0 min-h-0 overflow-hidden flex flex-col relative">
+                        {/* Patient History button - inside ongoing content, top-right, small screens only */}
+                        {activeInteractionId && (
+                            <div className="xl:hidden absolute top-0 right-0 z-20 pt-2 pr-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPatientHistoryOverlay(true)}
+                                    className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-xl shadow-lg hover:shadow-xl hover:bg-slate-50 transition-all font-semibold text-sm text-slate-700"
+                                >
+                                    <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    Patient History
+                                </button>
+                            </div>
+                        )}
                         <OngoingInteractionsView
+                            isLoading={isLoadingInteractions}
                             ongoingInteractions={ongoingInteractions}
                             getVisitorName={getVisitorName}
                             getVisitorSerial={getVisitorSerial}
@@ -209,30 +229,82 @@ const OfficerTab = ({ userData, interactions, visitors, onRefreshInteractions, o
                             interactions={interactions}
                         />
                     </div>
+                    {/* Patient History - sidebar on xl+, overlay on smaller screens */}
                     {activeInteractionId && (
-                        <PastInteractionsSidebar
-                            ongoingInteractions={ongoingInteractions}
-                            activePatientVisitorId={activePatientVisitorId}
-                            getVisitorName={getVisitorName}
-                            getVisitorSerial={getVisitorSerial}
-                            interactions={interactions}
-                            activeInteractionId={activeInteractionId}
-                            expandedInteractionIds={expandedInteractionIds}
-                            setExpandedInteractionIds={setExpandedInteractionIds}
-                            diagnostics={diagnostics}
-                            getImageUrl={getImageUrl}
-                            setViewingMedia={setViewingMedia}
-                            patientReports={patientReports}
-                            handleOpenPatientDetails={handleOpenPatientDetails}
-                        />
+                        <>
+                            {/* Desktop: sidebar beside ongoing */}
+                            <div className="hidden xl:flex xl:max-h-full xl:min-h-0 xl:overflow-hidden shrink-0 flex-col">
+                                <PastInteractionsSidebar
+                                    ongoingInteractions={ongoingInteractions}
+                                    activePatientVisitorId={activePatientVisitorId}
+                                    getVisitorName={getVisitorName}
+                                    getVisitorSerial={getVisitorSerial}
+                                    interactions={interactions}
+                                    activeInteractionId={activeInteractionId}
+                                    expandedInteractionIds={expandedInteractionIds}
+                                    setExpandedInteractionIds={setExpandedInteractionIds}
+                                    diagnostics={diagnostics}
+                                    getImageUrl={getImageUrl}
+                                    setViewingMedia={setViewingMedia}
+                                    patientReports={patientReports}
+                                    handleOpenPatientDetails={handleOpenPatientDetails}
+                                />
+                            </div>
+                            {/* Small screen: side drawer with shaded backdrop */}
+                            <div className={`xl:hidden fixed inset-0 z-[60] pointer-events-none transition-opacity duration-300 ${showPatientHistoryOverlay ? 'opacity-100 pointer-events-auto' : 'opacity-0'}`} aria-hidden={!showPatientHistoryOverlay}>
+                                {/* Shaded backdrop - click to close */}
+                                <div
+                                    className="absolute inset-0 bg-black/50"
+                                    onClick={() => setShowPatientHistoryOverlay(false)}
+                                    aria-hidden="true"
+                                />
+                                {/* Side drawer panel - slides in from right, starts below top bar */}
+                                <div
+                                    className={`absolute top-14 right-0 h-[calc(100vh-3.5rem)] w-[307px] max-w-[85vw] bg-white shadow-2xl flex flex-col overflow-hidden transition-transform duration-300 ease-out rounded-tl-xl ${showPatientHistoryOverlay ? 'translate-x-0' : 'translate-x-full'}`}
+                                    onClick={(e) => e.stopPropagation()}
+                                >
+                                    {/* Close button at top of drawer */}
+                                    {/* <div className="flex justify-end p-3 border-b border-slate-100 shrink-0">
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowPatientHistoryOverlay(false)}
+                                            className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors"
+                                            title="Close"
+                                        >
+                                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                            </svg>
+                                        </button>
+                                    </div> */}
+                                    <PastInteractionsSidebar
+                                        isOverlay={true}
+                                        ongoingInteractions={ongoingInteractions}
+                                        activePatientVisitorId={activePatientVisitorId}
+                                        getVisitorName={getVisitorName}
+                                        getVisitorSerial={getVisitorSerial}
+                                        interactions={interactions}
+                                        activeInteractionId={activeInteractionId}
+                                        expandedInteractionIds={expandedInteractionIds}
+                                        setExpandedInteractionIds={setExpandedInteractionIds}
+                                        diagnostics={diagnostics}
+                                        getImageUrl={getImageUrl}
+                                        setViewingMedia={setViewingMedia}
+                                        patientReports={patientReports}
+                                        handleOpenPatientDetails={handleOpenPatientDetails}
+                                        onCloseOverlay={() => setShowPatientHistoryOverlay(false)}
+                                    />
+                                </div>
+                            </div>
+                        </>
                     )}
                 </div>
             )}
 
             {/* Completed interactions footer */}
-            {activeViewTab === 'scheduled' && completedInteractions.length > 0 && (
+            {activeViewTab === 'scheduled' && (
                 <CompletedInteractionsTable
                     completedInteractions={completedInteractions}
+                    isLoading={isLoadingInteractions}
                     getVisitorName={getVisitorName}
                     formatDate={formatDate}
                     onInteractionClick={onInteractionClick}

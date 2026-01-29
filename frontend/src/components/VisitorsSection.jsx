@@ -1,7 +1,7 @@
 import PhoneInput from './PhoneInput';
 import ReportUpload from './ReportUpload';
 import { reportService } from '../services/reportService';
-import api from '../services/api';
+import { useMasterData } from '../contexts/MasterDataContext';
 import PatientDetailsModal from './PatientDetailsModal';
 
 import { useState, useMemo, useEffect } from 'react';
@@ -20,6 +20,7 @@ const REPORT_TYPES = [
 
 const VisitorsSection = ({
     visitors,
+    isLoadingVisitors = false,
     interactions = [],
     officers = [],
     searchFirstName,
@@ -67,6 +68,7 @@ const VisitorsSection = ({
     handlePatientDragStart,
     handlePatientDrop,
     isCreatingVisitor,
+    isCreatingInteraction = false,
     deletingVisitorId,
     editingVisitorId,
     getVisitorName,
@@ -84,28 +86,11 @@ const VisitorsSection = ({
     const [reports, setReports] = useState([]);
     const [loadingReports, setLoadingReports] = useState(false);
     const [deletingReportId, setDeletingReportId] = useState(null);
-    const [services, setServices] = useState([]);
-    const [diagnostics, setDiagnostics] = useState([]);
+    const { services = [], diagnostics = [] } = useMasterData();
     const [showRegisterConfirmModal, setShowRegisterConfirmModal] = useState(false);
     const [pendingRegisterVisitor, setPendingRegisterVisitor] = useState(null);
     const [guardianIdError, setGuardianIdError] = useState('');
     const [dobSearchFocused, setDobSearchFocused] = useState(false);
-
-    useEffect(() => {
-        const fetchMasterData = async () => {
-            try {
-                const [servicesRes, diagnosticsRes] = await Promise.all([
-                    api.get('/services'),
-                    api.get('/diagnostics')
-                ]);
-                setServices(servicesRes.data || []);
-                setDiagnostics(diagnosticsRes.data || []);
-            } catch (error) {
-                console.error('Error fetching master data:', error);
-            }
-        };
-        fetchMasterData();
-    }, []);
 
     const validateDates = (effectivity, expiry) => {
         if (effectivity && expiry) {
@@ -170,12 +155,13 @@ const VisitorsSection = ({
         }
     };
 
-    const confirmRegistration = () => {
-        if (pendingRegisterVisitor && handleRegisterPatient) {
-            handleRegisterPatient(pendingRegisterVisitor);
+    const confirmRegistration = async () => {
+        if (!pendingRegisterVisitor || !handleRegisterPatient) return;
+        const success = await handleRegisterPatient(pendingRegisterVisitor);
+        if (success) {
+            setShowRegisterConfirmModal(false);
+            setPendingRegisterVisitor(null);
         }
-        setShowRegisterConfirmModal(false);
-        setPendingRegisterVisitor(null);
     };
 
     const initiateRegistration = (visitor) => {
@@ -201,39 +187,52 @@ const VisitorsSection = ({
         const val = e.target.value.replace(/\D/g, '').slice(0, 6); // Only digits, max 6
         let updates = { ...visitorForm, guardianId: val };
 
-        // Clear error when changing
         setGuardianIdError('');
 
-        if (val.length === 6) {
-            // Try to find guardian by serial number (6 digits)
+        if (val.length < 6) {
+            // Any removal or incomplete ID: clear guardian name & contact, enable editing
+            updates.guardianName = '';
+            updates.guardianPhone = '';
+            setGuardianPhoneData({ fullNumber: '', valid: false });
+            if (val.length > 0) {
+                setGuardianIdError('Guardian ID must be 6 digits');
+            }
+        } else if (val.length === 6) {
             const guardian = visitors.find((v) => {
                 const serial = v.serial ? String(v.serial).padStart(6, '0') : '';
                 return serial === val;
             });
 
             if (guardian) {
-                // Auto-fill only if fields are empty (don't overwrite manual entries)
-                if (!updates.guardianName) {
-                    updates.guardianName = guardian.firstName ? `${guardian.firstName} ${guardian.lastName || ''}`.trim() : '';
-                }
-                if (!guardianPhoneData.fullNumber) {
-                    setGuardianPhoneData({ fullNumber: guardian.phone || '', valid: !!guardian.phone });
-                }
+                updates.guardianName = guardian.firstName ? `${guardian.firstName} ${guardian.lastName || ''}`.trim() : '';
+                setGuardianPhoneData({ fullNumber: guardian.phone || '', valid: !!guardian.phone });
                 setGuardianIdError('');
             } else {
+                updates.guardianName = '';
+                updates.guardianPhone = '';
+                setGuardianPhoneData({ fullNumber: '', valid: false });
                 setGuardianIdError('Guardian ID not found in the system');
             }
-        } else if (val.length > 0 && val.length < 6) {
-            setGuardianIdError('Guardian ID must be 6 digits');
-        } else if (val.length === 0) {
-            // Clear fields only when guardian ID is completely removed
-            updates.guardianName = '';
-            updates.guardianPhone = '';
-            setGuardianPhoneData({ fullNumber: '', valid: false });
         }
 
         setVisitorForm(updates);
     };
+
+    const guardianIdValid = useMemo(() => {
+        const id = visitorForm.guardianId || '';
+        if (id.length !== 6) return false;
+        return visitors.some((v) => {
+            const serial = v.serial ? String(v.serial).padStart(6, '0') : '';
+            return serial === id;
+        });
+    }, [visitorForm.guardianId, visitors]);
+
+    const guardianIdInvalid = useMemo(() => {
+        const id = visitorForm.guardianId || '';
+        if (id.length === 0) return false;
+        if (id.length < 6) return true;
+        return !guardianIdValid;
+    }, [visitorForm.guardianId, guardianIdValid]);
     const filteredVisitors = visitors
         .filter((v) => {
             const firstName = (v.firstName || '').toLowerCase();
@@ -350,7 +349,19 @@ const VisitorsSection = ({
                             </tr>
                         </thead>
                         <tbody>
-                            {filteredVisitors.length === 0 ? (
+                            {isLoadingVisitors ? (
+                                <tr>
+                                    <td colSpan="8" className="px-6 py-16 text-center">
+                                        <div className="flex flex-col items-center justify-center gap-4">
+                                            <svg className="animate-spin h-10 w-10 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                            </svg>
+                                            <span className="text-sm font-semibold text-slate-600">Loading patients...</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ) : filteredVisitors.length === 0 ? (
                                 <tr>
                                     <td colSpan="8" className="px-6 py-8 text-center text-slate-400">
                                         No patients found. Click "Add a patient" to get started.
@@ -521,14 +532,24 @@ const VisitorsSection = ({
                                                     </button>
                                                     {(() => {
                                                         const isRegistered = interactions.some(i => i.visitorId === visitor.id && !i.completed);
+                                                        const isRegisteringThis = isCreatingInteraction && pendingRegisterVisitor?.id === visitor.id;
+                                                        const isDisabled = isRegistered || isRegisteringThis;
                                                         return (
                                                             <button
                                                                 type="button"
-                                                                onClick={() => !isRegistered && initiateRegistration(visitor)}
-                                                                disabled={isRegistered}
-                                                                className={`px-3 py-1 ${isRegistered ? 'bg-slate-400' : 'bg-green-600 hover:bg-green-700'} text-white rounded-md text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed`}
+                                                                onClick={() => !isDisabled && initiateRegistration(visitor)}
+                                                                disabled={isDisabled}
+                                                                className={`px-3 py-1 ${isDisabled ? 'bg-slate-400' : 'bg-green-600 hover:bg-green-700'} text-white rounded-md text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 min-w-[90px]`}
                                                             >
-                                                                {isRegistered ? 'In Service' : 'Register'}
+                                                                {isRegisteringThis ? (
+                                                                    <>
+                                                                        <svg className="animate-spin h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                                        </svg>
+                                                                        Registering...
+                                                                    </>
+                                                                ) : isRegistered ? 'In Service' : 'Register'}
                                                             </button>
                                                         );
                                                     })()}
@@ -903,14 +924,32 @@ const VisitorsSection = ({
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                 <div className="flex flex-col gap-2">
                                     <label className="text-sm font-semibold text-slate-900">Guardian ID <span className="text-xs text-slate-400 font-normal">(6 digits)</span></label>
-                                    <input
-                                        type="text"
-                                        placeholder="000000"
-                                        value={visitorForm.guardianId}
-                                        onChange={handleGuardianIdChange}
-                                        maxLength={6}
-                                        className={`w-full py-2.5 px-3.5 border ${guardianIdError ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-slate-50'} rounded-xl font-mono text-sm transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100`}
-                                    />
+                                    <div className="relative">
+                                        <input
+                                            type="text"
+                                            placeholder="000000"
+                                            value={visitorForm.guardianId}
+                                            onChange={handleGuardianIdChange}
+                                            maxLength={6}
+                                            className={`w-full py-2.5 pl-3.5 pr-10 border ${guardianIdError ? 'border-red-300 bg-red-50' : guardianIdValid ? 'border-green-300 bg-green-50/50' : 'border-slate-200 bg-slate-50'} rounded-xl font-mono text-sm transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100`}
+                                        />
+                                        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none flex items-center justify-center w-5 h-5">
+                                            {guardianIdValid && (
+                                                <span className="flex items-center justify-center w-5 h-5 rounded-full bg-green-500 text-white" title="Valid guardian ID">
+                                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                                                    </svg>
+                                                </span>
+                                            )}
+                                            {guardianIdInvalid && (
+                                                <span className="flex items-center justify-center w-5 h-5 rounded-full bg-red-500 text-white" title="Invalid guardian ID">
+                                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                                                    </svg>
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
                                     {guardianIdError && <p className="text-red-500 text-xs mt-1">{guardianIdError}</p>}
                                 </div>
                                 <div className="flex flex-col gap-2">
@@ -921,17 +960,17 @@ const VisitorsSection = ({
                                         value={visitorForm.guardianName}
                                         onChange={(e) => {
                                             const val = e.target.value;
-                                            // Limit to 3 words
                                             const words = val.trim().split(/\s+/).filter(w => w.length > 0);
                                             if (words.length <= 3) {
                                                 setVisitorForm({ ...visitorForm, guardianName: val });
                                             } else {
-                                                // Keep only first 3 words
                                                 const limitedVal = words.slice(0, 3).join(' ');
                                                 setVisitorForm({ ...visitorForm, guardianName: limitedVal });
                                             }
                                         }}
-                                        className="w-full py-2.5 px-3.5 border border-slate-200 rounded-xl font-inherit text-sm bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
+                                        disabled={guardianIdValid}
+                                        readOnly={guardianIdValid}
+                                        className={`w-full py-2.5 px-3.5 border border-slate-200 rounded-xl font-inherit text-sm transition-all focus:outline-none focus:ring-4 focus:ring-blue-100 ${guardianIdValid ? 'bg-slate-100 text-slate-600 cursor-not-allowed' : 'bg-slate-50 text-slate-900 focus:border-primary focus:bg-white'}`}
                                     />
                                 </div>
                                 <div className="flex flex-col gap-2">
@@ -939,7 +978,7 @@ const VisitorsSection = ({
                                     <PhoneInput
                                         value={guardianPhoneData.fullNumber}
                                         onChange={setGuardianPhoneData}
-                                        disabled={guardianIdError}
+                                        disabled={guardianIdValid}
                                     />
                                 </div>
                             </div>
@@ -1038,28 +1077,45 @@ const VisitorsSection = ({
             {
                 showRegisterConfirmModal && (
                     <div className="fixed inset-0 z-[1100] flex items-center justify-center p-4">
-                        <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowRegisterConfirmModal(false)}></div>
+                        <div
+                            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+                            onClick={() => !isCreatingInteraction && (setShowRegisterConfirmModal(false), setPendingRegisterVisitor(null))}
+                        />
                         <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in duration-200">
                             <div className="p-6 text-center">
                                 <h3 className="text-lg font-bold text-slate-900 mb-2">Confirm Registration</h3>
                                 <p className="text-slate-600 text-sm mb-6">
-                                    Do u want to register an interaction?
+                                    Do you want to register an interaction?
                                 </p>
                                 <div className="flex gap-3 justify-center">
                                     <button
                                         onClick={() => {
-                                            setShowRegisterConfirmModal(false);
-                                            setPendingRegisterVisitor(null);
+                                            if (!isCreatingInteraction) {
+                                                setShowRegisterConfirmModal(false);
+                                                setPendingRegisterVisitor(null);
+                                            }
                                         }}
-                                        className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 font-medium hover:bg-slate-200 transition-colors"
+                                        disabled={isCreatingInteraction}
+                                        className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 font-medium hover:bg-slate-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                         No, cancel
                                     </button>
                                     <button
                                         onClick={confirmRegistration}
-                                        className="px-4 py-2 rounded-lg bg-green-600 text-white font-medium hover:bg-green-700 transition-colors shadow-lg shadow-green-200/50"
+                                        disabled={isCreatingInteraction}
+                                        className="px-4 py-2 rounded-lg bg-green-600 text-white font-medium hover:bg-green-700 transition-colors shadow-lg shadow-green-200/50 disabled:opacity-90 disabled:cursor-not-allowed flex items-center justify-center gap-2 min-w-[140px]"
                                     >
-                                        Yes, register
+                                        {isCreatingInteraction ? (
+                                            <>
+                                                <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                </svg>
+                                                Registering...
+                                            </>
+                                        ) : (
+                                            'Yes, register'
+                                        )}
                                     </button>
                                 </div>
                             </div>

@@ -1,7 +1,6 @@
-import { useState } from 'react';
-import api from '../services/api';
-import { useDropZone } from '../hooks/useDragAndDrop';
+import { useState, useEffect } from 'react';
 import { renderInteractionTags } from '../utils/interactionTags';
+import RegisterInteractionModal from './RegisterInteractionModal';
 
 const InteractionsSection = ({
     interactions,
@@ -16,6 +15,7 @@ const InteractionsSection = ({
     handleDrop,
     handlePatientDrop,
     handleRegistrationDropOnBin,
+    onRequestDelete,
     showDeleteRegistrationModal,
     setShowDeleteRegistrationModal,
     registrationToDelete,
@@ -29,20 +29,31 @@ const InteractionsSection = ({
     isAssigningInteraction,
     pendingInteractions,
     pendingAssignments,
+    assignmentFailed = {},
     handleDragEnd,
-
     draggedInteraction,
-    interactionFilter,
-    setInteractionFilter,
-    onInteractionClick
+    onInteractionClick,
+    visitors = [],
+    handleRegisterPatient
 }) => {
     const [draggedOverDelete, setDraggedOverDelete] = useState(false);
+    const [showRegisterModal, setShowRegisterModal] = useState(false);
+
+    const activeOfficers = officers.filter(o => o.active !== 'false' && (!o.deletedAt || o.deletedAt === ''));
+    const [selectedOfficerId, setSelectedOfficerId] = useState(null);
+    const selectedOfficer = activeOfficers.find(o => o.id === selectedOfficerId) || activeOfficers[0];
+
+    useEffect(() => {
+        if (activeOfficers.length > 0 && (!selectedOfficerId || !activeOfficers.find(o => o.id === selectedOfficerId))) {
+            setSelectedOfficerId(activeOfficers[0].id);
+        }
+    }, [activeOfficers, selectedOfficerId]);
 
 
 
     return (
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden overflow-x-hidden">
-            <div className="p-4 sm:p-6 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div className="flex flex-col flex-1 min-h-0 h-full bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden overflow-x-hidden">
+            <div className="shrink-0 p-4 sm:p-6 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
                     <h2 className="text-lg font-semibold text-slate-900">Registrations</h2>
                     <p className="text-sm text-slate-500 mt-1">
@@ -50,51 +61,15 @@ const InteractionsSection = ({
                     </p>
                 </div>
                 <button
-                    onClick={() => {
-                        // Placeholder for future interaction creation
-                        alert('Registration form coming soon');
-                    }}
+                    onClick={() => setShowRegisterModal(true)}
                     className="px-4 py-2 bg-primary text-white rounded-xl font-semibold text-sm hover:bg-primary-dark transition-colors w-full sm:w-auto"
                 >
                     Register Interaction
-
                 </button>
             </div>
 
-            {/* Filter */}
-            <div className="px-4 sm:px-6 py-4 border-b border-slate-200 bg-slate-50/50 backdrop-blur-sm">
-                <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-                    <div className="flex items-center gap-2 text-slate-500">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-                        </svg>
-                        <span className="text-xs font-semibold uppercase tracking-wider">Filter Registrations</span>
-                    </div>
-                    <div className="flex bg-slate-200/50 p-1 rounded-xl w-fit">
-                        <button
-                            onClick={() => setInteractionFilter('today')}
-                            className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-all duration-200 ${interactionFilter === 'today' ? 'bg-white text-primary shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
-                        >
-                            Today
-                        </button>
-                        <button
-                            onClick={() => setInteractionFilter('older')}
-                            className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-all duration-200 ${interactionFilter === 'older' ? 'bg-white text-primary shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
-                        >
-                            Older
-                        </button>
-                        <button
-                            onClick={() => setInteractionFilter('all')}
-                            className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-all duration-200 ${interactionFilter === 'all' ? 'bg-white text-primary shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
-                        >
-                            All
-                        </button>
-                    </div>
-                </div>
-            </div>
-
             {/* Drag and Drop Area */}
-            <div className="p-4 sm:p-6 flex flex-col lg:flex-row gap-6 min-h-[520px] lg:min-h-0 lg:h-full">
+            <div className="flex-1 flex flex-col lg:flex-row gap-6 min-h-0 p-4 sm:p-6">
                 {/* Left Side - Unassigned Interactions */}
                 <div className="flex-[3] flex flex-col min-w-0">
                     <div className="flex justify-between items-center mb-4">
@@ -135,15 +110,24 @@ const InteractionsSection = ({
                             setDraggedOverUnassigned(false);
                             handleDrop(e, null);
                         }}
-                        className={`grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 p-4 rounded-xl transition-colors flex-1 min-h-[420px] ${draggedOverUnassigned ? 'bg-blue-50 border-2 border-blue-300 border-dashed' : 'bg-slate-50'
+                        className={`grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 p-4 rounded-xl transition-colors flex-1 min-h-0 overflow-y-auto scrollbar-hide ${draggedOverUnassigned ? 'bg-blue-50 border-2 border-blue-300 border-dashed' : 'bg-slate-50'
                             }`}
                     >
-                        {/* Show existing interactions first */}
+                        {/* Show existing interactions + optimistic unassigned (being moved from doctor) */}
                         {interactions
-                            .filter(i => (!i.officerId || i.officerId === '') && !pendingInteractions.find(p => p.id === i.id && p.isPending))
+                            .filter(i => {
+                                if (pendingInteractions.find(p => p.id === i.id && p.isPending)) return false;
+                                // Being moved to an officer – show in officer column only
+                                if (i.id in pendingAssignments && pendingAssignments[i.id] !== '' && pendingAssignments[i.id] != null) return false;
+                                if ((!i.officerId || i.officerId === '')) return true;
+                                if (pendingAssignments[i.id] === '' || pendingAssignments[i.id] === null) return true; // being unassigned
+                                return false;
+                            })
                             .map((interaction) => {
                                 const canDrag = (userData?.role === 'receptionist' || userData?.role === 'officer') && !interaction.started && !interaction.completed && !interaction.closed;
                                 const isBeingDeleted = draggedOverDelete && draggedInteraction?.id === interaction.id;
+                                const isBeingUnassigned = (pendingAssignments[interaction.id] === '' || pendingAssignments[interaction.id] === null);
+                                const isFailed = assignmentFailed[interaction.id];
 
                                 // Calculate Last Visit
                                 const patientHistory = interactions
@@ -164,22 +148,56 @@ const InteractionsSection = ({
                                             setDraggedOverDelete(false);
                                         }}
                                         onClick={() => onInteractionClick(interaction)}
-                                        className={`group/card relative bg-white border border-slate-200 rounded-2xl p-5 transition-all hover:shadow-xl hover:shadow-blue-500/5 hover:-translate-y-1 active:scale-[0.98] flex flex-col justify-between h-fit overflow-hidden ${isBeingDeleted ? 'ring-2 ring-red-500 bg-red-50' : 'hover:border-blue-400'}`}
+                                        className={`group/card relative bg-white border border-slate-200 rounded-2xl p-5 transition-all duration-300 hover:shadow-xl hover:shadow-blue-500/5 hover:-translate-y-1 active:scale-[0.98] flex flex-col justify-between h-fit overflow-hidden ${isBeingDeleted ? 'ring-2 ring-red-500 bg-red-50' : isFailed ? 'ring-2 ring-red-500 bg-red-100 border-red-300 shadow-lg shadow-red-200/50' : 'hover:border-blue-400'}`}
                                     >
                                         <div className="absolute top-0 right-0 w-32 h-32 bg-blue-50/20 rounded-full -mr-12 -mt-12 transition-transform group-hover/card:scale-110"></div>
 
                                         <div className="relative flex flex-col h-full gap-3">
+                                            {isBeingUnassigned && (
+                                                <div className={`absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-2xl transition-colors duration-200 ${isFailed ? 'bg-red-100/95' : 'bg-white/90 backdrop-blur-sm'}`}>
+                                                    {isFailed ? (
+                                                        <>
+                                                            <svg className="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                            </svg>
+                                                            <span className="text-sm font-bold text-red-700">Failed – reverting</span>
+                                                        </>
+                                                    ) : (
+                                                        <svg className="animate-spin h-8 w-8 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                        </svg>
+                                                    )}
+                                                </div>
+                                            )}
                                             <div className="flex justify-between items-start">
                                                 <span className="text-xs font-black text-blue-600 bg-blue-50/80 px-2.5 py-1 rounded-lg border border-blue-100 uppercase tracking-widest">
                                                     {interaction.interactionSerial || 'REG-PENDING'}
                                                 </span>
-                                                {canDrag && (
-                                                    <div className="flex items-center gap-1.5 opacity-0 group-hover/card:opacity-100 transition-opacity">
-                                                        <svg className="w-4 h-4 text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M4 6h16M4 12h16M4 18h16" />
-                                                        </svg>
-                                                    </div>
-                                                )}
+                                                <div className="flex items-center gap-1.5">
+                                                    {canDrag && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                onRequestDelete?.(interaction);
+                                                            }}
+                                                            className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors opacity-70 hover:opacity-100 sm:opacity-0 sm:group-hover/card:opacity-100"
+                                                            title="Delete registration"
+                                                        >
+                                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                            </svg>
+                                                        </button>
+                                                    )}
+                                                    {canDrag && (
+                                                        <div className="opacity-0 group-hover/card:opacity-100 transition-opacity">
+                                                            <svg className="w-4 h-4 text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M4 6h16M4 12h16M4 18h16" />
+                                                            </svg>
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </div>
 
                                             <div className="space-y-2 flex-1">
@@ -194,7 +212,10 @@ const InteractionsSection = ({
                                                 </div>
                                             </div>
 
-                                            <div className="pt-3 border-t border-slate-50">
+                                            <div className="pt-3 border-t border-slate-50 space-y-2">
+                                                <div className="flex gap-1 flex-wrap">
+                                                    {renderInteractionTags(interaction, { size: 'text-[7px]' })}
+                                                </div>
                                                 <div className="flex flex-col">
                                                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Last Visit</span>
                                                     <span className={`text-sm font-black uppercase tracking-widest ${lastVisitDate === 'New Patient' ? 'text-emerald-500' : 'text-blue-600'}`}>
@@ -246,36 +267,47 @@ const InteractionsSection = ({
                 <div className="w-px bg-slate-200 hidden lg:block"></div>
 
                 {/* Right Side - Officers (Columns) */}
-                <div className="flex-[1] flex flex-col min-w-0 lg:max-w-[400px]">
-                    <h3 className="text-sm font-semibold text-slate-700 mb-4">Doctors</h3>
-                    <div className="flex flex-col gap-4 flex-1 overflow-y-auto">
-                        {officers
-                            .filter(o => o.active !== 'false' && (!o.deletedAt || o.deletedAt === ''))
-                            .map((officer) => (
+                <div className="flex-[1] flex flex-col min-w-0 min-h-0 lg:max-w-[400px]">
+                    <div className="flex items-center gap-3 mb-4 shrink-0">
+                        {activeOfficers.length > 1 && (
+                            <select
+                                value={selectedOfficerId || ''}
+                                onChange={(e) => setSelectedOfficerId(e.target.value || null)}
+                                className="px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
+                            >
+                                {activeOfficers.map((o) => (
+                                    <option key={o.id} value={o.id}>{o.name}</option>
+                                ))}
+                            </select>
+                        )}
+                        <h3 className="text-sm font-semibold text-slate-700">Doctors</h3>
+                    </div>
+                    <div className="flex flex-col flex-1 min-h-0">
+                        {selectedOfficer ? (
                                 <div
-                                    key={officer.id}
-                                    onDragOver={(e) => handleDragOver(e, officer)}
+                                    key={selectedOfficer.id}
+                                    onDragOver={(e) => handleDragOver(e, selectedOfficer)}
                                     onDragLeave={handleDragLeave}
-                                    onDrop={(e) => handleDrop(e, officer)}
-                                    className={`bg-gradient-to-br from-slate-50 to-slate-100 border-2 rounded-xl p-4 h-full flex flex-col transition-all ${draggedOverOfficer === officer.id
+                                    onDrop={(e) => handleDrop(e, selectedOfficer)}
+                                    className={`bg-gradient-to-br from-slate-50 to-slate-100 border-2 rounded-xl p-4 flex-1 flex flex-col min-h-0 transition-all ${draggedOverOfficer === selectedOfficer.id
                                         ? 'border-blue-400 bg-gradient-to-br from-blue-50 to-blue-100 shadow-lg scale-105'
                                         : 'border-slate-200 hover:border-slate-300 hover:shadow-md'
                                         }`}
                                 >
-                                    <div className="bg-white rounded-lg p-3 mb-3 shadow-sm">
+                                    <div className="bg-white rounded-lg p-3 mb-3 shadow-sm shrink-0">
                                         <div className="font-semibold text-slate-900 text-sm mb-1">
-                                            {officer.name}
+                                            {selectedOfficer.name}
                                         </div>
                                         <div className="text-xs text-slate-600">
-                                            ID: {officer.serial}
+                                            ID: {selectedOfficer.serial}
                                         </div>
                                     </div>
 
-                                    {/* Assigned Interactions for this officer */}
-                                    <div className="space-y-2 flex-1 overflow-y-auto">
+                                    {/* Assigned Interactions for this officer - overflow inside, no scrollbar */}
+                                    <div className="space-y-2 flex-1 min-h-0 overflow-y-auto scrollbar-hide">
                                         {/* Show pending assignments (optimistic UI) */}
                                         {Object.entries(pendingAssignments)
-                                            .filter(([interactionId, targetOfficerId]) => targetOfficerId === officer.id)
+                                            .filter(([interactionId, targetOfficerId]) => targetOfficerId === selectedOfficer.id)
                                             .map(([interactionId]) => {
                                                 const interaction = interactions.find(i => i.id === interactionId);
                                                 if (!interaction) return null;
@@ -293,7 +325,7 @@ const InteractionsSection = ({
                                                 );
                                             })}
                                         {interactions
-                                            .filter(i => i.officerId === officer.id && !pendingAssignments[i.id])
+                                            .filter(i => i.officerId === selectedOfficer.id && !(i.id in pendingAssignments))
                                             .sort((a, b) => new Date(b.editedAt || b.createdAt).getTime() - new Date(a.editedAt || a.createdAt).getTime())
                                             .map((interaction) => {
                                                 const canDrag = (userData?.role === 'receptionist' || userData?.role === 'officer') && !interaction.started && !interaction.completed && !interaction.closed;
@@ -332,15 +364,14 @@ const InteractionsSection = ({
                                                     </div>
                                                 );
                                             })}
-                                        {interactions.filter(i => i.officerId === officer.id).length === 0 && (
+                                        {interactions.filter(i => i.officerId === selectedOfficer.id && !(i.id in pendingAssignments)).length === 0 && !Object.values(pendingAssignments).some(id => id === selectedOfficer.id) && (
                                             <div className="text-xs text-slate-400 italic text-center py-4 border-2 border-dashed border-slate-200 rounded-lg">
                                                 Drop registrations here
                                             </div>
                                         )}
                                     </div>
                                 </div>
-                            ))}
-                        {officers.filter(o => o.active !== 'false' && (!o.deletedAt || o.deletedAt === '')).length === 0 && (
+                        ) : (
                             <div className="text-center py-8 text-slate-400 text-sm">
                                 No officers available
                             </div>
@@ -348,6 +379,21 @@ const InteractionsSection = ({
                     </div>
                 </div>
             </div>
+
+            {/* Register Interaction Modal */}
+            <RegisterInteractionModal
+                key={showRegisterModal ? 'open' : 'closed'}
+                isOpen={showRegisterModal}
+                onClose={() => setShowRegisterModal(false)}
+                visitors={visitors}
+                interactions={interactions}
+                getVisitorName={getVisitorName}
+                getVisitorSerial={getVisitorSerial}
+                getVisitorHealthCard={getVisitorHealthCard}
+                formatDate={formatDate}
+                handleRegisterPatient={handleRegisterPatient}
+                isCreatingInteraction={isCreatingInteraction}
+            />
 
             {/* Delete Registration Confirmation Modal */}
             {showDeleteRegistrationModal && registrationToDelete && (

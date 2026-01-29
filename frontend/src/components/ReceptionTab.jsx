@@ -1,9 +1,12 @@
 import { useState } from 'react';
 import VisitorsSection from './VisitorsSection';
 import InteractionsSection from './InteractionsSection';
+import RecordsSection from './RecordsSection';
+import NotClosedInteractionsTable from './NotClosedInteractionsTable';
 import IncompleteInteractionsTable from './IncompleteInteractionsTable';
 import UnbilledInteractionsTable from './UnbilledInteractionsTable';
 import FollowupInteractionsTable from './FollowupInteractionsTable';
+import { BillingSection } from './billing';
 
 const PlaceholderSection = ({ title, description }) => (
     <div className="flex flex-col items-center justify-center p-12 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50 min-h-[400px]">
@@ -19,6 +22,7 @@ const PlaceholderSection = ({ title, description }) => (
 
 const ReceptionTab = ({
     visitors,
+    isLoadingVisitors = false,
     searchFirstName,
     setSearchFirstName,
     searchMiddleName,
@@ -79,6 +83,7 @@ const ReceptionTab = ({
     handleDragLeave,
     handleDrop,
     handleRegistrationDropOnBin,
+    onRequestDelete,
     showDeleteRegistrationModal,
     setShowDeleteRegistrationModal,
     registrationToDelete,
@@ -94,6 +99,7 @@ const ReceptionTab = ({
     isAssigningInteraction,
     pendingInteractions,
     pendingAssignments,
+    assignmentFailed,
     handleDragEnd,
     draggedInteraction,
     interactionFilter,
@@ -103,10 +109,12 @@ const ReceptionTab = ({
     onInteractionClick,
     getImageUrl,
     setViewingMedia,
-    handleRegisterFollowup
+    handleRegisterFollowup,
+    registeringFollowupForId
 }) => {
     const [activeSubTab, setActiveSubTab] = useState('patients');
     const [activeRegistrationSubTab, setActiveRegistrationSubTab] = useState(null); // null = main registrations view, 'incomplete', 'followup', 'unbilled'
+    const [billingModalInteraction, setBillingModalInteraction] = useState(null);
 
     const getVisitorHealthCard = (visitorId) => {
         const visitor = visitors.find(v => v.id === visitorId);
@@ -114,9 +122,9 @@ const ReceptionTab = ({
     };
 
     return (
-        <div className="space-y-6 overflow-x-hidden">
-            {/* Subtab Navigation */}
-            <div className="flex overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 sm:pb-0 scrollbar-hide">
+        <div className="flex flex-col flex-1 min-h-0 overflow-x-hidden">
+            {/* Subtab Navigation - shrink-0 so tabs stay visible when content scrolls */}
+            <div className="flex shrink-0 overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 sm:pb-0 scrollbar-hide mb-4">
                 <div className="flex bg-slate-100 p-1.5 rounded-2xl w-fit">
                     <button
                         onClick={() => setActiveSubTab('patients')}
@@ -166,9 +174,10 @@ const ReceptionTab = ({
                 </div>
             </div>
 
-            {/* Registration Sub-tabs - Only show when Registrations is active */}
+            {/* Registration Sub-tabs + Filter - Only show when Registrations is active */}
             {activeSubTab === 'registrations' && (
-                <div className="flex overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 sm:pb-0 scrollbar-hide">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 sm:pb-0 scrollbar-hide">
+                    {/* Sub-tabs (left) */}
                     <div className="flex bg-slate-50 p-1 rounded-xl w-fit border border-slate-200">
                         <button
                             onClick={() => setActiveRegistrationSubTab(null)}
@@ -178,6 +187,15 @@ const ReceptionTab = ({
                                 }`}
                         >
                             All Registrations
+                        </button>
+                        <button
+                            onClick={() => setActiveRegistrationSubTab('not_closed')}
+                            className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${activeRegistrationSubTab === 'not_closed'
+                                ? 'bg-white text-primary shadow-sm'
+                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                                }`}
+                        >
+                            Not closed
                         </button>
                         <button
                             onClick={() => setActiveRegistrationSubTab('incomplete')}
@@ -207,12 +225,28 @@ const ReceptionTab = ({
                             Unbilled
                         </button>
                     </div>
+                    {/* Filter (right) - covers all registrations subtabs */}
+                    <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Filter</span>
+                        <div className="flex bg-slate-200/50 p-1 rounded-xl flex-wrap gap-1">
+                            {['today', 'this_week', 'this_month', 'last_three_months', 'all'].map((f) => (
+                                <button
+                                    key={f}
+                                    onClick={() => setInteractionFilter(f)}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${interactionFilter === f ? 'bg-white text-primary shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                                >
+                                    {f === 'this_week' ? 'This week' : f === 'this_month' ? 'This month' : f === 'last_three_months' ? 'Last 3 months' : f.charAt(0).toUpperCase() + f.slice(1)}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
                 </div>
             )}
 
             {activeSubTab === 'patients' && (
                 <VisitorsSection
                     visitors={visitors}
+                    isLoadingVisitors={isLoadingVisitors}
                     interactions={interactions}
                     officers={officers}
                     searchFirstName={searchFirstName}
@@ -263,6 +297,7 @@ const ReceptionTab = ({
                     handlePatientDragStart={handlePatientDragStart}
                     handlePatientDrop={handlePatientDrop}
                     isCreatingVisitor={isCreatingVisitor}
+                    isCreatingInteraction={isCreatingInteraction}
                     deletingVisitorId={deletingVisitorId}
                     getVisitorName={getVisitorName}
                     getVisitorSerial={getVisitorSerial}
@@ -276,9 +311,11 @@ const ReceptionTab = ({
             )}
 
             {activeSubTab === 'registrations' && (
-                <div className="lg:max-h-[calc(100vh-280px)] lg:overflow-y-auto lg:overflow-x-hidden">
+                <div className="flex-1 flex flex-col min-h-0 overflow-x-hidden">
                     {activeRegistrationSubTab === null && (
+                        <div className="flex-1 flex flex-col min-h-0">
                         <InteractionsSection
+                            visitors={visitors}
                             interactions={interactions}
                             officers={officers}
                             userData={userData}
@@ -291,6 +328,7 @@ const ReceptionTab = ({
                             handleDrop={handleDrop}
                             handlePatientDrop={handlePatientDrop}
                             handleRegistrationDropOnBin={handleRegistrationDropOnBin}
+                            onRequestDelete={onRequestDelete}
                             showDeleteRegistrationModal={showDeleteRegistrationModal}
                             setShowDeleteRegistrationModal={setShowDeleteRegistrationModal}
                             registrationToDelete={registrationToDelete}
@@ -304,17 +342,38 @@ const ReceptionTab = ({
                             isAssigningInteraction={isAssigningInteraction}
                             pendingInteractions={pendingInteractions}
                             pendingAssignments={pendingAssignments}
+                            assignmentFailed={assignmentFailed}
                             handleDragEnd={handleDragEnd}
                             draggedInteraction={draggedInteraction}
-                            interactionFilter={interactionFilter}
-                            setInteractionFilter={setInteractionFilter}
                             onInteractionClick={onInteractionClick}
+                            handleRegisterPatient={handleRegisterPatient}
                         />
+                        </div>
+                    )}
+
+                    {activeRegistrationSubTab === 'not_closed' && (
+                        <div className="animate-[fadeIn_0.3s_ease-out] flex flex-col flex-1 min-h-0 p-4">
+                            <div className="mb-4 shrink-0">
+                                <h2 className="text-xl font-bold text-slate-900">Not Closed</h2>
+                                <p className="text-sm text-slate-500 mt-1">Interactions that have not been administratively closed.</p>
+                            </div>
+                            <NotClosedInteractionsTable
+                                notClosedInteractions={interactions.filter(i => !i.closed)}
+                                handleOpenPatientDetails={handlePatientClick}
+                                getVisitorName={getVisitorName}
+                                getVisitorSerial={getVisitorSerial}
+                                getOfficerName={getOfficerName}
+                                formatDate={formatDate}
+                                showOfficer={true}
+                                onInteractionClick={onInteractionClick}
+                                interactions={interactions}
+                            />
+                        </div>
                     )}
 
                     {activeRegistrationSubTab === 'incomplete' && (
-                        <div className="animate-[fadeIn_0.3s_ease-out]">
-                            <div className="mb-6">
+                        <div className="animate-[fadeIn_0.3s_ease-out] flex flex-col flex-1 min-h-0 p-4">
+                            <div className="mb-4 shrink-0">
                                 <h2 className="text-xl font-bold text-slate-900">Incomplete Registrations</h2>
                                 <p className="text-sm text-slate-500 mt-1">Manage patients whose visits were started but not yet completed.</p>
                             </div>
@@ -334,13 +393,13 @@ const ReceptionTab = ({
                     )}
 
                     {activeRegistrationSubTab === 'followup' && (
-                        <div className="animate-[fadeIn_0.3s_ease-out]">
-                            <div className="mb-6">
-                                <h2 className="text-xl font-bold text-slate-900">Follow-up Interactions</h2>
+                        <div className="animate-[fadeIn_0.3s_ease-out] flex flex-col flex-1 min-h-0 p-4">
+                            <div className="mb-4 shrink-0">
+                                <h2 className="text-xl font-bold text-slate-900">Followup To Interactions</h2>
                                 <p className="text-sm text-slate-500 mt-1">Track patients who need follow-up appointments or checks.</p>
                             </div>
                             <FollowupInteractionsTable
-                                followupInteractions={interactions.filter(i => i.followup && i.followup.required)}
+                                followupInteractions={interactions.filter(i => i.followupRequired?.required || i.followup?.required)}
                                 handleOpenPatientDetails={handlePatientClick}
                                 getVisitorName={getVisitorName}
                                 getVisitorSerial={getVisitorSerial}
@@ -350,13 +409,14 @@ const ReceptionTab = ({
                                 onInteractionClick={onInteractionClick}
                                 interactions={interactions}
                                 handleRegisterFollowup={handleRegisterFollowup}
+                                registeringFollowupForId={registeringFollowupForId}
                             />
                         </div>
                     )}
 
                     {activeRegistrationSubTab === 'unbilled' && (
-                        <div className="animate-[fadeIn_0.3s_ease-out]">
-                            <div className="mb-6">
+                        <div className="animate-[fadeIn_0.3s_ease-out] flex flex-col flex-1 min-h-0 p-4">
+                            <div className="mb-4 shrink-0">
                                 <h2 className="text-xl font-bold text-slate-900">Unbilled Interactions</h2>
                                 <p className="text-sm text-slate-500 mt-1">Interactions that have been completed but not yet billed.</p>
                             </div>
@@ -364,6 +424,7 @@ const ReceptionTab = ({
                                 unbilledInteractions={interactions.filter(i => {
                                     // Completed interactions that don't have billing
                                     if (!i.completed) return false;
+                                    if (i.billed === true) return false;
                                     if (!i.serviceLines || i.serviceLines.length === 0) return true;
                                     // Check if any service line has billing info
                                     const hasBilling = i.serviceLines.some(line => 
@@ -379,6 +440,10 @@ const ReceptionTab = ({
                                 showOfficer={true}
                                 onInteractionClick={onInteractionClick}
                                 interactions={interactions}
+                                onBillNow={(interaction) => {
+                                    setBillingModalInteraction(interaction);
+                                    setActiveSubTab('billings');
+                                }}
                             />
                         </div>
                     )}
@@ -386,16 +451,28 @@ const ReceptionTab = ({
             )}
 
             {activeSubTab === 'records' && (
-                <PlaceholderSection
-                    title="Medical Records"
-                    description="Access and manage patient medical records and history."
+                <RecordsSection
+                    visitors={visitors}
+                    isLoadingVisitors={isLoadingVisitors}
+                    interactions={interactions}
+                    officers={officers}
+                    userData={userData}
+                    getVisitorName={getVisitorName}
+                    getVisitorSerial={getVisitorSerial}
+                    formatDate={formatDate}
                 />
             )}
 
             {activeSubTab === 'billings' && (
-                <PlaceholderSection
-                    title="Billings & Invoices"
-                    description="Manage invoices, payments, and financial reports."
+                <BillingSection
+                    interactions={interactions}
+                    visitors={visitors}
+                    officers={officers}
+                    onInteractionClick={onInteractionClick}
+                    onOpenPatientDetails={handlePatientClick}
+                    billingModalInteraction={billingModalInteraction}
+                    onOpenBillNow={setBillingModalInteraction}
+                    onCloseBillNow={() => setBillingModalInteraction(null)}
                 />
             )}
         </div>

@@ -3,9 +3,9 @@ const cors = require('cors');
 require('dotenv').config();
 
 const connectDB = require('./src/config/database');
-const ServiceService = require('./src/services/ServiceService');
-const DiagnosticService = require('./src/services/DiagnosticService');
-const mongoose = require('mongoose');
+// const ServiceService = require('./src/services/ServiceService');
+// const DiagnosticService = require('./src/services/DiagnosticService');
+// const mongoose = require('mongoose');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -14,14 +14,15 @@ const PORT = process.env.PORT || 5000;
 connectDB();
 
 // Seed initial services and diagnostics once MongoDB is connected
-mongoose.connection.once('connected', async () => {
-    try {
-        await ServiceService.seedInitialServices();
-        await DiagnosticService.seedInitialDiagnostics();
-    } catch (error) {
-        console.error('Error seeding data:', error);
-    }
-});
+// We only seed when needed (e.g. via POST /api/services/seed, POST /api/diagnostics/seed)
+// mongoose.connection.once('connected', async () => {
+//     try {
+//         await ServiceService.seedInitialServices();
+//         await DiagnosticService.seedInitialDiagnostics();
+//     } catch (error) {
+//         console.error('Error seeding data:', error);
+//     }
+// });
 
 const accessControlRoutes = require('./src/routes/accessControlRoutes');
 // NOTE: Admin workflows are separated into admin-panel/backend.

@@ -61,11 +61,19 @@ export const getInteractionTags = (interaction) => {
         }
     }
 
-    // Followup tag
-    if (interaction.followup && interaction.followup.required) {
+    // Followup required tag (parent: this appointment requires followup)
+    if ((interaction.followupRequired?.required) || (interaction.followup?.required)) {
         tags.push({
-            label: 'Followup',
+            label: 'Followup required',
             className: 'bg-orange-50 text-orange-600 border-orange-100'
+        });
+    }
+
+    // Followup appointment tag (child: this IS a followup appointment)
+    if (interaction.followup?.isFollowup) {
+        tags.push({
+            label: 'Followup appointment',
+            className: 'bg-teal-50 text-teal-600 border-teal-100'
         });
     }
 

@@ -8,6 +8,8 @@ import EntitySettings from './pages/EntitySettings';
 import InternalLogin from './pages/InternalLogin';
 import UserProtectedRoute from './components/UserProtectedRoute';
 import UserDashboard from './pages/UserDashboard';
+import NotFoundPage from './pages/NotFoundPage';
+import ErrorBoundary from './components/ErrorBoundary';
 import { jwtDecode } from 'jwt-decode';
 import { entityService } from './services/entityService';
 import supabaseStorageService from './services/supabaseService';
@@ -17,7 +19,7 @@ const NavBar = () => {
   const token = localStorage.getItem('token');
   const [entityIconUrl, setEntityIconUrl] = useState(null);
   const [userInfo, setUserInfo] = useState({
-    displayName: 'Interaction System',
+    displayName: "Bilal's Interaction System",
     isAuthed: false,
     isEntity: false,
     entityId: null,
@@ -28,7 +30,7 @@ const NavBar = () => {
   useEffect(() => {
     if (!token) {
       setUserInfo({
-        displayName: 'Interaction System',
+        displayName: "Bilal's Interaction System",
         isAuthed: false,
         isEntity: false,
         entityId: null,
@@ -45,7 +47,7 @@ const NavBar = () => {
       if (valid) {
         if (decoded.role === 'entity') {
           setUserInfo({
-            displayName: decoded.name || decoded.entityName || decoded.serial || localStorage.getItem('entityName') || 'Entity',
+            displayName: decoded.name || decoded.entityName || decoded.serial || localStorage.getItem('entityName') || "Bilal's Interaction System",
             isAuthed: true,
             isEntity: true,
             entityId: decoded.id,
@@ -61,7 +63,7 @@ const NavBar = () => {
           });
         } else {
           setUserInfo({
-            displayName: localStorage.getItem('entityName') || 'Interaction System',
+            displayName: localStorage.getItem('entityName') || "Bilal's Interaction System",
             isAuthed: true,
             isEntity: false,
             entityId: null,
@@ -70,7 +72,7 @@ const NavBar = () => {
         }
       } else {
         setUserInfo({
-          displayName: 'Interaction System',
+          displayName: "Bilal's Interaction System",
           isAuthed: false,
           isEntity: false,
           entityId: null,
@@ -79,7 +81,7 @@ const NavBar = () => {
       }
     } catch {
       setUserInfo({
-        displayName: 'Interaction System',
+        displayName: "Bilal's Interaction System",
         isAuthed: false,
         isEntity: false,
         entityId: null,
@@ -93,67 +95,90 @@ const NavBar = () => {
   const isEntityRoute = location.pathname.includes('/entity/');
   const shouldShowIcon = (userInfo.isEntity && isEntityRoute) || (isUserDashboard && userInfo.userEntityId);
 
-  // Load entity icon with caching
+  // Load entity icon with caching (base64 in localStorage – survives refresh, no re-fetch)
   useEffect(() => {
     const loadEntityIcon = async () => {
       const currentEntityId = userInfo.isEntity ? userInfo.entityId : userInfo.userEntityId;
-      
+
       if (!shouldShowIcon || !currentEntityId || !token) {
         setEntityIconUrl(null);
         return;
       }
 
-      // Check cache first
       const cacheKey = `entityIcon_${currentEntityId}`;
-      const cachedIconUrl = localStorage.getItem(cacheKey);
-      const cachedEntityId = localStorage.getItem('cachedEntityId');
-      
-      // Use cache if it exists and entityId matches
-      if (cachedIconUrl && cachedEntityId === currentEntityId) {
-        console.log('Using cached icon for entity:', currentEntityId);
-        setEntityIconUrl(cachedIconUrl);
-        return;
+      const cacheEntityKey = 'cachedEntityId';
+
+      // 1. Check localStorage for cached icon – use immediately, no network
+      const cached = localStorage.getItem(cacheKey);
+      const cachedEntityId = localStorage.getItem(cacheEntityKey);
+      if (cached && cachedEntityId === currentEntityId) {
+        if (cached.startsWith('data:image')) {
+          setEntityIconUrl(cached);
+          return;
+        }
+        if (cached.startsWith('http')) {
+          setEntityIconUrl(cached);
+          // Background: fetch and cache as base64 (URLs like Supabase signed expire)
+          fetch(cached)
+            .then((res) => res.blob())
+            .then((blob) => {
+              const reader = new FileReader();
+              reader.onloadend = () => {
+                const base64 = reader.result;
+                if (typeof base64 === 'string' && base64.length < 500000) {
+                  localStorage.setItem(cacheKey, base64);
+                }
+              };
+              reader.readAsDataURL(blob);
+            })
+            .catch(() => {});
+          return;
+        }
       }
 
-      // Fetch icon
+      // 2. Fetch icon from API
       try {
-        console.log('Fetching icon for entity:', currentEntityId, 'isEntity:', userInfo.isEntity);
         let data;
         if (userInfo.isEntity) {
-          // Entity user - use settings endpoint
           data = await entityService.getSettings();
         } else {
-          // Internal user - use getById endpoint
           data = await entityService.getById(currentEntityId);
         }
 
-        console.log('Entity data received:', { hasIcon: !!data.icon, icon: data.icon });
-
+        let urlToUse = null;
         if (data.icon && !data.icon.startsWith('data:image') && !data.icon.startsWith('http')) {
-          // Icon is a path, fetch URL from Supabase
-          const url = await supabaseStorageService.getFileUrl('CRM testing', data.icon);
-          if (url) {
-            console.log('Icon URL fetched from Supabase:', url);
-            setEntityIconUrl(url);
-            // Cache the URL
-            localStorage.setItem(cacheKey, url);
-            localStorage.setItem('cachedEntityId', currentEntityId);
-          } else {
-            console.warn('Failed to get Supabase URL for icon path:', data.icon);
-            setEntityIconUrl(null);
-            localStorage.removeItem(cacheKey);
-          }
+          urlToUse = await supabaseStorageService.getFileUrl('CRM testing', data.icon);
         } else if (data.icon && (data.icon.startsWith('http') || data.icon.startsWith('data:image'))) {
-          // Icon is already a URL
-          console.log('Using icon URL directly:', data.icon);
-          setEntityIconUrl(data.icon);
-          // Cache the URL
-          localStorage.setItem(cacheKey, data.icon);
-          localStorage.setItem('cachedEntityId', currentEntityId);
-        } else {
-          console.warn('No icon found in entity data');
+          urlToUse = data.icon;
+        }
+
+        if (!urlToUse) {
           setEntityIconUrl(null);
           localStorage.removeItem(cacheKey);
+          return;
+        }
+
+        setEntityIconUrl(urlToUse);
+
+        // 3. Fetch image and cache as base64 so it survives refresh (URLs like Supabase signed expire)
+        try {
+          const res = await fetch(urlToUse);
+          const blob = await res.blob();
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const base64 = reader.result;
+            if (typeof base64 === 'string' && base64.length < 500000) {
+              localStorage.setItem(cacheKey, base64);
+              localStorage.setItem(cacheEntityKey, currentEntityId);
+            } else if (typeof base64 === 'string') {
+              localStorage.setItem(cacheKey, urlToUse);
+              localStorage.setItem(cacheEntityKey, currentEntityId);
+            }
+          };
+          reader.readAsDataURL(blob);
+        } catch {
+          localStorage.setItem(cacheKey, urlToUse);
+          localStorage.setItem(cacheEntityKey, currentEntityId);
         }
       } catch (err) {
         console.error('Failed to load entity icon:', err);
@@ -212,7 +237,7 @@ const NavBar = () => {
             )
           ) : (
             <span className="font-black text-xl uppercase tracking-tighter text-slate-900 group-hover:text-primary transition-colors">
-              {userInfo.isAuthed && isDashboardRoute ? userInfo.displayName : 'Interaction System'}
+              {userInfo.isAuthed && isDashboardRoute ? userInfo.displayName : "Bilal's Interaction System"}
             </span>
           )}
           {userInfo.isAuthed && isDashboardRoute && (
@@ -232,11 +257,12 @@ const NavBar = () => {
 
 function App() {
   return (
-    <Router>
-      <div className="w-full min-h-screen flex flex-col overflow-x-hidden">
-        <NavBar />
+    <ErrorBoundary>
+      <Router>
+        <div className="w-full min-h-screen flex flex-col overflow-x-hidden">
+          <NavBar />
 
-        <Routes>
+          <Routes>
           {/* Public-only Routes (if logged in, redirect to correct dashboard) */}
           <Route element={<PublicOnlyRoute />}>
             <Route path="/entity/login" element={<Login type="entity" />} />
@@ -265,9 +291,13 @@ function App() {
           <Route element={<UserProtectedRoute />}>
             <Route path="/:serial/user/dashboard" element={<UserDashboard />} />
           </Route>
+
+          {/* 404 - Catch-all for unknown routes */}
+          <Route path="*" element={<NotFoundPage />} />
         </Routes>
-      </div>
-    </Router>
+        </div>
+      </Router>
+    </ErrorBoundary>
   );
 }
 
