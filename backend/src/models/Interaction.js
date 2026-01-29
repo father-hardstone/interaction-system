@@ -76,6 +76,29 @@ const interactionSchema = new mongoose.Schema({
         totalFee: { type: Number, default: 0 },
         accountingNumber: { type: String, default: '' }
     }],
+    referral: {
+        type: { type: String, default: '' },
+        reason: { type: String, default: '' },
+        to: { type: String, default: '' },
+        date: { type: String, default: '' }
+    },
+    medications: [{
+        name: { type: String, default: '' },
+        dosage: { type: String, default: '' },
+        suspension: { type: String, default: '' },
+        frequency: { type: String, default: '' },
+        duration: { type: String, default: '' },
+        refills: { type: Number, default: 0 },
+        instructions: { type: String, default: '' }
+    }],
+    followup: {
+        required: { type: Boolean, default: false },
+        date: { type: String, default: '' }
+    },
+    savedNotes: [{
+        text: { type: String, default: '' },
+        timestamp: { type: String, default: '' }
+    }],
     // Status flags
     started: {
         type: Boolean,
@@ -86,6 +109,18 @@ const interactionSchema = new mongoose.Schema({
         default: false
     },
     closed: {
+        type: Boolean,
+        default: false
+    },
+    ongoing: {
+        type: Boolean,
+        default: false
+    },
+    incomplete: {
+        type: Boolean,
+        default: false
+    },
+    billed: {
         type: Boolean,
         default: false
     }

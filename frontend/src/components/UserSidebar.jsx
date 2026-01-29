@@ -4,7 +4,7 @@ const UserSidebar = ({ userData, serial, activeTab, setActiveTab, handleLogout, 
             {/* Mobile Sidebar Overlay */}
             <aside className={`
                 fixed lg:static inset-y-0 left-0 z-50
-                w-64 bg-white border-r border-slate-200 flex flex-col
+                w-56 bg-white border-r border-slate-200 flex flex-col
                 transform transition-transform duration-300 ease-in-out
                 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
             `}>
@@ -27,41 +27,41 @@ const UserSidebar = ({ userData, serial, activeTab, setActiveTab, handleLogout, 
                     </button>
                 </div>
 
-            <nav className="flex-1 p-4 space-y-1">
-                <button
-                    type="button"
-                    className={`w-full text-left flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors ${activeTab === 'reception' ? 'bg-blue-50 text-primary' : 'text-slate-700 hover:bg-slate-100'}`}
-                    onClick={() => {
-                        setActiveTab('reception');
-                        setSidebarOpen(false); // Close sidebar on mobile after selection
-                    }}
-                >
-                    Reception
-                </button>
-                <button
-                    type="button"
-                    className={`w-full text-left flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors ${activeTab === 'officer' ? 'bg-blue-50 text-primary' : 'text-slate-700 hover:bg-slate-100'}`}
-                    onClick={() => {
-                        setActiveTab('officer');
-                        setSidebarOpen(false); // Close sidebar on mobile after selection
-                    }}
-                >
-                    Doctor
-                </button>
-            </nav>
+                <nav className="flex-1 p-4 space-y-1">
+                    <button
+                        type="button"
+                        className={`w-full text-left flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors ${activeTab === 'reception' ? 'bg-blue-50 text-primary' : 'text-slate-700 hover:bg-slate-100'}`}
+                        onClick={() => {
+                            setActiveTab('reception');
+                            setSidebarOpen(false); // Close sidebar on mobile after selection
+                        }}
+                    >
+                        Operations Dashboard
+                    </button>
+                    <button
+                        type="button"
+                        className={`w-full text-left flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors ${activeTab === 'officer' ? 'bg-blue-50 text-primary' : 'text-slate-700 hover:bg-slate-100'}`}
+                        onClick={() => {
+                            setActiveTab('officer');
+                            setSidebarOpen(false); // Close sidebar on mobile after selection
+                        }}
+                    >
+                        Physician's Dashboard
+                    </button>
+                </nav>
 
-            <div className="p-4 border-t border-slate-200">
-                <button
-                    onClick={handleLogout}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-red-50 text-red-600 rounded-xl font-medium hover:bg-red-100 transition-colors"
-                >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                    </svg>
-                    <span>Logout</span>
-                </button>
-            </div>
-        </aside>
+                <div className="p-4 border-t border-slate-200">
+                    <button
+                        onClick={handleLogout}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-red-50 text-red-600 rounded-xl font-medium hover:bg-red-100 transition-colors"
+                    >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                        </svg>
+                        <span>Logout</span>
+                    </button>
+                </div>
+            </aside>
         </>
     );
 };

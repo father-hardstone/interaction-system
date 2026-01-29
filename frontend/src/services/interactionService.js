@@ -1,8 +1,8 @@
 import api from './api';
 
 export const interactionService = {
-    getByEntity: async (entityId) => {
-        const response = await api.get(`/interactions/entity/${entityId}`);
+    getByEntity: async (entityId, filter = 'today') => {
+        const response = await api.get(`/interactions/entity/${entityId}?filter=${filter}`);
         return response.data;
     },
 

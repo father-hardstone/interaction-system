@@ -4,6 +4,7 @@ import { jwtDecode } from 'jwt-decode';
 import { officerService } from '../services/officerService';
 import { receptionistService } from '../services/receptionistService';
 import PhoneInput from '../components/PhoneInput';
+import PasswordInput from '../components/PasswordInput';
 import { validateEmail } from '../utils/crypto';
 
 const EntityDashboard = () => {
@@ -92,13 +93,13 @@ const EntityDashboard = () => {
                 email: newOfficer.email,
                 password: newOfficer.password
             });
-            
+
             // Reset form and close modal
             setNewOfficer({ name: '', email: '', password: '' });
             setPhoneData({ fullNumber: '', valid: false });
             setShowOfficerModal(false);
             setError('');
-            
+
             // Reload officers (receptionists don't need to reload when officer is created)
             await loadOfficers(entityData.id);
         } catch (err) {
@@ -133,7 +134,7 @@ const EntityDashboard = () => {
                 entityName: entityData.name,
                 entityRole: entityData.role
             });
-            
+
             await receptionistService.create({
                 entityId: entityData.id,
                 entitySerial: entityData.serial,
@@ -157,6 +158,11 @@ const EntityDashboard = () => {
 
     const handleLogout = () => {
         localStorage.removeItem('token');
+        localStorage.removeItem('entityName');
+        localStorage.removeItem('userRole');
+        localStorage.removeItem('userName');
+        localStorage.removeItem('entityId');
+        localStorage.removeItem('entitySerial');
         navigate('/entity/login');
     };
 
@@ -252,14 +258,14 @@ const EntityDashboard = () => {
                                 <h2 className="text-lg font-semibold text-slate-900">Officers</h2>
                                 <p className="text-sm text-slate-500 mt-1">Manage your officers</p>
                             </div>
-                            <button 
+                            <button
                                 onClick={() => setShowOfficerModal(true)}
                                 className="px-4 py-2 bg-primary text-white rounded-xl font-semibold text-sm hover:bg-primary-dark transition-colors"
                             >
                                 Add an officer
                             </button>
                         </div>
-                        
+
                         <div className="overflow-x-auto">
                             <table className="w-full border-collapse">
                                 <thead>
@@ -287,11 +293,10 @@ const EntityDashboard = () => {
                                                 <td className="px-6 py-4 text-slate-700">{officer.phone}</td>
                                                 <td className="px-6 py-4 text-slate-700">{officer.email}</td>
                                                 <td className="px-6 py-4">
-                                                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                                                        officer.active === 'true' && officer.approved === 'true'
-                                                            ? 'bg-green-100 text-green-800'
-                                                            : 'bg-yellow-100 text-yellow-800'
-                                                    }`}>
+                                                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${officer.active === 'true' && officer.approved === 'true'
+                                                        ? 'bg-green-100 text-green-800'
+                                                        : 'bg-yellow-100 text-yellow-800'
+                                                        }`}>
                                                         {officer.active === 'true' && officer.approved === 'true' ? 'Active' : 'Pending'}
                                                     </span>
                                                 </td>
@@ -334,7 +339,7 @@ const EntityDashboard = () => {
                                 Add a receptionist
                             </button>
                         </div>
-                        
+
                         <div className="overflow-x-auto">
                             <table className="w-full border-collapse">
                                 <thead>
@@ -362,11 +367,10 @@ const EntityDashboard = () => {
                                                 <td className="px-6 py-4 text-slate-700">{rec.phone}</td>
                                                 <td className="px-6 py-4 text-slate-700">{rec.email}</td>
                                                 <td className="px-6 py-4">
-                                                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                                                        rec.active === 'true' && rec.approved === 'true'
-                                                            ? 'bg-green-100 text-green-800'
-                                                            : 'bg-yellow-100 text-yellow-800'
-                                                    }`}>
+                                                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${rec.active === 'true' && rec.approved === 'true'
+                                                        ? 'bg-green-100 text-green-800'
+                                                        : 'bg-yellow-100 text-yellow-800'
+                                                        }`}>
                                                         {rec.active === 'true' && rec.approved === 'true' ? 'Active' : 'Pending'}
                                                     </span>
                                                 </td>
@@ -438,13 +442,11 @@ const EntityDashboard = () => {
 
                             <div className="flex flex-col gap-2">
                                 <label className="text-sm font-semibold text-slate-900">Password <span className="text-red-500">*</span></label>
-                                <input
-                                    type="password"
+                                <PasswordInput
                                     placeholder="Create a password for the officer"
                                     value={newOfficer.password}
                                     onChange={(e) => setNewOfficer({ ...newOfficer, password: e.target.value })}
                                     required
-                                    className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
                                 />
                             </div>
 
@@ -514,13 +516,11 @@ const EntityDashboard = () => {
 
                             <div className="flex flex-col gap-2">
                                 <label className="text-sm font-semibold text-slate-900">Password <span className="text-red-500">*</span></label>
-                                <input
-                                    type="password"
+                                <PasswordInput
                                     placeholder="Create a password for the receptionist"
                                     value={newReceptionist.password}
                                     onChange={(e) => setNewReceptionist({ ...newReceptionist, password: e.target.value })}
                                     required
-                                    className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
                                 />
                             </div>
 

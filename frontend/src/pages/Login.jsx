@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { authService } from '../services/authService';
 import { entityService } from '../services/entityService';
+import supabaseStorageService from '../services/supabaseService';
 import { useNavigate, Link } from 'react-router-dom';
 import PhoneInput from '../components/PhoneInput';
 import OtpInput from '../components/OtpInput';
+import PasswordInput from '../components/PasswordInput';
 import { hashPassword } from '../utils/crypto';
 import { validateEmail } from '../utils/crypto';
 import { jwtDecode } from 'jwt-decode';
@@ -16,6 +18,7 @@ const Login = ({ type = 'admin' }) => {
     const [emailError, setEmailError] = useState('');
     const [password, setPassword] = useState('');
     const [otp, setOtp] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState('');
     const navigate = useNavigate();
 
@@ -60,6 +63,7 @@ const Login = ({ type = 'admin' }) => {
         e.preventDefault();
         setError('');
         setEmailError('');
+        if (isSubmitting) return;
 
         // For admin, phone is always required
         if (!isEntity) {
@@ -97,6 +101,7 @@ const Login = ({ type = 'admin' }) => {
         }
 
         try {
+            setIsSubmitting(true);
             const loginData = { password: password };
             if (isEntity) {
                 if (isEmailValid()) {
@@ -116,12 +121,15 @@ const Login = ({ type = 'admin' }) => {
             setStep(2);
         } catch (err) {
             setError(err.response?.data?.error || 'Login failed');
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
     const handleVerify = async (e) => {
         e.preventDefault();
         try {
+            setIsSubmitting(true);
             if (otp.length < 6) {
                 setError('Please enter complete OTP');
                 return;
@@ -144,12 +152,44 @@ const Login = ({ type = 'admin' }) => {
             if (isEntity) {
                 // Decode token to get serial for URL
                 const decoded = jwtDecode(res.token);
+                const entityId = decoded.id || '';
+                // Store relevant data in localStorage
+                localStorage.setItem('entityName', decoded.name || decoded.entityName || '');
+                localStorage.setItem('userRole', 'entity');
+                localStorage.setItem('userName', decoded.name || '');
+                localStorage.setItem('entityId', entityId);
+                localStorage.setItem('entitySerial', decoded.serial || '');
+
+                // Fetch and cache entity icon immediately after login
+                if (entityId) {
+                    try {
+                        const entityData = await entityService.getSettings();
+                        if (entityData.icon && !entityData.icon.startsWith('data:image') && !entityData.icon.startsWith('http')) {
+                            const url = await supabaseStorageService.getFileUrl('CRM testing', entityData.icon);
+                            if (url) {
+                                const cacheKey = `entityIcon_${entityId}`;
+                                localStorage.setItem(cacheKey, url);
+                                localStorage.setItem('cachedEntityId', entityId);
+                            }
+                        } else if (entityData.icon && (entityData.icon.startsWith('http') || entityData.icon.startsWith('data:image'))) {
+                            const cacheKey = `entityIcon_${entityId}`;
+                            localStorage.setItem(cacheKey, entityData.icon);
+                            localStorage.setItem('cachedEntityId', entityId);
+                        }
+                    } catch (err) {
+                        // Silently fail - icon will be fetched by NavBar if needed
+                        console.error('Failed to preload entity icon:', err);
+                    }
+                }
+
                 navigate(`/entity/${decoded.serial.toLowerCase()}/dashboard`);
             } else {
                 navigate('/admin/dashboard');
             }
         } catch (err) {
             setError(err.response?.data?.error || 'OTP Verification failed');
+        } finally {
+            setIsSubmitting(false);
         }
     }
 
@@ -181,7 +221,7 @@ const Login = ({ type = 'admin' }) => {
 
                             <div className="flex flex-col gap-2">
                                 <label className="text-sm font-semibold text-slate-900">
-                                    {isEntity ? 'Phone Number' : 'Phone Number'} 
+                                    {isEntity ? 'Phone Number' : 'Phone Number'}
                                     {isPhoneRequired() && <span className="text-error">*</span>}
                                     {isEntity && !isPhoneRequired() && <span className="text-slate-500 text-sm font-normal"> (Optional if email is provided)</span>}
                                 </label>
@@ -193,17 +233,31 @@ const Login = ({ type = 'admin' }) => {
 
                             <div className="flex flex-col gap-2">
                                 <label className="text-sm font-semibold text-slate-900">Password <span className="text-error">*</span></label>
-                                <input
-                                    type="password"
+                                <PasswordInput
                                     placeholder="Enter your password"
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
                                     required
-                                    className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
                                 />
                             </div>
 
-                            <button type="submit" className="mt-4 py-4 px-4 bg-primary text-white border-none rounded-xl font-semibold text-base cursor-pointer transition-all shadow-lg shadow-blue-300/30 hover:bg-primary-dark hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-400/40">Login</button>
+                            <button
+                                type="submit"
+                                disabled={isSubmitting}
+                                className="mt-4 py-4 px-4 bg-primary text-white border-none rounded-xl font-semibold text-base cursor-pointer transition-all shadow-lg shadow-blue-300/30 hover:bg-primary-dark hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-400/40 disabled:opacity-60 disabled:cursor-not-allowed"
+                            >
+                                {isSubmitting ? (
+                                    <span className="flex items-center justify-center gap-2">
+                                        <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                        Signing in...
+                                    </span>
+                                ) : (
+                                    'Login'
+                                )}
+                            </button>
                         </form>
 
                         {!isEntity && (
@@ -235,7 +289,23 @@ const Login = ({ type = 'admin' }) => {
                         <div className="flex flex-col gap-2">
                             <OtpInput onChange={setOtp} />
                         </div>
-                        <button type="submit" className="mt-4 py-4 px-4 bg-primary text-white border-none rounded-xl font-semibold text-base cursor-pointer transition-all shadow-lg shadow-blue-300/30 hover:bg-primary-dark hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-400/40">Verify Access</button>
+                        <button
+                            type="submit"
+                            disabled={isSubmitting}
+                            className="mt-4 py-4 px-4 bg-primary text-white border-none rounded-xl font-semibold text-base cursor-pointer transition-all shadow-lg shadow-blue-300/30 hover:bg-primary-dark hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-400/40 disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
+                            {isSubmitting ? (
+                                <span className="flex items-center justify-center gap-2">
+                                    <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                    Verifying...
+                                </span>
+                            ) : (
+                                'Verify Access'
+                            )}
+                        </button>
                     </form>
                 )}
             </div>

@@ -2,8 +2,28 @@ const EntityService = require('../services/EntityService');
 const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const CryptoJS = require('crypto-js');
 
 const SECRET_KEY = process.env.JWT_SECRET || 'supersecretkey';
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'default-secret-key';
+
+const decryptPassword = (ciphertext) => {
+    if (!ciphertext) return ciphertext;
+    try {
+        const bytes = CryptoJS.AES.decrypt(ciphertext, ENCRYPTION_KEY);
+        const originalText = bytes.toString(CryptoJS.enc.Utf8);
+        if (!originalText || originalText.length === 0) {
+            throw new Error('Password decryption failed');
+        }
+        if (originalText.startsWith('U2FsdGVkX1')) {
+            throw new Error('Password decryption failed');
+        }
+        return originalText;
+    } catch (e) {
+        // If decryption fails, assume plaintext for backward compatibility
+        return ciphertext;
+    }
+};
 
 class EntityController {
 
@@ -11,9 +31,12 @@ class EntityController {
 
     async register(req, res) {
         try {
-            const { name, email, phone, password } = req.body;
+            let { name, email, phone, password } = req.body;
             // Basic validation
             if (!name || !phone || !password) return res.status(400).json({ error: "Missing fields" });
+
+            // Decrypt if needed
+            password = decryptPassword(password).trim();
 
             const existing = await EntityService.findOne(e => e.phone === phone);
             if (existing) return res.status(400).json({ error: "Entity already exists" });
@@ -48,12 +71,15 @@ class EntityController {
 
     async login(req, res) {
         try {
-            const { email, phone, password } = req.body;
+            let { email, phone, password } = req.body;
             
             // Must provide either email or phone, and password
             if (!password || (!email && !phone)) {
                 return res.status(400).json({ error: "Please provide either email or phone number, and password" });
             }
+
+            // Decrypt if needed
+            password = decryptPassword(password).trim();
 
             // Find entity by email or phone
             let entity;
@@ -211,6 +237,83 @@ class EntityController {
             const success = await EntityService.delete(id);
             if (!success) return res.status(404).json({ error: "Entity not found" });
             res.json({ message: "Entity deleted" });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    }
+
+    // --- Entity Settings (Self-service) ---
+
+    async updateEntitySettings(req, res) {
+        try {
+            // Get entity ID from authenticated user
+            const entityId = req.user.id;
+            if (!entityId) {
+                return res.status(401).json({ error: "Unauthorized" });
+            }
+
+            const { name, profilePicture, icon } = req.body;
+            const updates = {};
+
+            // Only update fields that are provided
+            if (name !== undefined) updates.name = name;
+            if (profilePicture !== undefined) updates.profilePicture = profilePicture || '';
+            if (icon !== undefined) updates.icon = icon || '';
+
+            if (Object.keys(updates).length === 0) {
+                return res.status(400).json({ error: "No fields to update" });
+            }
+
+            const updated = await EntityService.update(entityId, updates);
+            if (!updated) return res.status(404).json({ error: "Entity not found" });
+
+            // Return updated entity without password
+            const { password, ...safeEntity } = updated;
+            res.json(safeEntity);
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    }
+
+    async getEntitySettings(req, res) {
+        try {
+            // Get entity ID from authenticated user
+            const entityId = req.user.id;
+            if (!entityId) {
+                return res.status(401).json({ error: "Unauthorized" });
+            }
+
+            const entity = await EntityService.findOne({ id: entityId });
+            if (!entity) return res.status(404).json({ error: "Entity not found" });
+
+            // Return entity without password
+            const { password, ...safeEntity } = entity;
+            res.json(safeEntity);
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    }
+
+    async getEntityById(req, res) {
+        try {
+            // Allow authenticated users (officers/receptionists) to get entity info
+            const { id } = req.params;
+            if (!id) {
+                return res.status(400).json({ error: "Entity ID is required" });
+            }
+
+            const entity = await EntityService.findOne({ id });
+            if (!entity) return res.status(404).json({ error: "Entity not found" });
+
+            // Return only safe fields (name, icon, profilePicture, serial)
+            const { password, ...safeEntity } = entity;
+            res.json({
+                id: safeEntity.id,
+                name: safeEntity.name,
+                icon: safeEntity.icon || '',
+                profilePicture: safeEntity.profilePicture || '',
+                serial: safeEntity.serial
+            });
         } catch (e) {
             res.status(500).json({ error: e.message });
         }

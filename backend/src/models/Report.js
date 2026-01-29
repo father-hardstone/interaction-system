@@ -10,67 +10,58 @@ const reportSchema = new mongoose.Schema({
         type: String,
         required: true
     },
-    entitySerial: {
-        type: String,
-        required: true
-    },
-    visitorId: {
-        type: String,
-        required: true
-    },
-    visitorSerial: {
+    patientId: {
         type: String,
         required: true
     },
     interactionId: {
         type: String,
-        default: '' // Optional - can be empty if uploaded independently
+        default: '' // Optional
     },
-    interactionSerial: {
+    reportType: {
         type: String,
-        default: '' // Optional - can be empty if uploaded independently
+        required: true // blood test, x-ray, ultrasound, CT, MRI, ECG, pathology, etc.
     },
-    instituteName: {
-        type: String,
-        required: true
-    },
-    filePath: {
+    procedureDate: {
         type: String,
         required: true
     },
-    fileName: {
+    reportGeneratedDate: {
         type: String,
         required: true
     },
-    fileType: {
-        type: String,
-        required: true // 'pdf', 'image', etc.
+    fileMetadata: {
+        supabasePath: { type: String, required: true }, // Supabase storage path
+        filename: { type: String, required: true },
+        mimeType: { type: String, required: true },
+        size: { type: Number, required: true }
     },
-    reportNumber: {
-        type: Number,
-        required: true // R1, R2, etc. - the suffix number
+    labMetadata: {
+        labName: { type: String, default: '' },
+        labAddress: { type: String, default: '' },
+        externalReportId: { type: String, default: '' }
     },
-    uploadedAt: {
+    notes: {
         type: String,
-        default: () => new Date().toISOString()
+        default: ''
     },
     uploadedBy: {
         type: String,
-        default: '' // Can store user ID or role
+        default: ''
     },
     deletedAt: {
         type: String,
         default: ''
     }
 }, {
-    timestamps: false,
+    timestamps: true,
     collection: 'reports'
 });
 
 reportSchema.index({ entityId: 1 });
-reportSchema.index({ visitorId: 1 });
+reportSchema.index({ patientId: 1 });
 reportSchema.index({ interactionId: 1 });
-reportSchema.index({ visitorId: 1, entityId: 1 });
+reportSchema.index({ patientId: 1, entityId: 1 });
 
 const Report = mongoose.model('Report', reportSchema);
 

@@ -1,6 +1,27 @@
 const EntityService = require('../services/EntityService');
 const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcryptjs');
+const CryptoJS = require('crypto-js');
+
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'default-secret-key';
+
+const decryptPassword = (ciphertext) => {
+    if (!ciphertext) return ciphertext;
+    try {
+        const bytes = CryptoJS.AES.decrypt(ciphertext, ENCRYPTION_KEY);
+        const originalText = bytes.toString(CryptoJS.enc.Utf8);
+        if (!originalText || originalText.length === 0) {
+            throw new Error('Password decryption failed');
+        }
+        if (originalText.startsWith('U2FsdGVkX1')) {
+            throw new Error('Password decryption failed');
+        }
+        return originalText;
+    } catch (e) {
+        // Fallback: assume plaintext for backward compatibility
+        return ciphertext;
+    }
+};
 
 class EntityController {
     // --- Admin Management Routes (admin-panel only) ---
@@ -25,11 +46,13 @@ class EntityController {
 
     async createEntityByAdmin(req, res) {
         try {
-            const { name, email, phone, password } = req.body;
+            let { name, email, phone, password } = req.body;
             // Validation
             const existing = await EntityService.findOne(e => e.phone === phone);
             if (existing) return res.status(400).json({ error: "Entity exists" });
 
+            // Decrypt if needed then hash
+            password = decryptPassword(password).trim();
             const hashedPassword = await bcrypt.hash(password, 10);
             const now = new Date().toISOString();
             const serial = await EntityService.getNextSerial('E');
@@ -62,7 +85,7 @@ class EntityController {
     async updateEntity(req, res) {
         try {
             const { id } = req.params;
-            const updates = req.body;
+            const updates = { ...req.body };
             // Prevent changing id, serial directly usually, but flexible here.
 
             // If approving
@@ -70,8 +93,13 @@ class EntityController {
                 // updates.approved = String(updates.approved); // Ensure string 'true'/'false' matches CSV
             }
 
-            // Removing sensitive fields from updates just in case
-            delete updates.password; // editing password should be separate flow usually, but ok for now
+            // Handle password change if provided
+            if (updates.password) {
+                updates.password = decryptPassword(updates.password).trim();
+                updates.password = await bcrypt.hash(updates.password, 10);
+            } else {
+                delete updates.password;
+            }
 
             const updated = await EntityService.update(id, updates);
             if (!updated) return res.status(404).json({ error: "Entity not found" });
