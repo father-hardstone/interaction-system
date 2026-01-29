@@ -10,6 +10,10 @@ const serviceSchema = new mongoose.Schema({
         type: String,
         default: ''
     },
+    suffix: {
+        type: String,
+        default: ''
+    },
     hcpFee: {
         type: Number,
         default: 0.00

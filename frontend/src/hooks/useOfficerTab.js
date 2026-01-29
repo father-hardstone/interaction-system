@@ -1,9 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import api from '../services/api';
 import { reportService } from '../services/reportService';
+import { useMasterData } from '../contexts/MasterDataContext';
 import supabaseStorageService from '../services/supabaseService';
 
 const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) => {
+    const { services = [], diagnostics = [] } = useMasterData();
     const [selectedPatient, setSelectedPatient] = useState(null);
     const [showPatientDetailModal, setShowPatientDetailModal] = useState(false);
     const [expandedInteractionIds, setExpandedInteractionIds] = useState({});
@@ -67,30 +69,11 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
     const [savedNotes, setSavedNotes] = useState([]);
     const [followup, setFollowup] = useState({ required: false, date: '' });
 
-    const [services, setServices] = useState([]);
-    const [diagnostics, setDiagnostics] = useState([]);
     const [isSaving, setIsSaving] = useState(false);
 
     const [hasRecovered, setHasRecovered] = useState(false);
 
     const doctorId = userData?.id;
-
-    // Fetch resources
-    useEffect(() => {
-        const fetchData = async () => {
-            try {
-                const [servicesRes, diagnosticsRes] = await Promise.all([
-                    api.get('/services'),
-                    api.get('/diagnostics')
-                ]);
-                setServices(servicesRes.data || []);
-                setDiagnostics(diagnosticsRes.data || []);
-            } catch (error) {
-                console.error('Error fetching services/diagnostics:', error);
-            }
-        };
-        fetchData();
-    }, []);
 
     const activePatientVisitorId = useMemo(() => {
         if (!activeInteractionId) return null;
@@ -221,7 +204,8 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
         setReferral(interaction.referral || { type: '', reason: '', to: '', date: '' });
         setMedications(interaction.medications || []);
         setSavedNotes(interaction.savedNotes || []);
-        setFollowup(interaction.followup || { required: false, date: '' });
+        const fr = interaction.followupRequired || interaction.followup;
+        setFollowup(fr ? { required: fr.required, date: fr.date || '' } : { required: false, date: '' });
         setAdditionalNotes(''); // Always clear input on load
     };
 
@@ -432,7 +416,11 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
             })),
             referral,
             medications,
-            followup,
+            followupRequired: {
+                required: followup.required || false,
+                date: followup.date || '',
+                followupInteractionId: (interactions.find(i => i.id === activeInteractionId)?.followupRequired?.followupInteractionId || interactions.find(i => i.id === activeInteractionId)?.followupInteractionId || '')
+            },
             savedNotes: updatedSavedNotes,
             ongoing: false,
             incomplete: false,
@@ -490,13 +478,7 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
     };
 
     const addServiceLine = () => {
-        if (serviceLines.length >= 8) { // Increased limit or keep 4 if explicitly restricted
-            // User didn't specify limit change, but usually more lines are needed. Kept 4 check if not asked.
-            // Actually, the request "a row" implies simplicity but didn't restrict quantity.
-            // I'll keep the logic but remove the suffix/acct initialization
-        }
-        if (serviceLines.length >= 8) {
-            alert('Maximum 8 billing lines allowed');
+        if (serviceLines.length >= 4) {
             return;
         }
 

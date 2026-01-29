@@ -207,6 +207,7 @@ class InteractionController {
                 serviceLines,
                 referral,
                 medications,
+                followupRequired,
                 followup,
                 savedNotes,
                 started,
@@ -239,8 +240,11 @@ class InteractionController {
             if (started !== undefined) {
                 updates.started = started;
             } else {
-                // If not explicitly set, ensure it's true when saving (interaction was started)
-                updates.started = true;
+                // Only default to true when doing a substantive save (notes, etc.) - not for metadata-only updates (e.g. followup)
+                const isMetadataOnly = ccReason === undefined && subjective === undefined && objective === undefined && assessmentPlan === undefined;
+                if (!isMetadataOnly) {
+                    updates.started = true;
+                }
             }
 
             if (ongoing !== undefined) {
@@ -321,10 +325,18 @@ class InteractionController {
                 }));
             }
 
+            if (followupRequired !== undefined) {
+                updates.followupRequired = {
+                    required: followupRequired.required || false,
+                    date: followupRequired.date || '',
+                    followupInteractionId: followupRequired.followupInteractionId || ''
+                };
+            }
+
             if (followup !== undefined) {
                 updates.followup = {
-                    required: followup.required || false,
-                    date: followup.date || ''
+                    isFollowup: followup.isFollowup || false,
+                    parentInteractionId: followup.parentInteractionId || ''
                 };
             }
 

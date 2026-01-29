@@ -7,6 +7,7 @@ import { officerService } from '../services/officerService';
 import { validateEmail } from '../utils/crypto';
 import UserSidebar from '../components/UserSidebar';
 import ReceptionTab from '../components/ReceptionTab';
+import { MasterDataProvider } from '../contexts/MasterDataContext';
 import OfficerTab from '../components/OfficerTab';
 import InteractionDetailsModal from '../components/InteractionDetailsModal';
 import MediaViewerModal from '../components/MediaViewerModal';
@@ -62,6 +63,7 @@ const UserDashboard = () => {
     const [showLogoutModal, setShowLogoutModal] = useState(false);
     const [error, setError] = useState('');
     const [interactions, setInteractions] = useState([]);
+    const [isLoadingInteractions, setIsLoadingInteractions] = useState(true);
     const [officers, setOfficers] = useState([]);
     const [warningMessage, setWarningMessage] = useState('');
     const [draggedInteraction, setDraggedInteraction] = useState(null);
@@ -71,18 +73,21 @@ const UserDashboard = () => {
     const [fieldErrors, setFieldErrors] = useState({});
 
     // Filter state
-    const [interactionFilter, setInteractionFilter] = useState('today');
+    const [interactionFilter, setInteractionFilter] = useState('this_week');
 
     // Loading states
+    const [isLoadingVisitors, setIsLoadingVisitors] = useState(true);
     const [isCreatingVisitor, setIsCreatingVisitor] = useState(false);
     const [deletingVisitorId, setDeletingVisitorId] = useState(null);
     const [isDeletingRegistration, setIsDeletingRegistration] = useState(false);
     const [isCreatingInteraction, setIsCreatingInteraction] = useState(false);
     const [isAssigningInteraction, setIsAssigningInteraction] = useState(false);
+    const [registeringFollowupForId, setRegisteringFollowupForId] = useState(null);
 
     // Optimistic UI states for drag and drop
     const [pendingInteractions, setPendingInteractions] = useState([]);
-    const [pendingAssignments, setPendingAssignments] = useState({});
+    const [pendingAssignments, setPendingAssignments] = useState({}); // { interactionId: targetOfficerId | '' }
+    const [assignmentFailed, setAssignmentFailed] = useState({}); // { interactionId: true } when API failed
 
     // Next visitor serial (for preview in create form)
     const [nextVisitorSerial, setNextVisitorSerial] = useState('');
@@ -123,26 +128,19 @@ const UserDashboard = () => {
         if (userData?.entityId) {
             loadVisitors(userData.entityId);
             loadOfficers(userData.entityId);
+        } else {
+            setIsLoadingVisitors(false);
         }
     }, [userData?.entityId]);
 
-    // 3a. Load Interactions when filter changes
+    // 3. Load Interactions once on mount/filter change (no polling - fetch only when needed)
     useEffect(() => {
-        if (!userData?.entityId) return;
+        if (!userData?.entityId) {
+            setIsLoadingInteractions(false);
+            return;
+        }
         loadInteractions(userData.entityId, interactionFilter);
     }, [userData?.entityId, interactionFilter]);
-
-    // 3b. Polling for updates (independent of filter changes to avoid interval stacking)
-    useEffect(() => {
-        if (!userData?.entityId) return;
-
-        const interval = setInterval(() => {
-            // Use the current filter value from state
-            loadInteractions(userData.entityId, interactionFilter);
-        }, 30000);
-
-        return () => clearInterval(interval);
-    }, [userData?.entityId]); // Only restart interval if entityId changes, NOT on filter change
 
     // 4. Fetch next visitor serial when modal opens
     useEffect(() => {
@@ -161,26 +159,28 @@ const UserDashboard = () => {
     }, [showVisitorModal, editingVisitorId, userData?.entityId]);
 
     const loadVisitors = async (entityId) => {
+        setIsLoadingVisitors(true);
         try {
-            console.log('loadVisitors - entityId:', entityId);
             const data = await visitorService.getByEntity(entityId);
-            console.log('loadVisitors - received data:', data);
-            console.log('loadVisitors - data length:', data?.length);
             setVisitors(data || []);
         } catch (e) {
             console.error('Failed to load visitors:', e);
-            console.error('Failed to load visitors - error details:', e.response?.data || e.message);
             setVisitors([]);
+        } finally {
+            setIsLoadingVisitors(false);
         }
     };
 
-    const loadInteractions = async (entityId, filter = 'today') => {
+    const loadInteractions = async (entityId, filter = 'this_week') => {
+        setIsLoadingInteractions(true);
         try {
             const data = await interactionService.getByEntity(entityId, filter);
             setInteractions(data || []);
         } catch (e) {
             console.error('Failed to load interactions:', e);
             setInteractions([]);
+        } finally {
+            setIsLoadingInteractions(false);
         }
     };
 
@@ -240,44 +240,44 @@ const UserDashboard = () => {
         if (!draggedInteraction) return;
 
         const interactionId = draggedInteraction.id;
-        const targetOfficerId = officer ? officer.id : null;
+        const targetOfficerId = officer ? officer.id : '';
+        const currentOfficerId = draggedInteraction.officerId || '';
 
-        // Optimistic UI update - show immediately
-        if (officer) {
-            setPendingAssignments(prev => ({
-                ...prev,
-                [interactionId]: targetOfficerId
-            }));
-        } else {
-            setPendingAssignments(prev => ({
-                ...prev,
-                [interactionId]: null
-            }));
+        // No change - drop back where it came from (unassigned→unassigned or same officer)
+        if (targetOfficerId === currentOfficerId) {
+            setDraggedInteraction(null);
+            setDraggedOverOfficer(null);
+            setDraggedOverUnassigned(false);
+            return;
         }
 
-        setIsAssigningInteraction(true);
+        // Optimistic UI: show card in target area immediately with spinner until API completes
+        setPendingAssignments(prev => ({
+            ...prev,
+            [interactionId]: targetOfficerId
+        }));
+        setAssignmentFailed(prev => {
+            const next = { ...prev };
+            delete next[interactionId];
+            return next;
+        });
 
         try {
-            // If dropping on unassigned area, unassign the officer
+            let updated;
             if (!officer) {
-                await interactionService.assignOfficer(
-                    draggedInteraction.id,
-                    '',
-                    ''
-                );
+                updated = await interactionService.assignOfficer(draggedInteraction.id, '', '');
             } else {
-                // Assign to officer
-                await interactionService.assignOfficer(
-                    draggedInteraction.id,
-                    officer.id,
-                    officer.serial
+                updated = await interactionService.assignOfficer(draggedInteraction.id, officer.id, officer.serial);
+            }
+
+            // Update local state from API response immediately – spinner stops only when assign API returns
+            if (updated) {
+                setInteractions(prev =>
+                    prev.map(i => (i.id === interactionId ? { ...i, ...updated } : i))
                 );
             }
 
-            // Reload interactions to get updated data
-            await loadInteractions(userData.entityId);
-
-            // Clear optimistic update after successful assignment
+            // Clear pending state only after assign API has fully succeeded
             setPendingAssignments(prev => {
                 const newState = { ...prev };
                 delete newState[interactionId];
@@ -287,19 +287,30 @@ const UserDashboard = () => {
             setDraggedInteraction(null);
             setDraggedOverOfficer(null);
             setDraggedOverUnassigned(false);
+
+            // Refresh list in background for consistency (no await – don't block spinner removal)
+            loadInteractions(userData.entityId, interactionFilter);
         } catch (err) {
             console.error('Failed to assign/unassign officer:', err);
-            // Remove optimistic update on error
-            setPendingAssignments(prev => {
-                const newState = { ...prev };
-                delete newState[interactionId];
-                return newState;
-            });
+            setAssignmentFailed(prev => ({ ...prev, [interactionId]: true }));
             if (err.response?.status === 403) {
                 showWarning('Only receptionist and doctors can perform this action');
             } else {
                 showWarning('Failed to update interaction assignment');
             }
+            // After 1s, revert: remove from target area, card goes back to origin
+            setTimeout(() => {
+                setPendingAssignments(prev => {
+                    const newState = { ...prev };
+                    delete newState[interactionId];
+                    return newState;
+                });
+                setAssignmentFailed(prev => {
+                    const next = { ...prev };
+                    delete next[interactionId];
+                    return next;
+                });
+            }, 1000);
         } finally {
             setIsAssigningInteraction(false);
         }
@@ -348,9 +359,12 @@ const UserDashboard = () => {
     const handleRegisterFollowup = async (interaction) => {
         if (!interaction) return;
 
+        setRegisteringFollowupForId(interaction.id);
+
         // Get visitor data
         const visitor = visitors.find(v => v.id === interaction.visitorId);
         if (!visitor) {
+            setRegisteringFollowupForId(null);
             showWarning('Patient not found');
             return;
         }
@@ -358,6 +372,7 @@ const UserDashboard = () => {
         // Check if patient already has an active (incomplete) registration
         const isAlreadyRegistered = interactions.some(i => i.visitorId === interaction.visitorId && !i.completed && i.id !== interaction.id);
         if (isAlreadyRegistered) {
+            setRegisteringFollowupForId(null);
             showWarning(`${visitor.firstName} ${visitor.lastName} is already registered and hasn't completed their visit.`);
             return;
         }
@@ -374,8 +389,8 @@ const UserDashboard = () => {
             entitySerial: userData.entitySerial,
             visitorId: visitor.id,
             visitorSerial: visitorSerial,
-            officerId: interaction.officerId || '',
-            officerSerial: interaction.officerSerial || '',
+            officerId: '',
+            officerSerial: '',
             createdAt: new Date().toISOString(),
             editedAt: new Date().toISOString(),
             deletedAt: '',
@@ -397,17 +412,23 @@ const UserDashboard = () => {
 
             console.log('Successfully created followup interaction:', response);
 
-            // If the original interaction had an officer assigned, assign the new one to the same officer
-            if (interaction.officerId && interaction.officerSerial) {
-                const officer = officers.find(o => o.id === interaction.officerId);
-                if (officer) {
-                    await interactionService.assignOfficer(
-                        response.id,
-                        officer.id,
-                        officer.serial
-                    );
+            // Update the main interaction with reference to the followup (unassigned)
+            const existingFr = interaction.followupRequired || interaction.followup;
+            await interactionService.saveDetails(interaction.id, {
+                followupRequired: {
+                    required: existingFr?.required ?? true,
+                    date: existingFr?.date || '',
+                    followupInteractionId: response.id
                 }
-            }
+            });
+
+            // Mark the new interaction as a followup with parent reference (keep started: false so it stays deletable)
+            await interactionService.saveDetails(response.id, {
+                followup: { isFollowup: true, parentInteractionId: interaction.id },
+                started: false,
+                ongoing: false,
+                incomplete: false
+            });
 
             // Remove optimistic update
             setPendingInteractions(prev => prev.filter(i => i.id !== tempId));
@@ -421,6 +442,7 @@ const UserDashboard = () => {
             showWarning('Failed to create followup registration: ' + (err.response?.data?.error || err.message));
         } finally {
             setIsCreatingInteraction(false);
+            setRegisteringFollowupForId(null);
         }
     };
 
@@ -610,9 +632,14 @@ const UserDashboard = () => {
                 healthCardExpiryDate: healthCardExpiryDate,
                 notes: visitorForm.notes,
                 memo: visitorForm.memo,
-                guardianName: visitorForm.guardianName,
-                guardianId: visitorForm.guardianId,
-                guardianPhone: guardianPhoneData.fullNumber,
+                guardianName: visitorForm.guardianName || '',
+                guardianPhone: guardianPhoneData.fullNumber || '',
+                ...(visitorForm.guardianId?.length === 6 && visitors.some((v) => {
+                    const serial = v.serial ? String(v.serial).padStart(6, '0') : '';
+                    return serial === visitorForm.guardianId;
+                })
+                    ? { guardianId: visitorForm.guardianId }
+                    : {}),
             };
 
             if (editingVisitorId) {
@@ -652,7 +679,7 @@ const UserDashboard = () => {
             setError('');
             setEditingVisitorId(null);
 
-            // Reload visitors and interactions (a new visitor creates an interaction)
+            // Reload visitors and interactions
             await loadVisitors(userData.entityId);
             if (!editingVisitorId) {
                 await loadInteractions(userData.entityId);
@@ -777,16 +804,14 @@ const UserDashboard = () => {
     };
 
     const handleRegisterPatient = async (patient) => {
-        if (!patient) return;
+        if (!patient) return false;
 
         // Check if patient already has an active (incomplete) registration
         const isAlreadyRegistered = interactions.some(i => i.visitorId === patient.id && !i.completed);
         if (isAlreadyRegistered) {
             showWarning(`${patient.firstName} ${patient.lastName} is already registered and hasn't completed their visit.`);
-            return;
+            return false;
         }
-
-        console.log('Registering patient:', patient);
 
         // Optimistic UI - create temporary interaction placeholder
         const tempId = `temp-${Date.now()}`;
@@ -803,7 +828,6 @@ const UserDashboard = () => {
             editedAt: new Date().toISOString(),
             deletedAt: '',
             isPending: true,
-            // Store visitor data for display
             _visitor: patient
         };
 
@@ -811,28 +835,22 @@ const UserDashboard = () => {
         setIsCreatingInteraction(true);
 
         try {
-            // Create a new interaction for this patient
             const visitorSerial = patient.serial;
-
-            const response = await interactionService.create({
+            await interactionService.create({
                 entityId: userData.entityId,
                 entitySerial: userData.entitySerial,
                 visitorId: patient.id,
                 visitorSerial: visitorSerial
             });
 
-            console.log('Successfully created interaction:', response);
-
-            // Remove optimistic update
             setPendingInteractions(prev => prev.filter(i => i.id !== tempId));
-
-            // Reload interactions to show the new one
             await loadInteractions(userData.entityId, interactionFilter);
+            return true;
         } catch (err) {
             console.error('Failed to create interaction:', err);
-            // Remove optimistic update on error
             setPendingInteractions(prev => prev.filter(i => i.id !== tempId));
             showWarning('Failed to create registration: ' + (err.response?.data?.error || err.message));
+            return false;
         } finally {
             setIsCreatingInteraction(false);
         }
@@ -844,7 +862,24 @@ const UserDashboard = () => {
         setIsDeletingRegistration(true);
         try {
             await interactionService.delete(registrationToDelete.id);
-            await loadInteractions(userData.entityId);
+
+            // If this was a followup interaction, clear the parent's followupInteractionId so it becomes re-followup-able
+            const parentInteraction = interactions.find(i =>
+                i.followupRequired?.followupInteractionId === registrationToDelete.id ||
+                i.followupInteractionId === registrationToDelete.id
+            );
+            if (parentInteraction) {
+                const fr = parentInteraction.followupRequired || parentInteraction.followup || {};
+                await interactionService.saveDetails(parentInteraction.id, {
+                    followupRequired: {
+                        required: fr.required ?? false,
+                        date: fr.date || '',
+                        followupInteractionId: ''
+                    }
+                });
+            }
+
+            await loadInteractions(userData.entityId, interactionFilter);
             setShowDeleteRegistrationModal(false);
             setRegistrationToDelete(null);
         } catch (err) {
@@ -861,6 +896,13 @@ const UserDashboard = () => {
             setRegistrationToDelete(draggedInteraction);
             setShowDeleteRegistrationModal(true);
             setDraggedInteraction(null);
+        }
+    };
+
+    const handleRequestDeleteRegistration = (interaction) => {
+        if (interaction) {
+            setRegistrationToDelete(interaction);
+            setShowDeleteRegistrationModal(true);
         }
     };
 
@@ -936,11 +978,13 @@ const UserDashboard = () => {
             />
 
             {/* Main Content */}
-            <main className="flex-1 overflow-x-hidden overflow-y-auto bg-slate-50">
-                <div className="pt-[128px] min-h-[calc(100vh-128px)] p-4 sm:p-6 lg:p-8">
+            <main className="flex-1 flex flex-col min-h-0 overflow-x-hidden overflow-y-auto bg-slate-50">
+                <div className="flex-1 flex flex-col min-h-0 p-4 sm:p-6 lg:p-8">
+                    <MasterDataProvider>
                     {activeTab === 'reception' && (
                         <ReceptionTab
                             visitors={visitors}
+                            isLoadingVisitors={isLoadingVisitors}
                             searchFirstName={searchFirstName}
                             isCreatingVisitor={isCreatingVisitor}
                             deletingVisitorId={deletingVisitorId}
@@ -1002,6 +1046,7 @@ const UserDashboard = () => {
                             handleDragLeave={handleDragLeave}
                             handleDrop={handleDrop}
                             handleRegistrationDropOnBin={handleRegistrationDropOnBin}
+                            onRequestDelete={handleRequestDeleteRegistration}
                             showDeleteRegistrationModal={showDeleteRegistrationModal}
                             setShowDeleteRegistrationModal={setShowDeleteRegistrationModal}
                             registrationToDelete={registrationToDelete}
@@ -1024,11 +1069,13 @@ const UserDashboard = () => {
                             isAssigningInteraction={isAssigningInteraction}
                             pendingInteractions={pendingInteractions}
                             pendingAssignments={pendingAssignments}
+                            assignmentFailed={assignmentFailed}
                             handleDragEnd={handleDragEnd}
                             draggedInteraction={draggedInteraction}
                             handleRegisterPatient={handleRegisterPatient}
                             nextVisitorSerial={nextVisitorSerial}
                             handleRegisterFollowup={handleRegisterFollowup}
+                            registeringFollowupForId={registeringFollowupForId}
                         />
                     )}
 
@@ -1037,10 +1084,12 @@ const UserDashboard = () => {
                             userData={userData}
                             interactions={interactions}
                             visitors={visitors}
+                            isLoadingInteractions={isLoadingInteractions}
                             onRefreshInteractions={() => loadInteractions(userData.entityId, interactionFilter)}
                             onInteractionClick={handleInteractionClick}
                         />
                     )}
+                    </MasterDataProvider>
                 </div>
             </main>
 

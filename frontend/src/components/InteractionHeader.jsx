@@ -2,8 +2,8 @@ import React from 'react';
 
 const InteractionHeader = ({ interaction, getVisitorName, getVisitorSerial, setShowCancelModal, handleSaveInteraction, handleSaveDraft, isSaving, onInteractionClick, lastVisit }) => {
     return (
-        <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-white sticky top-0 z-10 w-full">
-            <div className="flex items-center gap-4">
+        <div className="px-6 py-4 border-b border-slate-200 flex flex-col min-[1617px]:flex-row min-[1617px]:justify-between min-[1617px]:items-center gap-4 bg-white sticky top-0 z-10 w-full">
+            <div className="flex items-center gap-4 min-w-0 flex-1">
                 <div
                     className="bg-blue-50 p-2 rounded-lg cursor-pointer hover:bg-blue-100 transition-colors"
                     onClick={() => onInteractionClick(interaction)}
@@ -46,7 +46,7 @@ const InteractionHeader = ({ interaction, getVisitorName, getVisitorSerial, setS
                     </div>
                 </div>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3 shrink-0">
                 <button
                     type="button"
                     onClick={() => setShowCancelModal(true)}

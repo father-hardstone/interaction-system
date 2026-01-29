@@ -1,5 +1,4 @@
 const VisitorService = require('../services/VisitorService');
-const InteractionService = require('../services/InteractionService');
 const { v4: uuidv4 } = require('uuid');
 const EntityService = require('../services/EntityService');
 
@@ -183,24 +182,6 @@ class VisitorController {
             } catch (err) {
                 console.warn('Failed to update entity patientIds', err.message);
             }
-
-            // Create interaction for this visitor
-            // ID is UUID, serial is composite (E1-V1-I1)
-            const interactionSerial = await InteractionService.getNextSerialForEntity(entitySerial, serial);
-            const newInteraction = {
-                id: uuidv4(), // UUID for id
-                interactionSerial, // Composite: E1-V1-I1
-                entityId,
-                entitySerial,
-                visitorId: newVisitor.id,
-                visitorSerial: serial,
-                officerId: '', // Will be assigned later by receptionist
-                officerSerial: '', // Will be assigned later by receptionist
-                createdAt: now,
-                editedAt: now,
-                deletedAt: ''
-            };
-            await InteractionService.create(newInteraction);
 
             res.status(201).json(newVisitor);
         } catch (e) {

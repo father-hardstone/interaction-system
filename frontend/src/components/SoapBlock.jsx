@@ -6,7 +6,7 @@ const SoapBlock = ({ label, value, onChange, padValue, onPadChange, required = f
     const [mode, setMode] = useState('handwriting');
 
     return (
-        <div className="space-y-3 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative group transition-all hover:shadow-md">
+        <div className="space-y-3 bg-white p-5 rounded-2xl shadow-sm relative group transition-all hover:shadow-md">
             <div className="flex justify-between items-center mb-1">
                 <div className="flex items-center gap-3">
                     <div className={`w-1 h-8 rounded-full shadow-sm ${required ? 'bg-blue-600' : 'bg-slate-200'}`}></div>

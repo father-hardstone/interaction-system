@@ -122,6 +122,17 @@ class ServiceController {
             res.status(500).json({ error: e.message });
         }
     }
+
+    // Migrate service codes (upsert missing, update fees)
+    async migrateServices(req, res) {
+        try {
+            const { inserted, updated } = await ServiceService.migrateServiceCodes();
+            res.json({ message: 'Service codes migrated', inserted, updated });
+        } catch (e) {
+            console.error('migrateServices error:', e);
+            res.status(500).json({ error: e.message });
+        }
+    }
 }
 
 module.exports = new ServiceController();

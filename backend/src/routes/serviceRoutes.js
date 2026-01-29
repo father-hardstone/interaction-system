@@ -11,6 +11,9 @@ router.get('/', ServiceController.getAllServices);
 // Seed initial services
 router.post('/seed', ServiceController.seedServices);
 
+// Migrate service codes (upsert missing, update fees)
+router.post('/migrate', ServiceController.migrateServices);
+
 // Get service by code
 router.get('/:code', ServiceController.getServiceByCode);
 

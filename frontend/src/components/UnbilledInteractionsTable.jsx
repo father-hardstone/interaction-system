@@ -9,7 +9,8 @@ const UnbilledInteractionsTable = ({
     showOfficer = false,
     getOfficerName = () => 'N/A',
     onInteractionClick,
-    interactions = []
+    interactions = [],
+    onBillNow
 }) => {
     const getLastVisit = (interaction) => {
         const patientHistory = interactions
@@ -23,21 +24,10 @@ const UnbilledInteractionsTable = ({
     };
 
     return (
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-6 flex flex-col">
-            <div className="flex items-center justify-between mb-4">
-                <div>
-                    <h2 className="text-lg font-semibold text-slate-900">
-                        Unbilled interactions
-                    </h2>
-                    <p className="text-xs text-slate-500 mt-1">
-                        Completed interactions that haven&apos;t been billed yet
-                    </p>
-                </div>
-            </div>
-
-            <div className="border border-slate-100 rounded-lg overflow-x-auto">
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-6 flex flex-col flex-1 min-h-0">
+            <div className="border border-slate-100 rounded-lg overflow-auto max-h-[calc(100vh-280px)] min-h-[200px] flex-1">
                 <table className="min-w-full divide-y divide-slate-100 text-sm min-w-[600px]">
-                    <thead className="bg-slate-50/50">
+                    <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
                         <tr>
                             <th className="px-4 py-3 text-left">
                                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Registration</span>
@@ -56,13 +46,18 @@ const UnbilledInteractionsTable = ({
                             <th className="px-4 py-3 text-left">
                                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Completed</span>
                             </th>
+                            {onBillNow && (
+                                <th className="px-4 py-3 text-right">
+                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Actions</span>
+                                </th>
+                            )}
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 bg-white">
                         {unbilledInteractions.length === 0 ? (
                             <tr>
                                 <td
-                                    colSpan={showOfficer ? 5 : 4}
+                                    colSpan={showOfficer ? (onBillNow ? 6 : 5) : (onBillNow ? 5 : 4)}
                                     className="px-4 py-12 text-center text-xs text-slate-400"
                                 >
                                     No unbilled interactions found.
@@ -109,6 +104,20 @@ const UnbilledInteractionsTable = ({
                                     <td className="px-4 py-4 align-middle text-xs font-bold text-slate-500 italic">
                                         {formatDate(interaction.editedAt || interaction.createdAt)}
                                     </td>
+                                    {onBillNow && (
+                                        <td className="px-4 py-4 align-middle text-right">
+                                            <button
+                                                type="button"
+                                                onClick={() => onBillNow(interaction)}
+                                                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-xs font-semibold shadow-sm hover:bg-blue-700 transition-all active:scale-95"
+                                            >
+                                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                </svg>
+                                                <span>Bill Now</span>
+                                            </button>
+                                        </td>
+                                    )}
                                 </tr>
                             ))
                         )}
