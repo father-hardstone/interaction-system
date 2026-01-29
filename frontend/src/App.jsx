@@ -47,7 +47,7 @@ const NavBar = () => {
       if (valid) {
         if (decoded.role === 'entity') {
           setUserInfo({
-            displayName: decoded.name || decoded.entityName || decoded.serial || localStorage.getItem('entityName') || "Bilal's Interaction System",
+            displayName: decoded.name || decoded.entityName || decoded.serial || localStorage.getItem('entityName') || 'Entity',
             isAuthed: true,
             isEntity: true,
             entityId: decoded.id,
@@ -270,7 +270,8 @@ function App() {
             <Route path="/" element={
               <div className="flex-1 flex items-center justify-center p-8 w-full">
                 <div className="text-center">
-                  <h1 className="text-5xl mb-4 font-bold">Interaction System</h1>
+                  <img src="/icons/interaction_system_icon.png" alt="Bilal's Interaction System" className="h-20 w-auto mx-auto mb-6 object-contain" />
+                  <h1 className="text-5xl mb-4 font-bold">Bilal's Interaction System</h1>
                   <p className="mb-8 text-gray-600">Select a portal to continue.</p>
                   <div className="flex gap-4 justify-center">
                     <Link to="/entity/login" className="px-6 py-3 bg-white text-primary border border-primary rounded-xl font-semibold text-base no-underline inline-block transition-all hover:bg-blue-50">Entity Portal</Link>
