@@ -1,4 +1,12 @@
+import { formatPhoneDisplay, formatHealthCardDisplay, parseHealthCardToDigits, formatDateMMDDYYYY, stripEntityPrefix, getVisitorSerialDisplay } from '../utils/formatUtils';
+
 import { useState, useMemo } from 'react';
+
+const REASON_FOR_VISIT_OPTIONS = [
+    { value: '', label: '— Select reason —' },
+    { value: 'followup', label: 'Followup' },
+    { value: 'refill_medicine', label: 'Refill medicine' }
+];
 
 const RegisterInteractionModal = ({
     isOpen,
@@ -10,7 +18,8 @@ const RegisterInteractionModal = ({
     getVisitorHealthCard,
     formatDate,
     handleRegisterPatient,
-    isCreatingInteraction = false
+    isCreatingInteraction = false,
+    onPatientClick
 }) => {
     const [searchFirstName, setSearchFirstName] = useState('');
     const [searchMiddleName, setSearchMiddleName] = useState('');
@@ -21,6 +30,8 @@ const RegisterInteractionModal = ({
     const [dobSearchFocused, setDobSearchFocused] = useState(false);
     const [showRegisterConfirmModal, setShowRegisterConfirmModal] = useState(false);
     const [pendingRegisterVisitor, setPendingRegisterVisitor] = useState(null);
+    const [reasonForVisit, setReasonForVisit] = useState('');
+    const [parentInteractionId, setParentInteractionId] = useState('');
 
     const filteredVisitors = useMemo(() => {
         return visitors.filter((v) => {
@@ -35,7 +46,8 @@ const RegisterInteractionModal = ({
             const matchesMiddleName = !searchMiddleName || middleName.includes(searchMiddleName.toLowerCase());
             const matchesLastName = !searchLastName || lastName.includes(searchLastName.toLowerCase());
             const matchesSerial = !searchSerial || serialDisplay.includes(searchSerial.toLowerCase());
-            const matchesHealthCard = !searchHealthCard || healthCardStr.includes(searchHealthCard.toLowerCase());
+            const searchHealthCardDigits = parseHealthCardToDigits(searchHealthCard || '');
+            const matchesHealthCard = !searchHealthCardDigits || healthCardStr.includes(searchHealthCardDigits);
             const matchesDob = !searchDob || (() => {
                 const parts = searchDob.split('-');
                 if (parts.length !== 3) return false;
@@ -50,34 +62,49 @@ const RegisterInteractionModal = ({
 
     const confirmRegistration = async () => {
         if (!pendingRegisterVisitor || !handleRegisterPatient) return;
-        const success = await handleRegisterPatient(pendingRegisterVisitor);
+        if (reasonForVisit === 'followup' && !parentInteractionId) return; // Must select prior visit for followup
+        const success = await handleRegisterPatient(pendingRegisterVisitor, {
+            reasonForVisit: reasonForVisit || '',
+            parentInteractionId: reasonForVisit === 'followup' ? parentInteractionId : ''
+        });
         if (success) {
             setShowRegisterConfirmModal(false);
             setPendingRegisterVisitor(null);
+            setReasonForVisit('');
+            setParentInteractionId('');
             onClose();
         }
     };
 
     const initiateRegistration = (visitor) => {
         setPendingRegisterVisitor(visitor);
+        setReasonForVisit('');
+        setParentInteractionId('');
         setShowRegisterConfirmModal(true);
     };
+
+    const priorVisitsForPatient = useMemo(() => {
+        if (!pendingRegisterVisitor) return [];
+        return interactions
+            .filter(i => i.visitorId === pendingRegisterVisitor.id && i.completed)
+            .sort((a, b) => new Date(b.editedAt || b.createdAt) - new Date(a.editedAt || a.createdAt));
+    }, [pendingRegisterVisitor, interactions]);
 
     if (!isOpen) return null;
 
     return (
         <>
-            <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 overflow-y-auto">
+            <div className="fixed inset-0 z-[1000] flex items-center justify-center px-4 pb-4 pt-0 !mt-0 overflow-y-auto">
                 <div
                     className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
                     onClick={onClose}
                 />
-                <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col animate-in fade-in zoom-in duration-200 my-8">
-                    <div className="shrink-0 p-6 border-b border-slate-200">
+                <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col animate-in fade-in zoom-in duration-200 my-8">
+                    <div className="shrink-0 p-6 sm:p-8 border-b border-slate-200">
                         <div className="flex justify-between items-start">
                             <div>
-                                <h2 className="text-xl font-bold text-slate-900">Register Interaction</h2>
-                                <p className="text-sm text-slate-500 mt-1">Select a patient to register an interaction</p>
+                                <h2 className="text-xl font-semibold text-slate-900">Register Patient</h2>
+                                <p className="text-sm text-slate-500 mt-1">Select a patient to register</p>
                             </div>
                             <button
                                 onClick={onClose}
@@ -90,7 +117,7 @@ const RegisterInteractionModal = ({
                         </div>
 
                         {/* Search filters */}
-                        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                        <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
                             <input
                                 type="text"
                                 placeholder="Search by last name"
@@ -106,22 +133,6 @@ const RegisterInteractionModal = ({
                                 className="w-full py-2.5 px-3 border border-slate-200 rounded-xl text-sm bg-white focus:outline-none focus:border-primary focus:ring-2 focus:ring-blue-100"
                             />
                             <input
-                                type="text"
-                                placeholder="Search by ID"
-                                value={searchSerial}
-                                onChange={(e) => setSearchSerial(e.target.value.replace(/\D/g, '').substring(0, 6))}
-                                maxLength={6}
-                                className="w-full py-2.5 px-3 border border-slate-200 rounded-xl text-sm bg-white focus:outline-none focus:border-primary focus:ring-2 focus:ring-blue-100"
-                            />
-                            <input
-                                type="text"
-                                placeholder="Search by health card"
-                                value={searchHealthCard}
-                                onChange={(e) => setSearchHealthCard(e.target.value.replace(/\D/g, '').substring(0, 10))}
-                                maxLength={10}
-                                className="w-full py-2.5 px-3 border border-slate-200 rounded-xl text-sm bg-white focus:outline-none focus:border-primary focus:ring-2 focus:ring-blue-100"
-                            />
-                            <input
                                 type={dobSearchFocused || searchDob ? "date" : "text"}
                                 placeholder={!dobSearchFocused && !searchDob ? "Search by DOB" : ""}
                                 value={searchDob}
@@ -130,18 +141,35 @@ const RegisterInteractionModal = ({
                                 onChange={(e) => setSearchDob(e.target.value)}
                                 className="w-full py-2.5 px-3 border border-slate-200 rounded-xl text-sm bg-white focus:outline-none focus:border-primary focus:ring-2 focus:ring-blue-100 placeholder-slate-400"
                             />
+                            <input
+                                type="text"
+                                placeholder="Search by health card"
+                                value={searchHealthCard}
+                                onChange={(e) => setSearchHealthCard(formatHealthCardDisplay(parseHealthCardToDigits(e.target.value)))}
+                                maxLength={12}
+                                className="w-full py-2.5 px-3 border border-slate-200 rounded-xl text-sm bg-white focus:outline-none focus:border-primary focus:ring-2 focus:ring-blue-100"
+                            />
+                            <input
+                                type="text"
+                                placeholder="Search by ID"
+                                value={searchSerial}
+                                onChange={(e) => setSearchSerial(e.target.value.replace(/\D/g, '').substring(0, 6))}
+                                maxLength={6}
+                                className="w-full py-2.5 px-3 border border-slate-200 rounded-xl text-sm bg-white focus:outline-none focus:border-primary focus:ring-2 focus:ring-blue-100"
+                            />
                         </div>
                     </div>
 
-                    <div className="flex-1 overflow-auto min-h-0">
+                    <div className="flex-1 overflow-auto min-h-0 p-4 sm:p-6">
                         <table className="w-full border-collapse min-w-[700px]">
                             <thead className="sticky top-0 bg-slate-50 border-b border-slate-200 z-10">
                                 <tr>
-                                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700">ID</th>
+                                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700">Date of Birth</th>
                                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700">Name</th>
-                                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 hidden md:table-cell">Date of Birth</th>
+                                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700">ID</th>
                                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 hidden lg:table-cell">Phone</th>
                                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 hidden xl:table-cell">Health Card</th>
+                                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 hidden xl:table-cell">Version</th>
                                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 hidden xl:table-cell">Last Visit</th>
                                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700">Actions</th>
                                 </tr>
@@ -149,7 +177,7 @@ const RegisterInteractionModal = ({
                             <tbody>
                                 {filteredVisitors.length === 0 ? (
                                     <tr>
-                                        <td colSpan="7" className="px-6 py-8 text-center text-slate-400">
+                                        <td colSpan="8" className="px-6 py-10 text-center text-slate-400">
                                             No patients found.
                                         </td>
                                     </tr>
@@ -166,21 +194,23 @@ const RegisterInteractionModal = ({
                                         return (
                                             <tr
                                                 key={visitor.id}
-                                                className="border-b border-slate-100 hover:bg-slate-50 transition-all"
+                                                onClick={() => onPatientClick?.(visitor)}
+                                                className={`border-b border-slate-100 hover:bg-slate-50 transition-all ${onPatientClick ? 'cursor-pointer' : ''}`}
                                             >
-                                                <td className="px-4 py-3 font-medium text-slate-900 text-sm">{visitor.entitySerial ? `${visitor.entitySerial}-${visitor.serial || '-'}` : (visitor.serial || '-')}</td>
+                                                <td className="px-4 py-3 text-slate-700 text-sm">{formatDateMMDDYYYY(visitor.dateOfBirth) || '-'}</td>
                                                 <td className="px-4 py-3 text-slate-700">
                                                     <div className="font-medium text-sm">
                                                         {visitor.firstName || '-'} {(visitor.middleName ? visitor.middleName + ' ' : '') + (visitor.lastName || '-')}
                                                     </div>
                                                 </td>
-                                                <td className="px-4 py-3 text-slate-700 hidden md:table-cell text-sm">{visitor.dateOfBirth || '-'}</td>
-                                                <td className="px-4 py-3 text-slate-700 hidden lg:table-cell text-sm">{visitor.phone || '-'}</td>
-                                                <td className="px-4 py-3 text-slate-700 hidden xl:table-cell text-sm">{visitor.healthCardNumber || '-'}</td>
+                                                <td className="px-4 py-3 font-medium text-slate-900 text-sm">{getVisitorSerialDisplay(visitor)}</td>
+                                                <td className="px-4 py-3 text-slate-700 hidden lg:table-cell text-sm">{formatPhoneDisplay(visitor.phone) || '-'}</td>
+                                                <td className="px-4 py-3 text-slate-700 hidden xl:table-cell text-sm">{formatHealthCardDisplay(visitor.healthCardNumber || '') || '-'}</td>
+                                                <td className="px-4 py-3 text-slate-700 hidden xl:table-cell text-sm">{(visitor.healthCardVersion || '-').toUpperCase()}</td>
                                                 <td className="px-4 py-3 text-slate-700 hidden xl:table-cell text-sm">
                                                     {lastVisit ? formatDate(lastVisit.editedAt || lastVisit.createdAt, true) : '-'}
                                                 </td>
-                                                <td className="px-4 py-3">
+                                                <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                                                     <button
                                                         type="button"
                                                         onClick={() => !isDisabled && initiateRegistration(visitor)}
@@ -210,23 +240,62 @@ const RegisterInteractionModal = ({
 
             {/* Register Confirmation Modal */}
             {showRegisterConfirmModal && (
-                <div className="fixed inset-0 z-[1100] flex items-center justify-center p-4">
+                <div className="fixed inset-0 z-[1100] flex items-center justify-center px-4 pb-4 pt-0 !mt-0">
                     <div
                         className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
-                        onClick={() => !isCreatingInteraction && (setShowRegisterConfirmModal(false), setPendingRegisterVisitor(null))}
+                        onClick={() => !isCreatingInteraction && (setShowRegisterConfirmModal(false), setPendingRegisterVisitor(null), setReasonForVisit(''), setParentInteractionId(''))}
                     />
                     <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in duration-200">
-                        <div className="p-6 text-center">
-                            <h3 className="text-lg font-bold text-slate-900 mb-2">Confirm Registration</h3>
-                            <p className="text-slate-600 text-sm mb-6">
-                                Do you want to register an interaction for {pendingRegisterVisitor ? `${pendingRegisterVisitor.firstName || ''} ${pendingRegisterVisitor.lastName || ''}`.trim() : 'this patient'}?
+                        <div className="p-6">
+                            <h3 className="text-lg font-semibold text-slate-900 mb-2 text-center">Confirm Registration</h3>
+                            <p className="text-slate-600 text-sm mb-4 text-center">
+                                Register an interaction for {pendingRegisterVisitor ? `${pendingRegisterVisitor.firstName || ''} ${pendingRegisterVisitor.lastName || ''}`.trim() : 'this patient'}?
                             </p>
+                            <div className="space-y-4 mb-6">
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Reason for visit</label>
+                                    <select
+                                        value={reasonForVisit}
+                                        onChange={(e) => {
+                                            setReasonForVisit(e.target.value);
+                                            setParentInteractionId('');
+                                        }}
+                                        className="w-full py-2.5 px-3 border border-slate-200 rounded-xl text-sm bg-white focus:outline-none focus:border-primary focus:ring-2 focus:ring-blue-100"
+                                    >
+                                        {REASON_FOR_VISIT_OPTIONS.map((opt) => (
+                                            <option key={opt.value || 'empty'} value={opt.value}>{opt.label}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                {reasonForVisit === 'followup' && (
+                                    <div>
+                                        <label className="block text-xs font-semibold text-slate-600 mb-1.5">Prior visit (followup to)</label>
+                                        <select
+                                            value={parentInteractionId}
+                                            onChange={(e) => setParentInteractionId(e.target.value)}
+                                            className="w-full py-2.5 px-3 border border-slate-200 rounded-xl text-sm bg-white focus:outline-none focus:border-primary focus:ring-2 focus:ring-blue-100"
+                                        >
+                                            <option value="">— Select prior visit —</option>
+                                            {priorVisitsForPatient.map((i) => (
+                                                <option key={i.id} value={i.id}>
+                                                    {stripEntityPrefix(i.interactionSerial) || 'REG'} — {formatDate(i.editedAt || i.createdAt, true)}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        {priorVisitsForPatient.length === 0 && (
+                                            <p className="text-xs text-amber-600 mt-1">No completed visits found for this patient.</p>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
                             <div className="flex gap-3 justify-center">
                                 <button
                                     onClick={() => {
                                         if (!isCreatingInteraction) {
                                             setShowRegisterConfirmModal(false);
                                             setPendingRegisterVisitor(null);
+                                            setReasonForVisit('');
+                                            setParentInteractionId('');
                                         }
                                     }}
                                     disabled={isCreatingInteraction}
@@ -236,7 +305,7 @@ const RegisterInteractionModal = ({
                                 </button>
                                 <button
                                     onClick={confirmRegistration}
-                                    disabled={isCreatingInteraction}
+                                    disabled={isCreatingInteraction || (reasonForVisit === 'followup' && !parentInteractionId)}
                                     className="px-4 py-2 rounded-lg bg-green-600 text-white font-medium hover:bg-green-700 transition-colors shadow-lg shadow-green-200/50 disabled:opacity-90 disabled:cursor-not-allowed flex items-center justify-center gap-2 min-w-[140px]"
                                 >
                                     {isCreatingInteraction ? (

@@ -1,64 +1,42 @@
 import React from 'react';
+import PatientHealthWarningTooltip from './PatientHealthWarningTooltip';
 
-const InteractionHeader = ({ interaction, getVisitorName, getVisitorSerial, setShowCancelModal, handleSaveInteraction, handleSaveDraft, isSaving, onInteractionClick, lastVisit }) => {
+const InteractionHeader = ({ interaction, visitor, getVisitorName, getVisitorSerial, setShowCancelModal, handleSaveInteraction, handleSaveDraft, isSaving, onInteractionClick, handleOpenPatientDetails }) => {
     return (
-        <div className="px-6 py-4 border-b border-slate-200 flex flex-col min-[1617px]:flex-row min-[1617px]:justify-between min-[1617px]:items-center gap-4 bg-white sticky top-0 z-10 w-full">
-            <div className="flex items-center gap-4 min-w-0 flex-1">
-                <div
-                    className="bg-blue-50 p-2 rounded-lg cursor-pointer hover:bg-blue-100 transition-colors"
-                    onClick={() => onInteractionClick(interaction)}
-                    title="View Session Details"
-                >
-                    <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                </div>
-                <div>
-                    <div className="flex flex-col">
-                        <h2 className="text-xl font-black text-slate-900 flex items-center gap-3 uppercase tracking-tighter">
-                            {getVisitorName(interaction.visitorId) || '-'}
-                            <span className="text-[10px] font-black text-slate-500 bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-200 uppercase tracking-widest">
+        <div className="px-4 sm:px-6 py-4 border-b border-slate-200 flex flex-col gap-3 md:flex-row md:justify-between md:items-center md:gap-4 bg-white sticky top-0 z-10 w-full">
+            {/* Mobile: name+ID column left, buttons row below. Desktop: row with name+ID left, buttons right */}
+            <div className="flex flex-col gap-1 min-w-0 flex-1">
+                <div className="flex items-start gap-2 flex-wrap">
+                    <button
+                        type="button"
+                        onClick={() => handleOpenPatientDetails?.(interaction.visitorId)}
+                        className="text-left group w-fit"
+                    >
+                        <div className="flex flex-col gap-0.5">
+                            <span className="text-sm font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200 normal-case tracking-widest">
                                 {getVisitorSerial(interaction.visitorId) || '-'}
                             </span>
-                        </h2>
-                        {lastVisit && (
-                            <div className="flex items-center gap-1.5 mt-0.5">
-                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Previous Visit:</span>
-                                <span className="text-[9px] font-black text-blue-600 uppercase tracking-widest">{lastVisit}</span>
-                            </div>
-                        )}
-                    </div>
-                    <div className="flex items-center gap-3 text-[10px] text-slate-400 mt-2 uppercase tracking-widest font-black">
-                        <button
-                            onClick={() => onInteractionClick(interaction)}
-                            className="text-blue-600 hover:text-blue-800 transition-colors"
-                        >
-                            {interaction.interactionSerial || 'REG--'}
-                        </button>
-                        <span>•</span>
-                        <span className="text-emerald-500 flex items-center gap-1.5">
-                            <span className="relative flex h-1.5 w-1.5">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
-                            </span>
-                            Active Session
-                        </span>
-                    </div>
+                            <h2 className="text-xl sm:text-2xl font-bold text-slate-900 normal-case tracking-tighter group-hover:text-blue-600 transition-colors">
+                                {getVisitorName(interaction.visitorId) || '-'}
+                            </h2>
+                        </div>
+                    </button>
+                    <PatientHealthWarningTooltip visitor={visitor} />
                 </div>
             </div>
-            <div className="flex flex-wrap items-center gap-3 shrink-0">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3 shrink-0">
                 <button
                     type="button"
                     onClick={() => setShowCancelModal(true)}
-                    className="px-4 py-2 border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 font-medium transition-colors"
+                    className="px-3 py-1.5 sm:px-4 sm:py-2 text-sm border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 font-medium transition-colors"
                 >
-                    Cancel / Hold
+                    Cancel
                 </button>
                 <button
                     type="button"
                     onClick={handleSaveDraft}
                     disabled={isSaving}
-                    className="px-4 py-2 border border-blue-200 text-blue-600 rounded-lg hover:bg-blue-50 font-medium transition-colors disabled:opacity-50"
+                    className="px-3 py-1.5 sm:px-4 sm:py-2 text-sm border border-blue-200 text-blue-600 rounded-lg hover:bg-blue-50 font-medium transition-colors disabled:opacity-50"
                 >
                     Save Draft
                 </button>
@@ -66,7 +44,7 @@ const InteractionHeader = ({ interaction, getVisitorName, getVisitorSerial, setS
                     type="button"
                     onClick={handleSaveInteraction}
                     disabled={isSaving}
-                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold shadow-lg shadow-blue-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    className="px-4 py-1.5 sm:px-6 sm:py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold shadow-lg shadow-blue-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
                     {isSaving ? (
                         <>
@@ -81,7 +59,7 @@ const InteractionHeader = ({ interaction, getVisitorName, getVisitorSerial, setS
                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                             </svg>
-                            Complete & Sign
+                            Complete
                         </>
                     )}
                 </button>

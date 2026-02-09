@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { renderInteractionTags } from '../utils/interactionTags';
+import { stripEntityPrefix, getVisitorSerialDisplay } from '../utils/formatUtils';
 import RegisterInteractionModal from './RegisterInteractionModal';
 
 const InteractionsSection = ({
@@ -34,7 +35,8 @@ const InteractionsSection = ({
     draggedInteraction,
     onInteractionClick,
     visitors = [],
-    handleRegisterPatient
+    handleRegisterPatient,
+    onPatientClick
 }) => {
     const [draggedOverDelete, setDraggedOverDelete] = useState(false);
     const [showRegisterModal, setShowRegisterModal] = useState(false);
@@ -64,7 +66,7 @@ const InteractionsSection = ({
                     onClick={() => setShowRegisterModal(true)}
                     className="px-4 py-2 bg-primary text-white rounded-xl font-semibold text-sm hover:bg-primary-dark transition-colors w-full sm:w-auto"
                 >
-                    Register Interaction
+                    Register Patient
                 </button>
             </div>
 
@@ -110,7 +112,7 @@ const InteractionsSection = ({
                             setDraggedOverUnassigned(false);
                             handleDrop(e, null);
                         }}
-                        className={`grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 p-4 rounded-xl transition-colors flex-1 min-h-0 overflow-y-auto scrollbar-hide ${draggedOverUnassigned ? 'bg-blue-50 border-2 border-blue-300 border-dashed' : 'bg-slate-50'
+                        className={`grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-2 p-3 rounded-xl transition-colors flex-1 min-h-0 overflow-y-auto scrollbar-hide ${draggedOverUnassigned ? 'bg-blue-50 border-2 border-blue-300 border-dashed' : 'bg-slate-50'
                             }`}
                     >
                         {/* Show existing interactions + optimistic unassigned (being moved from doctor) */}
@@ -134,8 +136,8 @@ const InteractionsSection = ({
                                     .filter(past => past.visitorId === interaction.visitorId && past.completed && past.id !== interaction.id)
                                     .sort((a, b) => new Date(b.editedAt || b.createdAt) - new Date(a.editedAt || a.createdAt));
 
-                                const lastVisitDate = patientHistory.length > 0
-                                    ? formatDate(patientHistory[0].editedAt || patientHistory[0].createdAt, false)
+                                const lastVisitDisplay = patientHistory.length > 0
+                                    ? formatDate(patientHistory[0].editedAt || patientHistory[0].createdAt, true)
                                     : 'New Patient';
 
                                 return (
@@ -148,11 +150,11 @@ const InteractionsSection = ({
                                             setDraggedOverDelete(false);
                                         }}
                                         onClick={() => onInteractionClick(interaction)}
-                                        className={`group/card relative bg-white border border-slate-200 rounded-2xl p-5 transition-all duration-300 hover:shadow-xl hover:shadow-blue-500/5 hover:-translate-y-1 active:scale-[0.98] flex flex-col justify-between h-fit overflow-hidden ${isBeingDeleted ? 'ring-2 ring-red-500 bg-red-50' : isFailed ? 'ring-2 ring-red-500 bg-red-100 border-red-300 shadow-lg shadow-red-200/50' : 'hover:border-blue-400'}`}
+                                        className={`group/card relative bg-white border border-slate-200 rounded-lg p-3 transition-all duration-300 hover:shadow-md hover:shadow-blue-500/5 hover:-translate-y-0.5 active:scale-[0.98] flex flex-col justify-between h-fit overflow-hidden max-w-[220px] ${isBeingDeleted ? 'ring-2 ring-red-500 bg-red-50' : isFailed ? 'ring-2 ring-red-500 bg-red-100 border-red-300 shadow-lg shadow-red-200/50' : 'hover:border-blue-400'}`}
                                     >
-                                        <div className="absolute top-0 right-0 w-32 h-32 bg-blue-50/20 rounded-full -mr-12 -mt-12 transition-transform group-hover/card:scale-110"></div>
+                                        <div className="absolute top-0 right-0 w-16 h-16 bg-blue-50/20 rounded-full -mr-6 -mt-6 transition-transform group-hover/card:scale-110"></div>
 
-                                        <div className="relative flex flex-col h-full gap-3">
+                                        <div className="relative flex flex-col h-full gap-1.5">
                                             {isBeingUnassigned && (
                                                 <div className={`absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-2xl transition-colors duration-200 ${isFailed ? 'bg-red-100/95' : 'bg-white/90 backdrop-blur-sm'}`}>
                                                     {isFailed ? (
@@ -160,7 +162,7 @@ const InteractionsSection = ({
                                                             <svg className="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                                                             </svg>
-                                                            <span className="text-sm font-bold text-red-700">Failed – reverting</span>
+                                                            <span className="text-sm font-semibold text-red-700">Failed – reverting</span>
                                                         </>
                                                     ) : (
                                                         <svg className="animate-spin h-8 w-8 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -171,8 +173,8 @@ const InteractionsSection = ({
                                                 </div>
                                             )}
                                             <div className="flex justify-between items-start">
-                                                <span className="text-xs font-black text-blue-600 bg-blue-50/80 px-2.5 py-1 rounded-lg border border-blue-100 uppercase tracking-widest">
-                                                    {interaction.interactionSerial || 'REG-PENDING'}
+                                                <span className="text-xs font-semibold text-blue-600 bg-blue-50/80 px-2 py-0.5 rounded border border-blue-100 normal-case tracking-wide">
+                                                    {stripEntityPrefix(interaction.interactionSerial)}
                                                 </span>
                                                 <div className="flex items-center gap-1.5">
                                                     {canDrag && (
@@ -200,26 +202,34 @@ const InteractionsSection = ({
                                                 </div>
                                             </div>
 
-                                            <div className="space-y-2 flex-1">
-                                                <div className="text-lg font-black text-slate-900 group-hover/card:text-blue-700 transition-colors truncate uppercase tracking-tighter">
-                                                    {getVisitorName(interaction.visitorId)}
+                                            <div className="text-xl font-bold text-slate-900 truncate normal-case leading-tight">
+                                                {getVisitorName(interaction.visitorId)}
+                                            </div>
+
+                                            <div className="flex flex-col gap-2 text-sm">
+                                                <div>
+                                                    <span className="text-xs font-semibold text-slate-400 normal-case block mb-0.5">Health Card</span>
+                                                    <span className="font-semibold text-slate-700 font-sans tracking-wider">
+                                                        {getVisitorHealthCard(interaction.visitorId)}
+                                                        {(visitors.find(v => v.id === interaction.visitorId)?.healthCardVersion || '').trim()
+                                                            ? ` (${(visitors.find(v => v.id === interaction.visitorId)?.healthCardVersion || '').toUpperCase()})`
+                                                            : ''}
+                                                    </span>
                                                 </div>
-                                                <div className="text-sm font-black text-slate-600 font-mono tracking-wider">
-                                                    {getVisitorHealthCard(interaction.visitorId)}
-                                                </div>
-                                                <div className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-                                                    {formatDate(interaction.createdAt, false)}
+                                                <div>
+                                                    <span className="text-xs font-semibold text-slate-400 normal-case block mb-0.5">Registration Time</span>
+                                                    <span className="font-semibold text-slate-700">{formatDate(interaction.createdAt, true)}</span>
                                                 </div>
                                             </div>
 
-                                            <div className="pt-3 border-t border-slate-50 space-y-2">
+                                            <div className="pt-2 border-t border-slate-100 space-y-1.5">
                                                 <div className="flex gap-1 flex-wrap">
-                                                    {renderInteractionTags(interaction, { size: 'text-[7px]' })}
+                                                    {renderInteractionTags(interaction, { size: 'text-xs' })}
                                                 </div>
                                                 <div className="flex flex-col">
-                                                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Last Visit</span>
-                                                    <span className={`text-sm font-black uppercase tracking-widest ${lastVisitDate === 'New Patient' ? 'text-emerald-500' : 'text-blue-600'}`}>
-                                                        {lastVisitDate}
+                                                    <span className="text-xs font-semibold text-slate-400 normal-case block mb-0.5">Last Visit</span>
+                                                    <span className={`text-sm font-semibold normal-case ${lastVisitDisplay === 'New Patient' ? 'text-emerald-500' : 'text-blue-600'}`}>
+                                                        {lastVisitDisplay}
                                                     </span>
                                                 </div>
                                             </div>
@@ -247,7 +257,7 @@ const InteractionsSection = ({
                                                     {visitor.firstName} {visitor.middleName ? visitor.middleName + ' ' : ''}{visitor.lastName}
                                                 </div>
                                                 <div className="text-xs text-slate-600 mb-2 text-center">
-                                                    {visitor.entitySerial ? `${visitor.entitySerial}-${visitor.serial}` : visitor.serial}
+                                                    {getVisitorSerialDisplay(visitor)}
                                                 </div>
                                             </>
                                         )}
@@ -335,31 +345,34 @@ const InteractionsSection = ({
                                                         draggable={canDrag}
                                                         onDragStart={(e) => canDrag ? handleDragStart(e, interaction) : e.preventDefault()}
                                                         onClick={() => onInteractionClick(interaction)}
-                                                        className={`group/item relative bg-white border border-slate-100 rounded-xl p-3 shadow-sm transition-all hover:border-blue-300 hover:shadow-lg hover:shadow-blue-500/5 cursor-pointer active:scale-95 ${canDrag ? 'cursor-move' : ''}`}
+                                                        className={`group/item relative bg-white border border-slate-100 rounded-xl p-3 shadow-sm transition-all hover:border-blue-300 hover:shadow-lg hover:shadow-blue-500/5 cursor-pointer active:scale-95 flex ${canDrag ? 'cursor-move' : ''}`}
                                                     >
-                                                        <div className="flex justify-between items-start mb-2">
-                                                            <span className="text-[8px] font-black text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 uppercase tracking-tighter">
-                                                                {interaction.interactionSerial || 'REG-PENDING'}
-                                                            </span>
-                                                            <div className="flex gap-1 flex-wrap justify-end">
-                                                                {renderInteractionTags(interaction, { size: 'text-[7px]' })}
+                                                        <div className="flex-1 min-w-0 overflow-hidden">
+                                                            <div className="flex gap-1 items-center mb-2">
+                                                                <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 normal-case tracking-tight shrink-0">
+                                                                    {stripEntityPrefix(interaction.interactionSerial) || 'REG-PENDING'}
+                                                                </span>
+                                                                {canDrag && (
+                                                                    <svg className="w-2.5 h-2.5 text-blue-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M4 6h16M4 12h16M4 18h16" />
+                                                                    </svg>
+                                                                )}
+                                                            </div>
+
+                                                            <div className="space-y-0.5">
+                                                                <label className="text-xs font-semibold text-slate-400 normal-case tracking-wide block">Patient</label>
+                                                                <div className="text-xs font-semibold text-slate-900 truncate normal-case">
+                                                                    {getVisitorName(interaction.visitorId)}
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="mt-2 text-xs text-slate-400 italic">
+                                                                {formatDate(interaction.createdAt)}
                                                             </div>
                                                         </div>
 
-                                                        <div className="space-y-0.5">
-                                                            <label className="text-[8px] font-bold text-slate-400 uppercase tracking-widest block">Patient</label>
-                                                            <div className="text-xs font-black text-slate-900 truncate uppercase">
-                                                                {getVisitorName(interaction.visitorId)}
-                                                            </div>
-                                                        </div>
-
-                                                        <div className="mt-2 text-[8px] text-slate-400 flex justify-between items-center italic">
-                                                            <span>{formatDate(interaction.createdAt)}</span>
-                                                            {canDrag && (
-                                                                <svg className="w-2.5 h-2.5 text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M4 6h16M4 12h16M4 18h16" />
-                                                                </svg>
-                                                            )}
+                                                        <div className="flex flex-col gap-1 items-end justify-start shrink-0 ml-2 pl-2 border-l border-slate-100">
+                                                            {renderInteractionTags(interaction, { size: 'text-xs' })}
                                                         </div>
                                                     </div>
                                                 );
@@ -393,13 +406,14 @@ const InteractionsSection = ({
                 formatDate={formatDate}
                 handleRegisterPatient={handleRegisterPatient}
                 isCreatingInteraction={isCreatingInteraction}
+                onPatientClick={onPatientClick}
             />
 
             {/* Delete Registration Confirmation Modal */}
             {showDeleteRegistrationModal && registrationToDelete && (
-                <div className="fixed inset-0 bg-black/50 flex justify-center items-center z-[1000]" onClick={() => setShowDeleteRegistrationModal(false)}>
+                <div className="fixed inset-0 bg-black/50 flex justify-center items-center px-4 pb-4 pt-0 !mt-0 z-[1000]" onClick={() => setShowDeleteRegistrationModal(false)}>
                     <div className="bg-white w-full max-w-[400px] p-4 sm:p-8 rounded-3xl shadow-lg animate-[slideUp_0.4s_ease-out]" onClick={(e) => e.stopPropagation()}>
-                        <h2 className="text-xl font-bold text-slate-900 mb-4">Delete Registration</h2>
+                        <h2 className="text-xl font-semibold text-slate-900 mb-4">Delete Registration</h2>
                         <p className="text-slate-600 mb-6">
                             Do you want to delete this unassigned registration?
                         </p>

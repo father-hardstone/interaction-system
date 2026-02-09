@@ -10,6 +10,7 @@ export const interactionService = {
         const response = await api.post('/interactions', data);
         return response.data;
     },
+    // create accepts: entityId, entitySerial, visitorId, visitorSerial, reasonForVisit
 
     assignOfficer: async (interactionId, officerId, officerSerial) => {
         const response = await api.put(`/interactions/${interactionId}/assign-officer`, {

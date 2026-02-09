@@ -14,8 +14,6 @@ const OfficerTab = ({ userData, interactions, visitors, isLoadingInteractions = 
         selectedPatient,
         showPatientDetailModal,
         setShowPatientDetailModal,
-        expandedInteractionIds,
-        setExpandedInteractionIds,
         activeInteractionId,
         activeViewTab,
         setActiveViewTab,
@@ -86,8 +84,11 @@ const OfficerTab = ({ userData, interactions, visitors, isLoadingInteractions = 
     const getVisitorSerial = (visitorId) => {
         const v = visitors.find((v) => v.id === visitorId);
         if (!v) return 'N/A';
-        if (v.serial && v.serial.includes('-')) return v.serial;
-        return v.entitySerial ? `${v.entitySerial}-${v.serial}` : v.serial || 'N/A';
+        const raw = v.serial ?? (v.entitySerial ? `${v.entitySerial}-${v.serial || ''}` : v.serial || '');
+        if (!raw) return 'N/A';
+        const s = String(raw);
+        const num = s.includes('-') ? s.split('-').pop() : s;
+        return num ? String(num).padStart(6, '0') : 'N/A';
     };
 
     const formatDate = (dateString, includeTime = true) => {
@@ -108,30 +109,37 @@ const OfficerTab = ({ userData, interactions, visitors, isLoadingInteractions = 
     return (
         <div className="flex flex-col min-h-0 flex-1 space-y-6 overflow-hidden">
             {/* Tab Navigation */}
-            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl w-fit">
+            <div className="flex items-center gap-0.5 sm:gap-1 bg-slate-100 p-0.5 sm:p-1 rounded-xl w-fit overflow-x-auto scrollbar-hide">
                 <button
                     onClick={() => setActiveViewTab('scheduled')}
-                    className={`px-6 py-2 rounded-lg text-sm font-semibold transition-all ${activeViewTab === 'scheduled' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                    className={`px-3 py-1.5 sm:px-6 sm:py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all shrink-0 ${activeViewTab === 'scheduled' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
                 >
                     Scheduled
                 </button>
                 <button
                     onClick={() => setActiveViewTab('ongoing')}
-                    className={`px-6 py-2 rounded-lg text-sm font-semibold transition-all ${activeViewTab === 'ongoing' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                    className={`px-3 py-1.5 sm:px-6 sm:py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all shrink-0 ${activeViewTab === 'ongoing' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
                 >
                     Ongoing
                 </button>
                 <button
                     onClick={() => setActiveViewTab('incomplete')}
-                    className={`px-6 py-2 rounded-lg text-sm font-semibold transition-all ${activeViewTab === 'incomplete' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                    className={`px-3 py-1.5 sm:px-6 sm:py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all shrink-0 ${activeViewTab === 'incomplete' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
                 >
                     Incomplete
+                </button>
+                <button
+                    onClick={() => setActiveViewTab('completed')}
+                    className={`px-3 py-1.5 sm:px-6 sm:py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all shrink-0 ${activeViewTab === 'completed' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                >
+                    Completed
                 </button>
             </div>
 
             {/* Scheduled Tab */}
             {activeViewTab === 'scheduled' && (
-                <ScheduledInteractionsTable
+                <div className="flex flex-col flex-1 min-h-0">
+                    <ScheduledInteractionsTable
                     scheduledInteractions={scheduledInteractions}
                     isLoading={isLoadingInteractions}
                     handleOpenPatientDetails={handleOpenPatientDetails}
@@ -143,11 +151,29 @@ const OfficerTab = ({ userData, interactions, visitors, isLoadingInteractions = 
                     onInteractionClick={onInteractionClick}
                     interactions={interactions}
                 />
+                </div>
+            )}
+
+            {/* Completed Tab */}
+            {activeViewTab === 'completed' && (
+                <div className="flex flex-col flex-1 min-h-0">
+                    <CompletedInteractionsTable
+                    completedInteractions={completedInteractions}
+                    isLoading={isLoadingInteractions}
+                    handleOpenPatientDetails={handleOpenPatientDetails}
+                    getVisitorName={getVisitorName}
+                    getVisitorSerial={getVisitorSerial}
+                    formatDate={formatDate}
+                    onInteractionClick={onInteractionClick}
+                    interactions={interactions}
+                />
+                </div>
             )}
 
             {/* Incomplete Tab */}
             {activeViewTab === 'incomplete' && (
-                <IncompleteInteractionsTable
+                <div className="flex flex-col flex-1 min-h-0">
+                    <IncompleteInteractionsTable
                     incompleteInteractions={incompleteInteractions}
                     isLoading={isLoadingInteractions}
                     handleOpenPatientDetails={handleOpenPatientDetails}
@@ -158,6 +184,7 @@ const OfficerTab = ({ userData, interactions, visitors, isLoadingInteractions = 
                     onInteractionClick={onInteractionClick}
                     interactions={interactions}
                 />
+                </div>
             )}
 
             {/* Ongoing Tab */}
@@ -182,9 +209,11 @@ const OfficerTab = ({ userData, interactions, visitors, isLoadingInteractions = 
                         <OngoingInteractionsView
                             isLoading={isLoadingInteractions}
                             ongoingInteractions={ongoingInteractions}
+                            visitors={visitors}
                             getVisitorName={getVisitorName}
                             getVisitorSerial={getVisitorSerial}
                             setShowCancelModal={setShowCancelModal}
+                            handleOpenPatientDetails={handleOpenPatientDetails}
                             ccReason={ccReason}
                             setCcReason={setCcReason}
                             ccReasonPad={ccReasonPad}
@@ -235,19 +264,11 @@ const OfficerTab = ({ userData, interactions, visitors, isLoadingInteractions = 
                             {/* Desktop: sidebar beside ongoing */}
                             <div className="hidden xl:flex xl:max-h-full xl:min-h-0 xl:overflow-hidden shrink-0 flex-col">
                                 <PastInteractionsSidebar
-                                    ongoingInteractions={ongoingInteractions}
                                     activePatientVisitorId={activePatientVisitorId}
-                                    getVisitorName={getVisitorName}
-                                    getVisitorSerial={getVisitorSerial}
                                     interactions={interactions}
                                     activeInteractionId={activeInteractionId}
-                                    expandedInteractionIds={expandedInteractionIds}
-                                    setExpandedInteractionIds={setExpandedInteractionIds}
-                                    diagnostics={diagnostics}
-                                    getImageUrl={getImageUrl}
-                                    setViewingMedia={setViewingMedia}
                                     patientReports={patientReports}
-                                    handleOpenPatientDetails={handleOpenPatientDetails}
+                                    onInteractionClick={onInteractionClick}
                                 />
                             </div>
                             {/* Small screen: side drawer with shaded backdrop */}
@@ -278,19 +299,11 @@ const OfficerTab = ({ userData, interactions, visitors, isLoadingInteractions = 
                                     </div> */}
                                     <PastInteractionsSidebar
                                         isOverlay={true}
-                                        ongoingInteractions={ongoingInteractions}
                                         activePatientVisitorId={activePatientVisitorId}
-                                        getVisitorName={getVisitorName}
-                                        getVisitorSerial={getVisitorSerial}
                                         interactions={interactions}
                                         activeInteractionId={activeInteractionId}
-                                        expandedInteractionIds={expandedInteractionIds}
-                                        setExpandedInteractionIds={setExpandedInteractionIds}
-                                        diagnostics={diagnostics}
-                                        getImageUrl={getImageUrl}
-                                        setViewingMedia={setViewingMedia}
                                         patientReports={patientReports}
-                                        handleOpenPatientDetails={handleOpenPatientDetails}
+                                        onInteractionClick={onInteractionClick}
                                         onCloseOverlay={() => setShowPatientHistoryOverlay(false)}
                                     />
                                 </div>
@@ -298,18 +311,6 @@ const OfficerTab = ({ userData, interactions, visitors, isLoadingInteractions = 
                         </>
                     )}
                 </div>
-            )}
-
-            {/* Completed interactions footer */}
-            {activeViewTab === 'scheduled' && (
-                <CompletedInteractionsTable
-                    completedInteractions={completedInteractions}
-                    isLoading={isLoadingInteractions}
-                    getVisitorName={getVisitorName}
-                    formatDate={formatDate}
-                    onInteractionClick={onInteractionClick}
-                    interactions={interactions}
-                />
             )}
 
             {/* Modals */}
@@ -320,9 +321,8 @@ const OfficerTab = ({ userData, interactions, visitors, isLoadingInteractions = 
                     getVisitorName={getVisitorName}
                     getVisitorSerial={getVisitorSerial}
                     completedInteractionsForPatient={completedInteractionsForPatient}
-                    expandedInteractionIds={expandedInteractionIds}
-                    setExpandedInteractionIds={setExpandedInteractionIds}
                     formatDate={formatDate}
+                    onInteractionClick={onInteractionClick}
                     getImageUrl={getImageUrl}
                     setViewingMedia={setViewingMedia}
                     isLoadingReports={isLoadingReports}

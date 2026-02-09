@@ -26,10 +26,10 @@ export const getInteractionTags = (interaction) => {
         });
     }
 
-    // Completed/Signed tag
+    // Completed tag
     if (interaction.completed) {
         tags.push({
-            label: 'Signed',
+            label: 'Completed',
             className: 'bg-emerald-50 text-emerald-600 border-emerald-100'
         });
     }
@@ -84,17 +84,17 @@ export const getInteractionTags = (interaction) => {
  * Render interaction tags as JSX elements
  * @param {Object} interaction - The interaction object
  * @param {Object} options - Options for rendering
- * @param {string} options.size - Size class for tags ('text-[7px]' or 'text-[8px]')
+ * @param {string} options.size - Size class for tags ('text-xs' or 'text-xs')
  * @returns {Array} Array of JSX span elements
  */
 export const renderInteractionTags = (interaction, options = {}) => {
-    const { size = 'text-[7px]' } = options;
+    const { size = 'text-xs' } = options;
     const tags = getInteractionTags(interaction);
 
     return tags.map((tag, index) => (
         <span
             key={index}
-            className={`${tag.className} border px-1 py-0.5 rounded ${size} font-black uppercase`}
+            className={`${tag.className} border px-1 py-0.5 rounded ${size} font-semibold normal-case`}
         >
             {tag.label}
         </span>
