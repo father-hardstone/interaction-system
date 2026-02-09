@@ -13,7 +13,9 @@
   }
 
 body {
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-family: 'Roboto', system-ui, -apple-system, sans-serif;
+    font-size: 15px;
+    font-weight: 400;
     background: linear-gradient(135deg, #f0f9ff 0%, #cbebff 100%);
     color: #0f172a;
     -webkit-font-smoothing: antialiased;
@@ -35,6 +37,15 @@ body {
     transform: translateY(0);
   }
 }
+
+/* Typography utilities - use consistently */
+.text-label { @apply text-xs font-semibold normal-case tracking-wide text-slate-500; }
+.text-caption { @apply text-xs font-medium text-slate-600; }
+.text-body { @apply text-sm font-normal; }
+.text-body-lg { @apply text-base font-normal; }
+.text-heading-sm { @apply text-base font-semibold; }
+.text-heading { @apply text-lg font-semibold; }
+.text-heading-lg { @apply text-xl font-semibold; }
 
 /* Hide scrollbar but keep scroll functionality */
 .scrollbar-hide {

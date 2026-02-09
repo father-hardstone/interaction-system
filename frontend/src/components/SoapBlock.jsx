@@ -1,21 +1,18 @@
 import React, { useState } from 'react';
 import DrawingPad from './DrawingPad';
 
-const SoapBlock = ({ label, value, onChange, padValue, onPadChange, required = false, placeholder }) => {
+const SoapBlock = ({ label, value, onChange, padValue, onPadChange, required = false, placeholder, enableSheets = false }) => {
     // Default to 'handwriting' as requested
     const [mode, setMode] = useState('handwriting');
 
     return (
-        <div className="space-y-3 bg-white p-5 rounded-2xl shadow-sm relative group transition-all hover:shadow-md">
+        <div className="space-y-3 bg-white rounded-2xl shadow-sm relative group transition-all hover:shadow-md">
             <div className="flex justify-between items-center mb-1">
                 <div className="flex items-center gap-3">
                     <div className={`w-1 h-8 rounded-full shadow-sm ${required ? 'bg-blue-600' : 'bg-slate-200'}`}></div>
-                    <div>
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] block mb-0.5">{label}</label>
-                        <div className="text-xs font-black text-slate-900 uppercase tracking-tighter">Clinical Narrative</div>
-                    </div>
+                    <div className="text-lg font-bold text-slate-900 normal-case">{label}</div>
                     {required && (
-                        <span className="text-[8px] font-black text-blue-600 bg-blue-50/50 px-2 py-0.5 rounded-full border border-blue-100 uppercase tracking-widest ml-1">Required</span>
+                        <span className="text-xs font-semibold text-blue-600 bg-blue-50/50 px-2 py-0.5 rounded-full border border-blue-100 normal-case tracking-widest ml-1">Required</span>
                     )}
                 </div>
 
@@ -24,14 +21,14 @@ const SoapBlock = ({ label, value, onChange, padValue, onPadChange, required = f
                     <button
                         type="button"
                         onClick={() => setMode('text')}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-black rounded-lg transition-all ${mode === 'text' ? 'bg-white text-blue-600 shadow-sm scale-105' : 'text-slate-400 hover:text-slate-600'}`}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${mode === 'text' ? 'bg-white text-blue-600 shadow-sm scale-105' : 'text-slate-400 hover:text-slate-600'}`}
                     >
                         TEXT
                     </button>
                     <button
                         type="button"
                         onClick={() => setMode('handwriting')}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-black rounded-lg transition-all ${mode === 'handwriting' ? 'bg-white text-blue-600 shadow-sm scale-105' : 'text-slate-400 hover:text-slate-600'}`}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${mode === 'handwriting' ? 'bg-white text-blue-600 shadow-sm scale-105' : 'text-slate-400 hover:text-slate-600'}`}
                     >
                         DRAW
                     </button>
@@ -49,10 +46,11 @@ const SoapBlock = ({ label, value, onChange, padValue, onPadChange, required = f
                 ) : (
                     <div className="animate-in fade-in zoom-in-95 duration-200">
                         <DrawingPad
-                            label={`${label} Handwriting`}
+                            label="Handwriting"
                             value={padValue}
                             onChange={onPadChange}
                             minHeight="400px"
+                            enableSheets={enableSheets}
                         />
                     </div>
                 )}
@@ -65,7 +63,7 @@ const SoapBlock = ({ label, value, onChange, padValue, onPadChange, required = f
                         <div className={`w-2 h-2 rounded-full border border-white ${value ? 'bg-blue-400' : 'bg-transparent'}`}></div>
                         <div className={`w-2 h-2 rounded-full border border-white ${padValue ? 'bg-emerald-400' : 'bg-transparent'}`}></div>
                     </div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Mixed inputs recorded</span>
+                    <span className="text-xs font-semibold text-slate-400 normal-case tracking-tighter">Mixed inputs recorded</span>
                 </div>
             )}
         </div>

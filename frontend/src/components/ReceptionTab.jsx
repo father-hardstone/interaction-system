@@ -1,7 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { formatHealthCardDisplay } from '../utils/formatUtils';
+import { reportService } from '../services/reportService';
 import VisitorsSection from './VisitorsSection';
 import InteractionsSection from './InteractionsSection';
-import RecordsSection from './RecordsSection';
+import ReportsSection from './ReportsSection';
+import PatientDetailsModal from './PatientDetailsModal';
 import NotClosedInteractionsTable from './NotClosedInteractionsTable';
 import IncompleteInteractionsTable from './IncompleteInteractionsTable';
 import UnbilledInteractionsTable from './UnbilledInteractionsTable';
@@ -15,7 +18,7 @@ const PlaceholderSection = ({ title, description }) => (
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
             </svg>
         </div>
-        <h3 className="text-lg font-bold text-slate-900 mb-1">{title}</h3>
+        <h3 className="text-lg font-semibold text-slate-900 mb-1">{title}</h3>
         <p className="text-slate-500">{description}</p>
     </div>
 );
@@ -46,6 +49,8 @@ const ReceptionTab = ({
     setPhoneData,
     phoneHData,
     setPhoneHData,
+    phoneMData,
+    setPhoneMData,
     guardianPhoneData,
     setGuardianPhoneData,
     healthCardNumber,
@@ -58,13 +63,14 @@ const ReceptionTab = ({
     setHealthCardExpiryDate,
     handleCreateVisitor,
     handleHealthCardChange,
-
+    handleHealthCardVersionChange,
     error,
     setError,
     fieldErrors,
     setFieldErrors,
     editingVisitorId,
-    handleEditVisitor,
+    setEditingVisitorId,
+    onEditVisitor,
     handlePatientClick,
     selectedPatient,
     showPatientDetailModal,
@@ -115,10 +121,38 @@ const ReceptionTab = ({
     const [activeSubTab, setActiveSubTab] = useState('patients');
     const [activeRegistrationSubTab, setActiveRegistrationSubTab] = useState(null); // null = main registrations view, 'incomplete', 'followup', 'unbilled'
     const [billingModalInteraction, setBillingModalInteraction] = useState(null);
+    const [reports, setReports] = useState([]);
+    const [loadingReports, setLoadingReports] = useState(false);
+
+    // Load reports when patient detail modal opens (works from any sub-tab: Patients, Reports, Billings)
+    useEffect(() => {
+        if (showPatientDetailModal && selectedPatient) {
+            const loadReports = async () => {
+                setLoadingReports(true);
+                try {
+                    const data = await reportService.getByPatient(selectedPatient.id);
+                    setReports(data || []);
+                } catch (error) {
+                    console.error('Failed to load reports:', error);
+                    setReports([]);
+                } finally {
+                    setLoadingReports(false);
+                }
+            };
+            loadReports();
+        } else {
+            setReports([]);
+        }
+    }, [showPatientDetailModal, selectedPatient]);
+
+    const handleReportUploadSuccess = () => {
+        if (!selectedPatient) return;
+        reportService.getByPatient(selectedPatient.id).then((data) => setReports(data || [])).catch(() => setReports([]));
+    };
 
     const getVisitorHealthCard = (visitorId) => {
         const visitor = visitors.find(v => v.id === visitorId);
-        return visitor?.healthCardNumber || 'N/A';
+        return visitor?.healthCardNumber ? formatHealthCardDisplay(visitor.healthCardNumber) : 'N/A';
     };
 
     return (
@@ -128,7 +162,7 @@ const ReceptionTab = ({
                 <div className="flex bg-slate-100 p-1.5 rounded-2xl w-fit">
                     <button
                         onClick={() => setActiveSubTab('patients')}
-                        className={`flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-xl text-sm font-bold transition-all duration-300 whitespace-nowrap ${activeSubTab === 'patients'
+                        className={`flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 whitespace-nowrap ${activeSubTab === 'patients'
                             ? 'bg-white text-primary shadow-sm scale-105'
                             : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
                             }`}
@@ -143,7 +177,7 @@ const ReceptionTab = ({
                             setActiveSubTab('registrations');
                             setActiveRegistrationSubTab(null);
                         }}
-                        className={`flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-xl text-sm font-bold transition-all duration-300 whitespace-nowrap ${activeSubTab === 'registrations'
+                        className={`flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 whitespace-nowrap ${activeSubTab === 'registrations'
                             ? 'bg-white text-primary shadow-sm scale-105'
                             : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
                             }`}
@@ -154,17 +188,17 @@ const ReceptionTab = ({
                         Registrations
                     </button>
                     <button
-                        onClick={() => setActiveSubTab('records')}
-                        className={`flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-xl text-sm font-bold transition-all duration-300 whitespace-nowrap ${activeSubTab === 'records'
+onClick={() => setActiveSubTab('reports')}
+                            className={`flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 whitespace-nowrap ${activeSubTab === 'reports'
                             ? 'bg-white text-primary shadow-sm scale-105'
                             : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
                             }`}
                     >
-                        <span>Records</span>
+                        <span>Reports</span>
                     </button>
                     <button
                         onClick={() => setActiveSubTab('billings')}
-                        className={`flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-xl text-sm font-bold transition-all duration-300 whitespace-nowrap ${activeSubTab === 'billings'
+                        className={`flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 whitespace-nowrap ${activeSubTab === 'billings'
                             ? 'bg-white text-primary shadow-sm scale-105'
                             : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
                             }`}
@@ -227,7 +261,7 @@ const ReceptionTab = ({
                     </div>
                     {/* Filter (right) - covers all registrations subtabs */}
                     <div className="flex items-center gap-2 shrink-0">
-                        <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Filter</span>
+                        <span className="text-xs font-semibold normal-case tracking-wide text-slate-500">Filter</span>
                         <div className="flex bg-slate-200/50 p-1 rounded-xl flex-wrap gap-1">
                             {['today', 'this_week', 'this_month', 'last_three_months', 'all'].map((f) => (
                                 <button
@@ -272,6 +306,8 @@ const ReceptionTab = ({
                     setPhoneData={setPhoneData}
                     phoneHData={phoneHData}
                     setPhoneHData={setPhoneHData}
+                    phoneMData={phoneMData}
+                    setPhoneMData={setPhoneMData}
                     guardianPhoneData={guardianPhoneData}
                     setGuardianPhoneData={setGuardianPhoneData}
                     healthCardNumber={healthCardNumber}
@@ -284,16 +320,16 @@ const ReceptionTab = ({
                     setHealthCardExpiryDate={setHealthCardExpiryDate}
                     handleCreateVisitor={handleCreateVisitor}
                     handleHealthCardChange={handleHealthCardChange}
+                    handleHealthCardVersionChange={handleHealthCardVersionChange}
                     error={error}
                     setError={setError}
                     fieldErrors={fieldErrors}
                     setFieldErrors={setFieldErrors}
                     editingVisitorId={editingVisitorId}
-                    onEditVisitor={handleEditVisitor}
+                    setEditingVisitorId={setEditingVisitorId}
+                    onEditVisitor={onEditVisitor}
                     handlePatientClick={handlePatientClick}
-                    selectedPatient={selectedPatient}
-                    showPatientDetailModal={showPatientDetailModal}
-                    setShowPatientDetailModal={setShowPatientDetailModal}
+                    onInteractionClick={onInteractionClick}
                     handlePatientDragStart={handlePatientDragStart}
                     handlePatientDrop={handlePatientDrop}
                     isCreatingVisitor={isCreatingVisitor}
@@ -347,6 +383,7 @@ const ReceptionTab = ({
                             draggedInteraction={draggedInteraction}
                             onInteractionClick={onInteractionClick}
                             handleRegisterPatient={handleRegisterPatient}
+                            onPatientClick={handlePatientClick}
                         />
                         </div>
                     )}
@@ -354,7 +391,7 @@ const ReceptionTab = ({
                     {activeRegistrationSubTab === 'not_closed' && (
                         <div className="animate-[fadeIn_0.3s_ease-out] flex flex-col flex-1 min-h-0 p-4">
                             <div className="mb-4 shrink-0">
-                                <h2 className="text-xl font-bold text-slate-900">Not Closed</h2>
+                                <h2 className="text-xl font-semibold text-slate-900">Not Closed</h2>
                                 <p className="text-sm text-slate-500 mt-1">Interactions that have not been administratively closed.</p>
                             </div>
                             <NotClosedInteractionsTable
@@ -374,7 +411,7 @@ const ReceptionTab = ({
                     {activeRegistrationSubTab === 'incomplete' && (
                         <div className="animate-[fadeIn_0.3s_ease-out] flex flex-col flex-1 min-h-0 p-4">
                             <div className="mb-4 shrink-0">
-                                <h2 className="text-xl font-bold text-slate-900">Incomplete Registrations</h2>
+                                <h2 className="text-xl font-semibold text-slate-900">Incomplete Registrations</h2>
                                 <p className="text-sm text-slate-500 mt-1">Manage patients whose visits were started but not yet completed.</p>
                             </div>
                             <IncompleteInteractionsTable
@@ -395,7 +432,7 @@ const ReceptionTab = ({
                     {activeRegistrationSubTab === 'followup' && (
                         <div className="animate-[fadeIn_0.3s_ease-out] flex flex-col flex-1 min-h-0 p-4">
                             <div className="mb-4 shrink-0">
-                                <h2 className="text-xl font-bold text-slate-900">Followup To Interactions</h2>
+                                <h2 className="text-xl font-semibold text-slate-900">Followup To Interactions</h2>
                                 <p className="text-sm text-slate-500 mt-1">Track patients who need follow-up appointments or checks.</p>
                             </div>
                             <FollowupInteractionsTable
@@ -417,20 +454,17 @@ const ReceptionTab = ({
                     {activeRegistrationSubTab === 'unbilled' && (
                         <div className="animate-[fadeIn_0.3s_ease-out] flex flex-col flex-1 min-h-0 p-4">
                             <div className="mb-4 shrink-0">
-                                <h2 className="text-xl font-bold text-slate-900">Unbilled Interactions</h2>
-                                <p className="text-sm text-slate-500 mt-1">Interactions that have been completed but not yet billed.</p>
+                                <h2 className="text-xl font-semibold text-slate-900">Unbilled Interactions</h2>
+                                <p className="text-sm text-slate-500 mt-1">Interactions that are completed, closed (billing info added), and ready for billing.</p>
                             </div>
                             <UnbilledInteractionsTable
                                 unbilledInteractions={interactions.filter(i => {
-                                    // Completed interactions that don't have billing
+                                    // Must be: completed, closed (billing info added), and not yet billed
                                     if (!i.completed) return false;
                                     if (i.billed === true) return false;
-                                    if (!i.serviceLines || i.serviceLines.length === 0) return true;
-                                    // Check if any service line has billing info
-                                    const hasBilling = i.serviceLines.some(line => 
-                                        (line.totalFee && line.totalFee > 0) || line.accountingNumber
-                                    );
-                                    return !hasBilling;
+                                    const hasBillingInfo = i.serviceLines?.length > 0 &&
+                                        i.serviceLines.some(l => (l.totalFee && l.totalFee > 0) || l.accountingNumber);
+                                    return i.closed || hasBillingInfo;
                                 })}
                                 handleOpenPatientDetails={handlePatientClick}
                                 getVisitorName={getVisitorName}
@@ -450,8 +484,8 @@ const ReceptionTab = ({
                 </div>
             )}
 
-            {activeSubTab === 'records' && (
-                <RecordsSection
+            {activeSubTab === 'reports' && (
+                <ReportsSection
                     visitors={visitors}
                     isLoadingVisitors={isLoadingVisitors}
                     interactions={interactions}
@@ -460,6 +494,7 @@ const ReceptionTab = ({
                     getVisitorName={getVisitorName}
                     getVisitorSerial={getVisitorSerial}
                     formatDate={formatDate}
+                    onPatientClick={handlePatientClick}
                 />
             )}
 
@@ -473,6 +508,31 @@ const ReceptionTab = ({
                     billingModalInteraction={billingModalInteraction}
                     onOpenBillNow={setBillingModalInteraction}
                     onCloseBillNow={() => setBillingModalInteraction(null)}
+                />
+            )}
+
+            {/* Patient Details Modal - rendered at ReceptionTab level so it's available from Patients, Reports, Billings tabs */}
+            {showPatientDetailModal && selectedPatient && (
+                <PatientDetailsModal
+                    selectedPatient={selectedPatient}
+                    setShowPatientDetailModal={setShowPatientDetailModal}
+                    reportsOnly={activeSubTab === 'reports'}
+                    getVisitorName={getVisitorName}
+                    getVisitorSerial={getVisitorSerial}
+                    completedInteractionsForPatient={interactions.filter(i => i.visitorId === selectedPatient?.id && i.completed)}
+                    formatDate={formatDate}
+                    onInteractionClick={onInteractionClick}
+                    getImageUrl={getImageUrl}
+                    setViewingMedia={setViewingMedia}
+                    isLoadingReports={loadingReports}
+                    patientReports={reports}
+                    entityId={userData?.entityId}
+                    entitySerial={userData?.entitySerial}
+                    interactions={interactions}
+                    officers={officers}
+                    onUploadSuccess={handleReportUploadSuccess}
+                    handlePatientClick={handlePatientClick}
+                    visitors={visitors}
                 />
             )}
         </div>

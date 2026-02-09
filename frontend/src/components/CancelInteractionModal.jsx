@@ -4,7 +4,7 @@ const CancelInteractionModal = ({ showCancelModal, setShowCancelModal, moveToInc
     if (!showCancelModal) return null;
 
     return (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center px-4 pb-4 pt-0 !mt-0">
             <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowCancelModal(false)}></div>
             <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
                 <div className="p-6">
@@ -13,7 +13,7 @@ const CancelInteractionModal = ({ showCancelModal, setShowCancelModal, moveToInc
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                         </svg>
                     </div>
-                    <h3 className="text-xl font-bold text-slate-900 mb-2">Cancel Interaction?</h3>
+                    <h3 className="text-xl font-semibold text-slate-900 mb-2">Cancel Interaction?</h3>
                     <p className="text-slate-600 text-sm leading-relaxed mb-6">
                         What would you like to do with this interaction? You can either cancel it entirely or save it to your incomplete list to resume later.
                     </p>

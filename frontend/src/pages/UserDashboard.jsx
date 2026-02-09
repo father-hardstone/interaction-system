@@ -1,11 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { jwtDecode } from 'jwt-decode';
 import { visitorService } from '../services/visitorService';
 import { interactionService } from '../services/interactionService';
 import { officerService } from '../services/officerService';
 import { validateEmail } from '../utils/crypto';
-import UserSidebar from '../components/UserSidebar';
+import { formatHealthCardDisplay, parseHealthCardToDigits, getVisitorSerialDisplay } from '../utils/formatUtils';
+import { useUserDashboardNav } from '../contexts/UserDashboardNavContext';
 import ReceptionTab from '../components/ReceptionTab';
 import { MasterDataProvider } from '../contexts/MasterDataContext';
 import OfficerTab from '../components/OfficerTab';
@@ -18,7 +19,7 @@ const UserDashboard = () => {
     const { serial } = useParams();
     const [userData, setUserData] = useState(null);
     const [activeTab, setActiveTab] = useState('reception');
-    const [sidebarOpen, setSidebarOpen] = useState(false);
+    const { register, unregister } = useUserDashboardNav();
     const [visitors, setVisitors] = useState([]);
     const [searchFirstName, setSearchFirstName] = useState('');
     const [searchMiddleName, setSearchMiddleName] = useState('');
@@ -44,12 +45,17 @@ const UserDashboard = () => {
         phoneM: '',
         notes: '',
         memo: '',
+        allergies: 'N/A',
+        drugReactions: 'N/A',
+        ongoingHealthConditions: 'N/A',
+        specialNotes: '',
         guardianName: '',
         guardianId: '',
         guardianPhone: ''
     });
     const [phoneData, setPhoneData] = useState({ fullNumber: '', valid: false });
     const [phoneHData, setPhoneHData] = useState({ fullNumber: '', valid: false });
+    const [phoneMData, setPhoneMData] = useState({ fullNumber: '', valid: false });
     const [guardianPhoneData, setGuardianPhoneData] = useState({ fullNumber: '', valid: false });
     const [healthCardNumber, setHealthCardNumber] = useState('');
     const [healthCardVersion, setHealthCardVersion] = useState('');
@@ -117,11 +123,25 @@ const UserDashboard = () => {
             }
         }
 
-        // Listen for sidebar toggle event from NavBar
-        const handleToggleSidebar = () => setSidebarOpen(prev => !prev);
-        window.addEventListener('toggleSidebar', handleToggleSidebar);
-        return () => window.removeEventListener('toggleSidebar', handleToggleSidebar);
     }, []);
+
+    const handleLogout = useCallback(() => {
+        setShowLogoutModal(true);
+    }, []);
+
+    // Register nav state with NavBar context (for top bar tabs + profile dropdown)
+    useEffect(() => {
+        if (userData && serial) {
+            register({
+                activeTab,
+                setActiveTab,
+                userData,
+                serial,
+                onLogout: handleLogout
+            });
+        }
+        return () => unregister();
+    }, [userData, serial, activeTab, register, unregister, handleLogout]);
 
     // 2. Load Constant Data (Visitors, Officers)
     useEffect(() => {
@@ -339,14 +359,16 @@ const UserDashboard = () => {
     const getVisitorSerial = (visitorId) => {
         const visitor = visitors.find(v => v.id === visitorId);
         if (!visitor) return 'N/A';
-        return (visitor.serial && visitor.serial.includes('-'))
-            ? visitor.serial
-            : (visitor.entitySerial ? `${visitor.entitySerial}-${visitor.serial}` : visitor.serial || '');
+        const raw = visitor.serial ?? (visitor.entitySerial ? `${visitor.entitySerial}-${visitor.serial || ''}` : visitor.serial || '');
+        if (!raw) return 'N/A';
+        const s = String(raw);
+        const num = s.includes('-') ? s.split('-').pop() : s;
+        return num ? String(num).padStart(6, '0') : 'N/A';
     };
 
     const getVisitorHealthCard = (visitorId) => {
         const visitor = visitors.find(v => v.id === visitorId);
-        return visitor?.healthCardNumber || 'N/A';
+        return visitor?.healthCardNumber ? formatHealthCardDisplay(visitor.healthCardNumber) : 'N/A';
     };
 
     const getOfficerName = (officerId) => {
@@ -446,22 +468,44 @@ const UserDashboard = () => {
         }
     };
 
-    const formatHealthCardNumber = (value) => {
-        // digits only, max 10
-        const digits = value.replace(/\D/g, '').substring(0, 10);
-        return digits;
+    const checkHealthCardDuplicate = (digits, version) => {
+        if (!digits || digits.length !== 10) return null;
+        const ver = (version || '').trim().toUpperCase();
+        if (!ver || !/^[A-Za-z]{1,2}$/.test(ver)) return null;
+        const duplicate = visitors.find(v =>
+            v.id !== editingVisitorId &&
+            parseHealthCardToDigits(v.healthCardNumber || '') === digits &&
+            (v.healthCardVersion || '').trim().toUpperCase() === ver
+        );
+        return duplicate ? duplicate : null;
+    };
+
+    const handleHealthCardVersionChange = (e) => {
+        const val = e.target.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 2);
+        setHealthCardVersion(val);
+        if (val && /^[A-Za-z]{1,2}$/.test(val)) {
+            setFieldErrors(prev => { const n = { ...prev }; delete n.healthCardVersion; return n; });
+        }
+        const dup = checkHealthCardDuplicate(parseHealthCardToDigits(healthCardNumber), val);
+        if (dup) {
+            setFieldErrors(prev => ({ ...prev, healthCard: `Health card already in use (${dup.firstName} ${dup.lastName})` }));
+        } else {
+            setFieldErrors(prev => { const n = { ...prev }; delete n.healthCard; return n; });
+        }
     };
 
     const handleHealthCardChange = (e) => {
-        const val = e.target.value.replace(/[^0-9]/g, '');
-        setHealthCardNumber(val);
+        const raw = parseHealthCardToDigits(e.target.value);
+        const masked = formatHealthCardDisplay(raw);
+        setHealthCardNumber(masked);
 
-        if (!val.trim()) setFieldErrors(prev => ({ ...prev, healthCard: 'Health card number is required' }));
-        else if (val.length < 10) setFieldErrors(prev => ({ ...prev, healthCard: 'Must be 10 digits' }));
+        const digits = parseHealthCardToDigits(masked);
+        if (!digits) setFieldErrors(prev => ({ ...prev, healthCard: 'Health card number is required' }));
+        else if (digits.length < 10) setFieldErrors(prev => ({ ...prev, healthCard: 'Must be 10 digits (XXXX-XXX-XXX)' }));
         else {
-            const duplicate = visitors.find(v => v.healthCardNumber === val && v.id !== editingVisitorId);
-            if (duplicate) {
-                setFieldErrors(prev => ({ ...prev, healthCard: `Already exists (${duplicate.firstName} ${duplicate.lastName})` }));
+            const dup = checkHealthCardDuplicate(digits, healthCardVersion);
+            if (dup) {
+                setFieldErrors(prev => ({ ...prev, healthCard: `Health card already in use (${dup.firstName} ${dup.lastName})` }));
             } else {
                 setFieldErrors(prev => { const n = { ...prev }; delete n.healthCard; return n; });
             }
@@ -482,10 +526,21 @@ const UserDashboard = () => {
         if (!visitorForm.addressLine?.trim()) newErrors.street = 'Street is required';
         if (!visitorForm.city?.trim()) newErrors.city = 'City is required';
         if (!visitorForm.state) newErrors.state = 'Province is required';
+        if (!visitorForm.postalCode?.trim()) newErrors.postalCode = 'Postal code is required';
+        else {
+            const postalMask = /^[A-Za-z]\d[A-Za-z]-\d[A-Za-z]\d$/;
+            if (!postalMask.test(visitorForm.postalCode.trim())) {
+                newErrors.postalCode = 'Postal code must be in format A1B-2C3';
+            }
+        }
         if (!visitorForm.gender) newErrors.gender = 'Sex is required';
-        if (!phoneData.valid) newErrors.phone = 'Valid phone number is required';
+        if (!phoneMData.valid) newErrors.phoneM = 'Phone (M) is required';
         if (!healthCardNumber?.trim()) newErrors.healthCard = 'Health card number is required';
-        else if (healthCardNumber.length !== 10) newErrors.healthCard = 'Must be 10 digits';
+        else if (parseHealthCardToDigits(healthCardNumber).length !== 10) newErrors.healthCard = 'Must be 10 digits (XXXX-XXX-XXX)';
+        if (!healthCardVersion?.trim()) newErrors.healthCardVersion = 'Health card version is required';
+        else if (!/^[A-Za-z]{1,2}$/.test(healthCardVersion.trim())) newErrors.healthCardVersion = 'Version must be 1-2 letters (e.g. AB)';
+        if (!healthCardEffectivityDate) newErrors.healthCardEffectivity = 'Effectivity date is required';
+        if (!healthCardExpiryDate) newErrors.healthCardExpiry = 'Expiry date is required';
 
         // Date comparison validation
         if (healthCardEffectivityDate && healthCardExpiryDate) {
@@ -503,14 +558,20 @@ const UserDashboard = () => {
         }
 
         // Validate health card number (10 digits, unique)
-        if (healthCardNumber.length !== 10) {
-            setError('Health card number must be exactly 10 digits');
+        const healthCardDigits = parseHealthCardToDigits(healthCardNumber);
+        if (healthCardDigits.length !== 10) {
+            setError('Health card number must be exactly 10 digits (XXXX-XXX-XXX)');
             setIsCreatingVisitor(false);
             return;
         }
-        const duplicate = visitors.find(v => v.healthCardNumber === healthCardNumber && v.id !== editingVisitorId);
+        const versionNorm = (healthCardVersion || '').trim().toUpperCase();
+        const duplicate = visitors.find(v =>
+            v.id !== editingVisitorId &&
+            parseHealthCardToDigits(v.healthCardNumber || '') === healthCardDigits &&
+            (v.healthCardVersion || '').trim().toUpperCase() === versionNorm
+        );
         if (duplicate) {
-            setError('Health card number already exists');
+            setError('Health card number and version already in use');
             setIsCreatingVisitor(false);
             return;
         }
@@ -573,37 +634,55 @@ const UserDashboard = () => {
             return;
         }
 
-        // Validate postal code (Canadian mask A1B-2C3)
-        if (visitorForm.postalCode && visitorForm.postalCode.trim().length > 0) {
-            const postalMask = /^[A-Za-z]\d[A-Za-z]-\d[A-Za-z]\d$/;
-            if (!postalMask.test(visitorForm.postalCode.trim())) {
-                setError('Postal code must be in format A1B-2C3');
-                setIsCreatingVisitor(false);
-                return;
-            }
+        // Validate postal code (required, Canadian mask A1B-2C3)
+        if (!visitorForm.postalCode?.trim()) {
+            setError('Postal code is required');
+            setIsCreatingVisitor(false);
+            return;
         }
-
-        // Validate health card version (1-2 alphabetic)
-        if (healthCardVersion && !/^[A-Za-z]{1,2}$/.test(healthCardVersion.trim())) {
-            setError('Health card version must be 1-2 alphabetic characters');
+        const postalMask = /^[A-Za-z]\d[A-Za-z]-\d[A-Za-z]\d$/;
+        if (!postalMask.test(visitorForm.postalCode.trim())) {
+            setError('Postal code must be in format A1B-2C3');
             setIsCreatingVisitor(false);
             return;
         }
 
-        // Dates: ISO from date inputs; ensure expiry >= effectivity
-        const effDate = healthCardEffectivityDate ? new Date(healthCardEffectivityDate) : null;
-        const expDate = healthCardExpiryDate ? new Date(healthCardExpiryDate) : null;
-        if (effDate && isNaN(effDate.getTime())) {
+        // Validate health card version (1-2 alphabetic, required)
+        if (!healthCardVersion?.trim()) {
+            setError('Health card version is required (e.g. AB)');
+            setIsCreatingVisitor(false);
+            return;
+        }
+        if (!/^[A-Za-z]{1,2}$/.test(healthCardVersion.trim())) {
+            setError('Health card version must be 1-2 letters (e.g. AB)');
+            setIsCreatingVisitor(false);
+            return;
+        }
+
+        // Dates: required, expiry >= effectivity
+        if (!healthCardEffectivityDate) {
+            setError('Effectivity date is required');
+            setIsCreatingVisitor(false);
+            return;
+        }
+        if (!healthCardExpiryDate) {
+            setError('Expiry date is required');
+            setIsCreatingVisitor(false);
+            return;
+        }
+        const effDate = new Date(healthCardEffectivityDate);
+        const expDate = new Date(healthCardExpiryDate);
+        if (isNaN(effDate.getTime())) {
             setError('Effectivity date is invalid');
             setIsCreatingVisitor(false);
             return;
         }
-        if (expDate && isNaN(expDate.getTime())) {
+        if (isNaN(expDate.getTime())) {
             setError('Expiry date is invalid');
             setIsCreatingVisitor(false);
             return;
         }
-        if (effDate && expDate && expDate < effDate) {
+        if (expDate < effDate) {
             setError('Expiry date must be after or equal to effectivity date');
             setIsCreatingVisitor(false);
             return;
@@ -622,16 +701,20 @@ const UserDashboard = () => {
                 province: visitorForm.state.trim(),
                 postalCode: visitorForm.postalCode.trim(),
                 gender: visitorForm.gender,
-                phone: phoneData.fullNumber,
+                phone: phoneData.fullNumber || phoneMData.fullNumber,
                 phoneH: phoneHData.fullNumber || '',
-                phoneM: visitorForm.phoneM || '',
+                phoneM: phoneMData.fullNumber || '',
                 email: visitorForm.email.trim(),
-                healthCardNumber: healthCardNumber,
+                healthCardNumber: healthCardDigits,
                 healthCardVersion: healthCardVersion.trim().toUpperCase(),
                 healthCardEffectivityDate: healthCardEffectivityDate,
                 healthCardExpiryDate: healthCardExpiryDate,
                 notes: visitorForm.notes,
                 memo: visitorForm.memo,
+                allergies: (visitorForm.allergies || '').trim() || 'N/A',
+                drugReactions: (visitorForm.drugReactions || '').trim() || 'N/A',
+                ongoingHealthConditions: (visitorForm.ongoingHealthConditions || '').trim() || 'N/A',
+                specialNotes: (visitorForm.specialNotes || '').trim() || '',
                 guardianName: visitorForm.guardianName || '',
                 guardianPhone: guardianPhoneData.fullNumber || '',
                 ...(visitorForm.guardianId?.length === 6 && visitors.some((v) => {
@@ -664,12 +747,17 @@ const UserDashboard = () => {
                 phoneM: '',
                 notes: '',
                 memo: '',
+                allergies: 'N/A',
+                drugReactions: 'N/A',
+                ongoingHealthConditions: 'N/A',
+                specialNotes: '',
                 guardianName: '',
                 guardianId: '',
                 guardianPhone: ''
             });
             setPhoneData({ fullNumber: '', valid: false });
             setPhoneHData({ fullNumber: '', valid: false });
+            setPhoneMData({ fullNumber: '', valid: false });
             setGuardianPhoneData({ fullNumber: '', valid: false });
             setHealthCardNumber('');
             setHealthCardVersion('');
@@ -703,6 +791,10 @@ const UserDashboard = () => {
             state: '',
             postalCode: '',
             gender: '',
+            allergies: 'N/A',
+            drugReactions: 'N/A',
+            ongoingHealthConditions: 'N/A',
+            specialNotes: '',
             email: '',
             phoneH: '',
             phoneM: '',
@@ -737,6 +829,10 @@ const UserDashboard = () => {
             postalCode: visitor.postalCode || '',
             gender: visitor.gender || '',
             email: visitor.email || '',
+            allergies: visitor.allergies || 'N/A',
+            drugReactions: visitor.drugReactions || 'N/A',
+            ongoingHealthConditions: visitor.ongoingHealthConditions || 'N/A',
+            specialNotes: visitor.specialNotes || '',
             phoneH: visitor.phoneH || '',
             phoneM: visitor.phoneM || '',
             notes: visitor.notes || '',
@@ -747,8 +843,9 @@ const UserDashboard = () => {
         });
         setPhoneData({ fullNumber: visitor.phone || '', valid: !!visitor.phone });
         setPhoneHData({ fullNumber: visitor.phoneH || '', valid: !!visitor.phoneH });
+        setPhoneMData({ fullNumber: visitor.phoneM || '', valid: !!visitor.phoneM });
         setGuardianPhoneData({ fullNumber: visitor.guardianPhone || '', valid: !!visitor.guardianPhone });
-        setHealthCardNumber(formatHealthCardNumber(visitor.healthCardNumber || ''));
+        setHealthCardNumber(formatHealthCardDisplay(visitor.healthCardNumber || ''));
         setHealthCardVersion(visitor.healthCardVersion || '');
         setHealthCardEffectivityDate(visitor.healthCardEffectivityDate || '');
         setHealthCardExpiryDate(visitor.healthCardExpiryDate || '');
@@ -777,7 +874,7 @@ const UserDashboard = () => {
         dragImage.innerHTML = `
             <div class="text-xs font-semibold text-blue-700 mb-1">New Registration</div>
             <div class="text-sm font-medium text-slate-900 truncate">${patient.firstName} ${patient.middleName ? patient.middleName + ' ' : ''}${patient.lastName}</div>
-            <div class="text-xs text-slate-600 mt-1">ID: ${patient.entitySerial ? `${patient.entitySerial}-${patient.serial}` : patient.serial}</div>
+            <div class="text-xs text-slate-600 mt-1">ID: ${getVisitorSerialDisplay(patient)}</div>
         `;
         document.body.appendChild(dragImage);
         e.dataTransfer.setDragImage(dragImage, 90, 45);
@@ -803,8 +900,10 @@ const UserDashboard = () => {
         setDraggedPatient(null);
     };
 
-    const handleRegisterPatient = async (patient) => {
+    const handleRegisterPatient = async (patient, options = {}) => {
         if (!patient) return false;
+
+        const { reasonForVisit = '', parentInteractionId = '' } = options;
 
         // Check if patient already has an active (incomplete) registration
         const isAlreadyRegistered = interactions.some(i => i.visitorId === patient.id && !i.completed);
@@ -836,12 +935,33 @@ const UserDashboard = () => {
 
         try {
             const visitorSerial = patient.serial;
-            await interactionService.create({
+            const response = await interactionService.create({
                 entityId: userData.entityId,
                 entitySerial: userData.entitySerial,
                 visitorId: patient.id,
-                visitorSerial: visitorSerial
+                visitorSerial: visitorSerial,
+                reasonForVisit: reasonForVisit || ''
             });
+
+            if (reasonForVisit === 'followup' && parentInteractionId) {
+                const parentInteraction = interactions.find(i => i.id === parentInteractionId);
+                if (parentInteraction) {
+                    const existingFr = parentInteraction.followupRequired || parentInteraction.followup;
+                    await interactionService.saveDetails(parentInteractionId, {
+                        followupRequired: {
+                            required: existingFr?.required ?? true,
+                            date: existingFr?.date || '',
+                            followupInteractionId: response.id
+                        }
+                    });
+                    await interactionService.saveDetails(response.id, {
+                        followup: { isFollowup: true, parentInteractionId },
+                        started: false,
+                        ongoing: false,
+                        incomplete: false
+                    });
+                }
+            }
 
             setPendingInteractions(prev => prev.filter(i => i.id !== tempId));
             await loadInteractions(userData.entityId, interactionFilter);
@@ -940,10 +1060,6 @@ const UserDashboard = () => {
         return `${API_URL.replace('/api', '')}/${imagePath}`;
     };
 
-    const handleLogout = () => {
-        setShowLogoutModal(true);
-    };
-
     const confirmLogout = () => {
         localStorage.removeItem('token');
         localStorage.removeItem('entityName');
@@ -955,28 +1071,7 @@ const UserDashboard = () => {
     };
 
     return (
-        <div
-            className="flex h-[calc(100vh-64px)] relative overflow-x-hidden"
-        >
-            {/* Mobile Overlay */}
-            {sidebarOpen && (
-                <div
-                    className="fixed inset-0 bg-black/50 z-40 lg:hidden"
-                    onClick={() => setSidebarOpen(false)}
-                />
-            )}
-
-            {/* Sidebar */}
-            <UserSidebar
-                userData={userData}
-                serial={serial}
-                activeTab={activeTab}
-                setActiveTab={setActiveTab}
-                handleLogout={handleLogout}
-                sidebarOpen={sidebarOpen}
-                setSidebarOpen={setSidebarOpen}
-            />
-
+        <div className="flex h-[calc(100vh-64px)] relative overflow-x-hidden">
             {/* Main Content */}
             <main className="flex-1 flex flex-col min-h-0 overflow-x-hidden overflow-y-auto bg-slate-50">
                 <div className="flex-1 flex flex-col min-h-0 p-4 sm:p-6 lg:p-8">
@@ -1010,23 +1105,27 @@ const UserDashboard = () => {
                             setPhoneData={setPhoneData}
                             phoneHData={phoneHData}
                             setPhoneHData={setPhoneHData}
+                            phoneMData={phoneMData}
+                            setPhoneMData={setPhoneMData}
                             guardianPhoneData={guardianPhoneData}
                             setGuardianPhoneData={setGuardianPhoneData}
                             healthCardNumber={healthCardNumber}
                             setHealthCardNumber={setHealthCardNumber}
                             healthCardVersion={healthCardVersion}
                             setHealthCardVersion={setHealthCardVersion}
-                            healthCardEffectivityDate={healthCardEffectivityDate}
-                            setHealthCardEffectivityDate={setHealthCardEffectivityDate}
-                            healthCardExpiryDate={healthCardExpiryDate}
-                            setHealthCardExpiryDate={setHealthCardExpiryDate}
-                            handleCreateVisitor={handleCreateVisitor}
-                            handleHealthCardChange={handleHealthCardChange}
+                    healthCardEffectivityDate={healthCardEffectivityDate}
+                    setHealthCardEffectivityDate={setHealthCardEffectivityDate}
+                    healthCardExpiryDate={healthCardExpiryDate}
+                    setHealthCardExpiryDate={setHealthCardExpiryDate}
+                    handleCreateVisitor={handleCreateVisitor}
+                    handleHealthCardChange={handleHealthCardChange}
+                    handleHealthCardVersionChange={handleHealthCardVersionChange}
                             error={error}
                             setError={setError}
                             fieldErrors={fieldErrors}
                             setFieldErrors={setFieldErrors}
                             editingVisitorId={editingVisitorId}
+                            setEditingVisitorId={setEditingVisitorId}
                             onEditVisitor={handleEditVisitor}
                             handlePatientClick={handlePatientClick}
                             selectedPatient={selectedPatient}
@@ -1121,15 +1220,15 @@ const UserDashboard = () => {
                         </svg>
                     </div>
                     <div>
-                        <div className="text-[10px] font-black uppercase tracking-widest opacity-60 mb-0.5">System Alert</div>
-                        <span className="font-bold text-sm tracking-tight">{warningMessage}</span>
+                        <div className="text-xs font-semibold normal-case tracking-wide opacity-60 mb-0.5">System Alert</div>
+                        <span className="font-semibold text-sm tracking-tight">{warningMessage}</span>
                     </div>
                 </div>
             )}
 
             {/* Logout Confirmation Modal */}
             {showLogoutModal && (
-                <div className="fixed inset-0 bg-black/50 flex justify-center items-center z-[2000]" onClick={() => setShowLogoutModal(false)}>
+                <div className="fixed inset-0 bg-black/50 flex justify-center items-center px-4 pb-4 pt-0 !mt-0 z-[2000]" onClick={() => setShowLogoutModal(false)}>
                     <div className="bg-white w-full max-w-[400px] p-6 sm:p-8 rounded-3xl shadow-lg animate-[slideUp_0.4s_ease-out]" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center gap-4 mb-6">
                             <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
@@ -1138,7 +1237,7 @@ const UserDashboard = () => {
                                 </svg>
                             </div>
                             <div>
-                                <h2 className="text-xl font-bold text-slate-900">Logout</h2>
+                                <h2 className="text-xl font-semibold text-slate-900">Logout</h2>
                                 <p className="text-sm text-slate-600 mt-1">
                                     Are you sure you want to log out of the interaction system?
                                 </p>

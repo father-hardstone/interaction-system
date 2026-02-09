@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.93.1",
+    "react-pdf": "^9.2.1",
     "axios": "^1.13.2",
     "crypto-js": "^4.2.0",
     "jwt-decode": "^4.0.0",

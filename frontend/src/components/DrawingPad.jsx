@@ -1,7 +1,34 @@
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect, useMemo } from 'react';
+
+const MAX_SHEETS = 4;
+
+/** Parse value into sheets array. Supports legacy single image or JSON array. */
+function parseSheets(value) {
+    if (!value) return [''];
+    if (typeof value === 'string' && value.trim().startsWith('[')) {
+        try {
+            const arr = JSON.parse(value);
+            return Array.isArray(arr) ? arr.slice(0, MAX_SHEETS) : [value];
+        } catch {
+            return [value];
+        }
+    }
+    return [value];
+}
+
+/** Serialize sheets for onChange. Preserves empty sheets when multiple. */
+function serializeSheets(sheets) {
+    if (sheets.length <= 1) return sheets[0] || '';
+    return JSON.stringify(sheets);
+}
+
+/** Check if a sheet has meaningful content (non-empty image). */
+function sheetHasContent(sheet) {
+    return !!sheet && (sheet.startsWith('data:image') || sheet.includes('/interactions/'));
+}
 
 // Whiteboard-style drawing pad that expands with container
-const DrawingPad = ({ label, value, onChange, minHeight = '200px' }) => {
+const DrawingPad = ({ label, value, onChange, minHeight = '200px', enableSheets = false }) => {
     const canvasRef = useRef(null);
     const containerRef = useRef(null);
     const modalCanvasRef = useRef(null);
@@ -10,6 +37,30 @@ const DrawingPad = ({ label, value, onChange, minHeight = '200px' }) => {
     const lastPos = useRef({ x: 0, y: 0 });
     const [showModal, setShowModal] = useState(false);
     const [isMobile, setIsMobile] = useState(false);
+
+    const sheets = useMemo(() => parseSheets(value), [value]);
+    const [currentSheetIndex, setCurrentSheetIndex] = useState(0);
+
+    useEffect(() => {
+        if (currentSheetIndex >= sheets.length) {
+            setCurrentSheetIndex(Math.max(0, sheets.length - 1));
+        }
+    }, [sheets.length, currentSheetIndex]);
+
+    const currentSheetValue = sheets[currentSheetIndex] ?? '';
+
+    const notifyChange = (newSheets) => {
+        const serialized = serializeSheets(newSheets);
+        onChange(serialized);
+    };
+
+    const updateCurrentSheet = (dataUrl) => {
+        const next = [...sheets];
+        next[currentSheetIndex] = dataUrl;
+        notifyChange(next);
+    };
+
+    const canAddSheet = enableSheets && sheets.length < MAX_SHEETS && sheetHasContent(currentSheetValue);
 
     useEffect(() => {
         const checkMobile = () => {
@@ -42,12 +93,13 @@ const DrawingPad = ({ label, value, onChange, minHeight = '200px' }) => {
         ctx.strokeStyle = '#0ea5e9';
 
         // If there's a saved image, load it
-        if (value && value.startsWith('data:image')) {
+        const imgSrc = enableSheets ? currentSheetValue : value;
+        if (imgSrc && (imgSrc.startsWith('data:image') || imgSrc.includes('/interactions/'))) {
             const img = new Image();
             img.onload = () => {
                 ctx.drawImage(img, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
             };
-            img.src = value;
+            img.src = imgSrc;
         }
 
         // Update canvas display size when container resizes
@@ -68,10 +120,25 @@ const DrawingPad = ({ label, value, onChange, minHeight = '200px' }) => {
         });
         resizeObserver.observe(container);
 
+        // Touch events need passive: false to allow preventDefault (stop scroll while drawing)
+        const opts = { passive: false };
+        const onTouchStart = (e) => { startDraw(e); };
+        const onTouchMove = (e) => { draw(e); };
+        const onTouchEnd = () => { endDraw(); };
+
+        canvas.addEventListener('touchstart', onTouchStart, opts);
+        canvas.addEventListener('touchmove', onTouchMove, opts);
+        canvas.addEventListener('touchend', onTouchEnd, opts);
+        canvas.addEventListener('touchcancel', onTouchEnd, opts);
+
         return () => {
             resizeObserver.disconnect();
+            canvas.removeEventListener('touchstart', onTouchStart);
+            canvas.removeEventListener('touchmove', onTouchMove);
+            canvas.removeEventListener('touchend', onTouchEnd);
+            canvas.removeEventListener('touchcancel', onTouchEnd);
         };
-    }, [value]);
+    }, [enableSheets ? currentSheetValue : value, enableSheets]);
 
     const getPos = (e) => {
         const canvas = canvasRef.current;
@@ -123,11 +190,11 @@ const DrawingPad = ({ label, value, onChange, minHeight = '200px' }) => {
 
     const endDraw = () => {
         if (isDrawing.current) {
-            // Auto-save when drawing ends
             const canvas = canvasRef.current;
             if (canvas) {
                 const dataUrl = canvas.toDataURL('image/png');
-                onChange(dataUrl);
+                if (enableSheets) updateCurrentSheet(dataUrl);
+                else onChange(dataUrl);
             }
         }
         isDrawing.current = false;
@@ -138,24 +205,25 @@ const DrawingPad = ({ label, value, onChange, minHeight = '200px' }) => {
         if (!canvas) return;
         const ctx = canvas.getContext('2d');
         ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-        onChange('');
+        if (enableSheets) updateCurrentSheet('');
+        else onChange('');
     };
 
     const handleOpenModal = () => {
         if (isMobile) {
             setShowModal(true);
-            // Copy existing drawing to modal canvas
+            const imgSrc = enableSheets ? currentSheetValue : value;
             setTimeout(() => {
                 const sourceCanvas = canvasRef.current;
                 const targetCanvas = modalCanvasRef.current;
                 if (sourceCanvas && targetCanvas) {
                     const ctx = targetCanvas.getContext('2d');
-                    if (value && value.startsWith('data:image')) {
+                    if (imgSrc && (imgSrc.startsWith('data:image') || imgSrc.includes('/interactions/'))) {
                         const img = new Image();
                         img.onload = () => {
                             ctx.drawImage(img, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
                         };
-                        img.src = value;
+                        img.src = imgSrc;
                     }
                 }
             }, 100);
@@ -164,9 +232,9 @@ const DrawingPad = ({ label, value, onChange, minHeight = '200px' }) => {
 
     const handleCloseModal = () => {
         if (showModal && modalCanvasRef.current) {
-            // Save drawing from modal
             const dataUrl = modalCanvasRef.current.toDataURL('image/png');
-            onChange(dataUrl);
+            if (enableSheets) updateCurrentSheet(dataUrl);
+            else onChange(dataUrl);
         }
         setShowModal(false);
     };
@@ -196,12 +264,13 @@ const DrawingPad = ({ label, value, onChange, minHeight = '200px' }) => {
         ctx.lineJoin = 'round';
         ctx.strokeStyle = '#0ea5e9';
 
-        if (value && value.startsWith('data:image')) {
+        const imgSrc = enableSheets ? currentSheetValue : value;
+        if (imgSrc && (imgSrc.startsWith('data:image') || imgSrc.includes('/interactions/'))) {
             const img = new Image();
             img.onload = () => {
                 ctx.drawImage(img, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
             };
-            img.src = value;
+            img.src = imgSrc;
         }
 
         const updateCanvasSize = () => {
@@ -218,10 +287,24 @@ const DrawingPad = ({ label, value, onChange, minHeight = '200px' }) => {
         });
         resizeObserver.observe(container);
 
+        const opts = { passive: false };
+        const onTouchStart = (e) => { startDrawModal(e); };
+        const onTouchMove = (e) => { drawModal(e); };
+        const onTouchEnd = (e) => { endDrawModal(); };
+
+        canvas.addEventListener('touchstart', onTouchStart, opts);
+        canvas.addEventListener('touchmove', onTouchMove, opts);
+        canvas.addEventListener('touchend', onTouchEnd, opts);
+        canvas.addEventListener('touchcancel', onTouchEnd, opts);
+
         return () => {
             resizeObserver.disconnect();
+            canvas.removeEventListener('touchstart', onTouchStart);
+            canvas.removeEventListener('touchmove', onTouchMove);
+            canvas.removeEventListener('touchend', onTouchEnd);
+            canvas.removeEventListener('touchcancel', onTouchEnd);
         };
-    }, [showModal, value, isMobile]);
+    }, [showModal, enableSheets ? currentSheetValue : value, enableSheets, isMobile]);
 
     const getModalPos = (e) => {
         const canvas = modalCanvasRef.current;
@@ -275,16 +358,94 @@ const DrawingPad = ({ label, value, onChange, minHeight = '200px' }) => {
             const canvas = modalCanvasRef.current;
             if (canvas) {
                 const dataUrl = canvas.toDataURL('image/png');
-                onChange(dataUrl);
+                if (enableSheets) updateCurrentSheet(dataUrl);
+                else onChange(dataUrl);
             }
         }
         isDrawing.current = false;
     };
 
+    const saveCurrentCanvasAndSwitchSheet = (nextIndex) => {
+        const canvas = showModal && isMobile ? modalCanvasRef.current : canvasRef.current;
+        if (canvas && enableSheets) {
+            const dataUrl = canvas.toDataURL('image/png');
+            const next = [...sheets];
+            next[currentSheetIndex] = dataUrl;
+            notifyChange(next);
+        }
+        setCurrentSheetIndex(nextIndex);
+    };
+
+    const handleAddSheet = () => {
+        if (!canAddSheet) return;
+        const canvas = showModal && isMobile ? modalCanvasRef.current : canvasRef.current;
+        if (canvas) {
+            const dataUrl = canvas.toDataURL('image/png');
+            const next = [...sheets];
+            next[currentSheetIndex] = dataUrl;
+            next.push('');
+            notifyChange(next);
+            setCurrentSheetIndex(next.length - 1);
+        }
+    };
+
+    const handlePrevSheet = () => {
+        if (currentSheetIndex <= 0) return;
+        saveCurrentCanvasAndSwitchSheet(currentSheetIndex - 1);
+    };
+
+    const handleNextSheet = () => {
+        if (currentSheetIndex >= sheets.length - 1) return;
+        saveCurrentCanvasAndSwitchSheet(currentSheetIndex + 1);
+    };
+
+    const displayValue = enableSheets ? currentSheetValue : value;
+
     return (
         <>
             <div className="border border-slate-200 rounded-lg bg-slate-50 p-2 sm:p-3 space-y-2">
-                <div className="text-xs sm:text-sm font-semibold text-slate-700">{label}</div>
+                <div className="flex items-center justify-between gap-2">
+                    <div className="text-xs sm:text-sm font-semibold text-slate-700">{label}</div>
+                    {enableSheets && (
+                        <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1">
+                                <button
+                                    type="button"
+                                    onClick={handlePrevSheet}
+                                    disabled={currentSheetIndex <= 0}
+                                    className="p-1.5 rounded-md border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    aria-label="Previous sheet"
+                                >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                                    </svg>
+                                </button>
+                                <span className="text-slate-600 font-medium min-w-[4rem] text-center text-xs sm:text-sm">
+                                    Sheet {currentSheetIndex + 1} of {sheets.length}
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={handleNextSheet}
+                                    disabled={currentSheetIndex >= sheets.length - 1}
+                                    className="p-1.5 rounded-md border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    aria-label="Next sheet"
+                                >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                    </svg>
+                                </button>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={handleAddSheet}
+                                disabled={!canAddSheet}
+                                className="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 font-medium disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-slate-50 text-xs sm:text-sm"
+                            >
+                                + Add sheet
+                            </button>
+                        </div>
+                    )}
+                </div>
                 <div
                     ref={containerRef}
                     className={`relative w-full border border-slate-200 rounded-lg bg-white overflow-hidden ${isMobile ? 'cursor-pointer' : ''}`}
@@ -306,13 +467,10 @@ const DrawingPad = ({ label, value, onChange, minHeight = '200px' }) => {
                         onMouseMove={!isMobile ? draw : undefined}
                         onMouseUp={!isMobile ? endDraw : undefined}
                         onMouseLeave={!isMobile ? endDraw : undefined}
-                        onTouchStart={!isMobile ? startDraw : undefined}
-                        onTouchMove={!isMobile ? draw : undefined}
-                        onTouchEnd={!isMobile ? endDraw : undefined}
                     />
                 </div>
-                <div className="flex items-center gap-2 text-[10px] sm:text-[11px] text-slate-500">
-                    {value && (
+                <div className="flex items-center gap-2 text-xs sm:text-sm text-slate-500">
+                    {displayValue && (
                         <span className="text-green-600">Saved</span>
                     )}
                     <button
@@ -328,8 +486,45 @@ const DrawingPad = ({ label, value, onChange, minHeight = '200px' }) => {
             {/* Mobile Fullscreen Modal */}
             {showModal && isMobile && (
                 <div className="fixed inset-0 z-[9999] bg-white flex flex-col">
-                    <div className="p-4 border-b border-slate-200 bg-slate-50 shrink-0">
+                    <div className="p-4 border-b border-slate-200 bg-slate-50 shrink-0 flex items-center justify-between gap-3">
                         <h3 className="text-lg font-semibold text-slate-900">{label}</h3>
+                        {enableSheets && (
+                            <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-1">
+                                    <button
+                                        type="button"
+                                        onClick={handlePrevSheet}
+                                        disabled={currentSheetIndex <= 0}
+                                        className="p-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        aria-label="Previous sheet"
+                                    >
+                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                                        </svg>
+                                    </button>
+                                    <span className="text-slate-600 font-medium min-w-[4rem] text-center">Sheet {currentSheetIndex + 1} of {sheets.length}</span>
+                                    <button
+                                        type="button"
+                                        onClick={handleNextSheet}
+                                        disabled={currentSheetIndex >= sheets.length - 1}
+                                        className="p-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        aria-label="Next sheet"
+                                    >
+                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                        </svg>
+                                    </button>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={handleAddSheet}
+                                    disabled={!canAddSheet}
+                                    className="px-4 py-2 rounded-lg border border-slate-200 bg-slate-50 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    + Add sheet
+                                </button>
+                            </div>
+                        )}
                     </div>
                     <div
                         ref={modalContainerRef}
@@ -340,9 +535,6 @@ const DrawingPad = ({ label, value, onChange, minHeight = '200px' }) => {
                             ref={modalCanvasRef}
                             className="relative inset-0 w-full h-full touch-manipulation"
                             style={{ imageRendering: 'auto' }}
-                            onTouchStart={startDrawModal}
-                            onTouchMove={drawModal}
-                            onTouchEnd={endDrawModal}
                             onMouseDown={startDrawModal}
                             onMouseMove={drawModal}
                             onMouseUp={endDrawModal}
@@ -358,24 +550,24 @@ const DrawingPad = ({ label, value, onChange, minHeight = '200px' }) => {
                             Clear
                         </button>
                         <div className="flex items-center gap-3">
-                        <button
-                            type="button"
-                            onClick={handleCloseWithoutSave}
-                            className="w-12 h-12 rounded-full bg-red-100 hover:bg-red-200 active:bg-red-300 text-red-600 flex items-center justify-center transition-colors shrink-0 touch-manipulation select-none"
-                            title="Close without saving"
-                            aria-label="Close without saving"
-                        >
-                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                        </button>
-                        <button
-                            type="button"
-                            onClick={handleCloseModal}
-                            className="px-6 py-2.5 bg-blue-600 text-white rounded-lg font-semibold text-sm hover:bg-blue-700 active:bg-blue-800 transition-colors"
-                        >
-                            Save & Close
-                        </button>
+                            <button
+                                type="button"
+                                onClick={handleCloseWithoutSave}
+                                className="w-12 h-12 rounded-full bg-red-100 hover:bg-red-200 active:bg-red-300 text-red-600 flex items-center justify-center transition-colors shrink-0 touch-manipulation select-none"
+                                title="Close without saving"
+                                aria-label="Close without saving"
+                            >
+                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleCloseModal}
+                                className="px-6 py-2.5 bg-blue-600 text-white rounded-lg font-semibold text-sm hover:bg-blue-700 active:bg-blue-800 transition-colors"
+                            >
+                                Save & Close
+                            </button>
                         </div>
                     </div>
                 </div>

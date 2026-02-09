@@ -102,13 +102,14 @@ class InteractionController {
     // Create a new interaction
     async createInteraction(req, res) {
         try {
-            const { entityId, entitySerial, visitorId, visitorSerial } = req.body;
+            const { entityId, entitySerial, visitorId, visitorSerial, reasonForVisit } = req.body;
 
             console.log('createInteraction - Received data:', {
                 entityId,
                 entitySerial,
                 visitorId,
-                visitorSerial
+                visitorSerial,
+                reasonForVisit
             });
 
             if (!entityId || !entitySerial || !visitorId || !visitorSerial) {
@@ -153,7 +154,8 @@ class InteractionController {
                 createdAt: now,
                 editedAt: now,
                 deletedAt: '',
-                billed: false
+                billed: false,
+                reasonForVisit: reasonForVisit || ''
             };
 
             console.log('createInteraction - Interaction data to save:', interactionData);
@@ -214,6 +216,7 @@ class InteractionController {
                 ongoing,
                 incomplete,
                 completed,
+                closed,
                 billed
             } = req.body;
 
@@ -227,14 +230,6 @@ class InteractionController {
                 editedAt: new Date().toISOString(),
                 completed: completed === true || (completed === undefined && existing.completed === true)
             };
-
-            // Set billed flag - default to false unless explicitly set to true
-            if (billed !== undefined) {
-                updates.billed = billed === true;
-            } else {
-                // If not explicitly provided, ensure it's false when saving details
-                updates.billed = false;
-            }
 
             // Set started flag if provided (when doctor starts interaction)
             if (started !== undefined) {
@@ -258,6 +253,29 @@ class InteractionController {
             if (!incomplete && !ongoing && updates.completed) {
                 updates.ongoing = false;
                 updates.incomplete = false;
+            }
+
+            // Closed: set when billing info is added (completed + service lines with billing)
+            // Clear closed when not completed (e.g. moved to incomplete/scheduled)
+            if (closed !== undefined) {
+                updates.closed = closed === true;
+            } else if (!updates.completed) {
+                updates.closed = false;
+            } else {
+                const serviceLinesToUse = serviceLines !== undefined ? serviceLines : existing.serviceLines;
+                const hasBillingInfo = Array.isArray(serviceLinesToUse) && serviceLinesToUse.length > 0 &&
+                    serviceLinesToUse.some(line => (line.totalFee && Number(line.totalFee) > 0) || (line.accountingNumber && String(line.accountingNumber).trim()));
+                updates.closed = hasBillingInfo;
+            }
+
+            // Billed: when set to true, also set billedAt
+            if (billed === true) {
+                updates.billed = true;
+                updates.billedAt = new Date().toISOString();
+            } else if (billed !== undefined) {
+                updates.billed = billed === true;
+            } else {
+                updates.billed = false;
             }
 
             // Add notes if provided

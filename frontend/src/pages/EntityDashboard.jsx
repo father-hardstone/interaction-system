@@ -6,6 +6,7 @@ import { receptionistService } from '../services/receptionistService';
 import PhoneInput from '../components/PhoneInput';
 import PasswordInput from '../components/PasswordInput';
 import { validateEmail } from '../utils/crypto';
+import { formatPhoneDisplay } from '../utils/formatUtils';
 
 const EntityDashboard = () => {
     const navigate = useNavigate();
@@ -172,10 +173,10 @@ const EntityDashboard = () => {
             <aside className="w-64 bg-white border-r border-slate-200 flex flex-col">
                 {/* Entity Name at Top */}
                 <div className="p-6 border-b border-slate-200">
-                    <h2 className="text-lg font-bold text-slate-900 mb-1">
+                    <h2 className="text-lg font-semibold text-slate-900 mb-1">
                         {entityData?.name || 'Entity'}
                     </h2>
-                    <p className="text-sm text-slate-500 uppercase">{serial}</p>
+                    <p className="text-sm text-slate-500 normal-case">{serial}</p>
                 </div>
 
                 {/* Navigation */}
@@ -210,7 +211,7 @@ const EntityDashboard = () => {
             <main className="flex-1 overflow-auto bg-slate-50">
                 {/* Top Bar */}
                 <div className="bg-white border-b border-slate-200 px-8 py-6">
-                    <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
+                    <h1 className="text-2xl font-semibold text-slate-900">Dashboard</h1>
                     <p className="text-slate-500 mt-1">Welcome back, {entityData?.name || 'Entity'}</p>
                 </div>
 
@@ -231,7 +232,7 @@ const EntityDashboard = () => {
                                 </div>
                                 <div>
                                     <label className="text-sm font-medium text-slate-500">Phone</label>
-                                    <p className="text-base text-slate-900 mt-1">{entityData.phone || 'N/A'}</p>
+                                    <p className="text-base text-slate-900 mt-1">{formatPhoneDisplay(entityData?.phone) || 'N/A'}</p>
                                 </div>
                                 <div>
                                     <label className="text-sm font-medium text-slate-500">Email</label>
@@ -364,7 +365,7 @@ const EntityDashboard = () => {
                                             <tr key={rec.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
                                                 <td className="px-6 py-4 font-medium text-slate-900">{rec.serial}</td>
                                                 <td className="px-6 py-4 text-slate-700">{rec.name}</td>
-                                                <td className="px-6 py-4 text-slate-700">{rec.phone}</td>
+                                                <td className="px-6 py-4 text-slate-700">{formatPhoneDisplay(rec.phone) || '-'}</td>
                                                 <td className="px-6 py-4 text-slate-700">{rec.email}</td>
                                                 <td className="px-6 py-4">
                                                     <span className={`px-3 py-1 rounded-full text-sm font-medium ${rec.active === 'true' && rec.approved === 'true'
@@ -403,9 +404,9 @@ const EntityDashboard = () => {
 
             {/* Add Officer Modal */}
             {showOfficerModal && (
-                <div className="fixed inset-0 bg-black/50 flex justify-center items-center z-[1000]" onClick={() => setShowOfficerModal(false)}>
+                <div className="fixed inset-0 bg-black/50 flex justify-center items-center px-4 pb-4 pt-0 !mt-0 z-[1000]" onClick={() => setShowOfficerModal(false)}>
                     <div className="bg-white w-full max-w-[500px] p-8 rounded-3xl shadow-lg animate-[slideUp_0.4s_ease-out] mx-4" onClick={(e) => e.stopPropagation()}>
-                        <h2 className="text-2xl font-bold text-slate-900 mb-6">Add New Officer</h2>
+                        <h2 className="text-2xl font-semibold text-slate-900 mb-6">Add New Officer</h2>
                         {error && <p className="bg-red-50 border border-red-200 text-red-600 py-3 px-4 rounded-xl text-sm mb-4">{error}</p>}
                         <form onSubmit={handleCreateOfficer} className="flex flex-col gap-5">
                             <div className="flex flex-col gap-2">
@@ -477,9 +478,9 @@ const EntityDashboard = () => {
 
             {/* Add Receptionist Modal */}
             {showReceptionistModal && (
-                <div className="fixed inset-0 bg-black/50 flex justify-center items-center z-[1000]" onClick={() => setShowReceptionistModal(false)}>
+                <div className="fixed inset-0 bg-black/50 flex justify-center items-center px-4 pb-4 pt-0 !mt-0 z-[1000]" onClick={() => setShowReceptionistModal(false)}>
                     <div className="bg-white w-full max-w-[500px] p-8 rounded-3xl shadow-lg animate-[slideUp_0.4s_ease-out] mx-4" onClick={(e) => e.stopPropagation()}>
-                        <h2 className="text-2xl font-bold text-slate-900 mb-6">Add New Receptionist</h2>
+                        <h2 className="text-2xl font-semibold text-slate-900 mb-6">Add New Receptionist</h2>
                         {receptionError && <p className="bg-red-50 border border-red-200 text-red-600 py-3 px-4 rounded-xl text-sm mb-4">{receptionError}</p>}
                         <form onSubmit={handleCreateReceptionist} className="flex flex-col gap-5">
                             <div className="flex flex-col gap-2">

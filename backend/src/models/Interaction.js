@@ -130,6 +130,14 @@ const interactionSchema = new mongoose.Schema({
     billed: {
         type: Boolean,
         default: false
+    },
+    billedAt: {
+        type: String,
+        default: ''
+    },
+    reasonForVisit: {
+        type: String,
+        default: ''
     }
 }, {
     timestamps: false,

@@ -24,29 +24,6 @@ const Login = ({ type = 'admin' }) => {
 
     const getService = () => isEntity ? entityService : authService;
 
-    // Check if email is valid
-    const isEmailValid = () => {
-        if (!email || email.trim().length === 0) return false;
-        const validation = validateEmail(email);
-        return validation.valid;
-    };
-
-    // Check if phone is valid
-    const isPhoneValid = () => phoneData.valid;
-
-    // Determine if at least one identifier is valid
-    const hasValidIdentifier = () => isEmailValid() || isPhoneValid();
-
-    // Determine which fields are required
-    const isEmailRequired = () => {
-        if (!isEntity) return false;
-        return !isPhoneValid(); // Required if phone is not valid
-    };
-
-    const isPhoneRequired = () => {
-        if (!isEntity) return true; // Always required for admin
-        return !isEmailValid(); // Required if email is not valid
-    };
 
     const handleEmailChange = (e) => {
         const value = e.target.value;
@@ -72,24 +49,14 @@ const Login = ({ type = 'admin' }) => {
                 return;
             }
         } else {
-            // For entity, either email or phone must be valid
-            if (!hasValidIdentifier()) {
-                setError('Please enter either a valid email address or phone number');
+            // For entity, email is required
+            if (!email || email.trim().length === 0) {
+                setError('Please enter your email address');
                 return;
             }
-
-            // Validate email if provided
-            if (email.trim().length > 0) {
-                const emailValidation = validateEmail(email);
-                if (!emailValidation.valid) {
-                    setEmailError(emailValidation.error);
-                    return;
-                }
-            }
-
-            // Validate phone if provided
-            if (phoneData.fullNumber && !phoneData.valid) {
-                setError('Please enter a valid phone number');
+            const emailValidation = validateEmail(email);
+            if (!emailValidation.valid) {
+                setEmailError(emailValidation.error);
                 return;
             }
         }
@@ -104,20 +71,12 @@ const Login = ({ type = 'admin' }) => {
             setIsSubmitting(true);
             const loginData = { password: password };
             if (isEntity) {
-                if (isEmailValid()) {
-                    loginData.email = email.trim();
-                } else if (isPhoneValid()) {
-                    loginData.phone = phoneData.fullNumber;
-                }
+                loginData.email = email.trim();
             } else {
                 loginData.phone = phoneData.fullNumber;
             }
 
-            const response = await getService().login(loginData);
-            // Store identifier for OTP verification
-            if (isEntity && isEmailValid()) {
-                setPhoneData({ fullNumber: response.phone || '', valid: true }); // Store phone from response for OTP
-            }
+            await getService().login(loginData);
             setStep(2);
         } catch (err) {
             setError(err.response?.data?.error || 'Login failed');
@@ -137,11 +96,7 @@ const Login = ({ type = 'admin' }) => {
 
             const verifyData = { otp };
             if (isEntity) {
-                if (isEmailValid()) {
-                    verifyData.email = email.trim();
-                } else {
-                    verifyData.phone = phoneData.fullNumber;
-                }
+                verifyData.email = email.trim();
             } else {
                 verifyData.phone = phoneData.fullNumber;
             }
@@ -196,7 +151,7 @@ const Login = ({ type = 'admin' }) => {
     return (
         <div className="flex-1 flex items-center justify-center p-8 w-full">
             <div className={`bg-white w-full ${isEntity ? 'max-w-[520px]' : 'max-w-[440px]'} p-12 rounded-3xl shadow-lg animate-[slideUp_0.4s_ease-out] mx-auto`}>
-                <h2 className="m-0 mb-8 text-3xl font-bold text-center text-slate-900 tracking-tight">
+                <h2 className="m-0 mb-8 text-3xl font-semibold text-center text-slate-900 tracking-tight">
                     {isEntity ? 'Entity Portal' : 'Admin Portal'}
                 </h2>
                 {error && <p className="bg-red-50 border border-red-200 text-error py-3 px-4 rounded-xl text-sm text-center mb-4">{error}</p>}
@@ -206,30 +161,28 @@ const Login = ({ type = 'admin' }) => {
                         <form onSubmit={handleLogin} className="flex flex-col gap-5">
                             {isEntity && (
                                 <div className="flex flex-col gap-2">
-                                    <label className="text-sm font-semibold text-slate-900">Email Address {isEmailRequired() && <span className="text-error">*</span>}</label>
+                                    <label className="text-sm font-semibold text-slate-900">Email Address <span className="text-error">*</span></label>
                                     <input
                                         type="email"
                                         placeholder="Enter your email address"
                                         value={email}
                                         onChange={handleEmailChange}
-                                        required={isEmailRequired()}
+                                        required
                                         className={`w-full py-3.5 px-4 border rounded-xl font-inherit text-base transition-all text-slate-900 ${emailError ? 'border-error bg-red-50 focus:border-error focus:bg-white focus:outline-none focus:ring-4 focus:ring-red-100' : 'border-slate-200 bg-slate-50 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100'}`}
                                     />
                                     {emailError && <span className="text-error text-sm">{emailError}</span>}
                                 </div>
                             )}
 
-                            <div className="flex flex-col gap-2">
-                                <label className="text-sm font-semibold text-slate-900">
-                                    {isEntity ? 'Phone Number' : 'Phone Number'}
-                                    {isPhoneRequired() && <span className="text-error">*</span>}
-                                    {isEntity && !isPhoneRequired() && <span className="text-slate-500 text-sm font-normal"> (Optional if email is provided)</span>}
-                                </label>
-                                <PhoneInput
-                                    onChange={setPhoneData}
-                                    required={isPhoneRequired()}
-                                />
-                            </div>
+                            {!isEntity && (
+                                <div className="flex flex-col gap-2">
+                                    <label className="text-sm font-semibold text-slate-900">Phone Number <span className="text-error">*</span></label>
+                                    <PhoneInput
+                                        onChange={setPhoneData}
+                                        required
+                                    />
+                                </div>
+                            )}
 
                             <div className="flex flex-col gap-2">
                                 <label className="text-sm font-semibold text-slate-900">Password <span className="text-error">*</span></label>
@@ -307,6 +260,14 @@ const Login = ({ type = 'admin' }) => {
                             )}
                         </button>
                     </form>
+                )}
+
+                {isEntity && (
+                    <div className="mt-6 text-center text-sm">
+                        <Link to="/" className="text-primary font-semibold no-underline">
+                            Back to main portal
+                        </Link>
+                    </div>
                 )}
             </div>
         </div>

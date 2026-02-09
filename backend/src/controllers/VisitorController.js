@@ -56,7 +56,11 @@ class VisitorController {
                 memo,
                 guardianName,
                 guardianId,
-                guardianPhone
+                guardianPhone,
+                allergies,
+                drugReactions,
+                ongoingHealthConditions,
+                specialNotes
             } = req.body;
 
             // Normalize province/state
@@ -155,6 +159,10 @@ class VisitorController {
                 healthCardExpiryDate: healthCardExpiryDate || '',
                 notes: notes || '',
                 memo: memo || '',
+                allergies: (allergies && allergies.trim()) ? allergies.trim() : 'N/A',
+                drugReactions: (drugReactions && drugReactions.trim()) ? drugReactions.trim() : 'N/A',
+                ongoingHealthConditions: (ongoingHealthConditions && ongoingHealthConditions.trim()) ? ongoingHealthConditions.trim() : 'N/A',
+                specialNotes: (specialNotes && specialNotes.trim()) ? specialNotes.trim() : '',
                 guardianName: guardianNameFinal,
                 guardianId: guardianId || '',
                 guardianPhone: guardianPhoneFinal,
@@ -234,6 +242,20 @@ class VisitorController {
             const expDate = parseDate(updates.healthCardExpiryDate);
             if (effDate && expDate && expDate < effDate) {
                 return res.status(400).json({ error: "Expiry date cannot be earlier than effective date" });
+            }
+
+            // Normalize allergies and drugReactions: empty = N/A
+            if (updates.allergies !== undefined) {
+                updates.allergies = (updates.allergies && String(updates.allergies).trim()) ? String(updates.allergies).trim() : 'N/A';
+            }
+            if (updates.drugReactions !== undefined) {
+                updates.drugReactions = (updates.drugReactions && String(updates.drugReactions).trim()) ? String(updates.drugReactions).trim() : 'N/A';
+            }
+            if (updates.ongoingHealthConditions !== undefined) {
+                updates.ongoingHealthConditions = (updates.ongoingHealthConditions && String(updates.ongoingHealthConditions).trim()) ? String(updates.ongoingHealthConditions).trim() : 'N/A';
+            }
+            if (updates.specialNotes !== undefined) {
+                updates.specialNotes = (updates.specialNotes && String(updates.specialNotes).trim()) ? String(updates.specialNotes).trim() : '';
             }
 
             // Guardian autofill if guardianId provided

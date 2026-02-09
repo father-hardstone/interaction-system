@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { reportService } from '../services/reportService';
 import api from '../services/api';
 import supabaseStorageService from '../services/supabaseService';
+import { getShortInteractionId, formatHealthCardDisplay, formatDateMMDDYYYY, getVisitorSerialDisplay } from '../utils/formatUtils';
 
 const REPORT_TYPES = [
     { value: 'blood_test', label: 'Blood Test' },
@@ -228,14 +229,8 @@ const ReportUpload = ({
                         onUploadSuccess();
                     }
 
-                    // Reset for next upload without closing modal
-                    setTimeout(() => {
-                        setSelectedFile(null);
-                        setFilePreview(null);
-                        setUploadProgress(0);
-                        setSuccessMsg('');
-                        // Keep other fields for potential serial upload of same type/date
-                    }, 2000);
+                    setShowModal(false);
+                    resetForm();
 
                 } catch (err) {
                     console.error('Upload error:', err);
@@ -276,7 +271,7 @@ const ReportUpload = ({
 
             {showModal && (
                 <div
-                    className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex justify-center items-center z-[1001] p-4 animate-in fade-in duration-200"
+                    className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex justify-center items-center z-[1001] px-4 pb-4 pt-0 !mt-0 animate-in fade-in duration-200"
                     onClick={() => !isUploading && setShowModal(false)}
                 >
                     <div
@@ -286,9 +281,17 @@ const ReportUpload = ({
                         {/* Header */}
                         <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
                             <div>
-                                <h3 className="text-lg font-bold text-slate-900">Upload Report</h3>
-                                <div className="flex items-center gap-2 mt-0.5">
-                                    <p className="text-xs text-slate-500">Patient: <span className="font-semibold text-slate-700">{visitor.firstName} {visitor.lastName} ({visitor.serial})</span></p>
+                                <h3 className="text-lg font-semibold text-slate-900">Upload Report</h3>
+                                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-base">
+                                    <span className="font-bold text-slate-900">{visitor.firstName} {visitor.lastName}</span>
+                                    <span className="text-slate-500 font-semibold">ID: {getVisitorSerialDisplay(visitor)}</span>
+                                    {visitor.dateOfBirth && <span className="text-slate-600 font-semibold">DOB: {formatDateMMDDYYYY(visitor.dateOfBirth)}</span>}
+                                    {visitor.healthCardNumber && (
+                                        <span className="text-slate-600 font-semibold">
+                                            Health Card: {formatHealthCardDisplay(visitor.healthCardNumber)}
+                                            {visitor.healthCardVersion && <span className="text-slate-500"> ({visitor.healthCardVersion})</span>}
+                                        </span>
+                                    )}
                                 </div>
                             </div>
                             <button
@@ -308,7 +311,7 @@ const ReportUpload = ({
                                 <div className="space-y-4">
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="col-span-2 sm:col-span-1">
-                                            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Report Type</label>
+                                            <label className="block text-xs font-semibold text-slate-500 normal-case tracking-wide mb-1.5">Report Type</label>
                                             <select
                                                 value={reportType}
                                                 onChange={(e) => setReportType(e.target.value)}
@@ -323,7 +326,7 @@ const ReportUpload = ({
                                         </div>
 
                                         <div className="col-span-2 sm:col-span-1">
-                                            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Linked Interaction</label>
+                                            <label className="block text-xs font-semibold text-slate-500 normal-case tracking-wide mb-1.5">Linked Interaction</label>
                                             <select
                                                 value={selectedInteractionId}
                                                 onChange={handleInteractionChange}
@@ -333,7 +336,7 @@ const ReportUpload = ({
                                                 <option value="">Independent</option>
                                                 {completedInteractions.map((interaction) => (
                                                     <option key={interaction.id} value={interaction.id}>
-                                                        {interaction.interactionSerial} ({(() => {
+                                                        {getShortInteractionId(interaction.interactionSerial)} ({(() => {
                                                             const d = new Date(interaction.editedAt || interaction.createdAt);
                                                             return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}-${d.getFullYear()}`;
                                                         })()})
@@ -345,7 +348,7 @@ const ReportUpload = ({
 
                                     <div className="grid grid-cols-2 gap-4 bg-slate-50 p-3 rounded-2xl border border-slate-100">
                                         <div>
-                                            <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Doctor ID</label>
+                                            <label className="block text-xs font-semibold text-slate-400 normal-case mb-1">Doctor ID</label>
                                             <input
                                                 type="text"
                                                 value={doctorId}
@@ -355,7 +358,7 @@ const ReportUpload = ({
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Doctor Name</label>
+                                            <label className="block text-xs font-semibold text-slate-400 normal-case mb-1">Doctor Name</label>
                                             <input
                                                 type="text"
                                                 value={doctorName}
@@ -368,7 +371,7 @@ const ReportUpload = ({
 
                                     <div className="grid grid-cols-2 gap-4">
                                         <div>
-                                            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Procedure Date</label>
+                                            <label className="block text-xs font-semibold text-slate-500 normal-case tracking-wide mb-1.5">Procedure Date</label>
                                             <input
                                                 type="date"
                                                 value={procedureDate}
@@ -378,7 +381,7 @@ const ReportUpload = ({
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Report Date</label>
+                                            <label className="block text-xs font-semibold text-slate-500 normal-case tracking-wide mb-1.5">Report Date</label>
                                             <input
                                                 type="date"
                                                 value={reportGeneratedDate}
@@ -389,13 +392,13 @@ const ReportUpload = ({
                                         </div>
                                         {dateError && (
                                             <div className="col-span-2">
-                                                <p className="text-[11px] font-medium text-red-500">{dateError}</p>
+                                                <p className="text-sm font-medium text-red-500">{dateError}</p>
                                             </div>
                                         )}
                                     </div>
 
                                     <div>
-                                        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Lab & Additional Notes</label>
+                                        <label className="block text-xs font-semibold text-slate-500 normal-case tracking-wide mb-1.5">Lab & Additional Notes</label>
                                         <div className="space-y-2">
                                             <input
                                                 type="text"
@@ -419,7 +422,7 @@ const ReportUpload = ({
 
                                 {/* Right Column: File Dropzone */}
                                 <div className="space-y-4 flex flex-col">
-                                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">File Attachment</label>
+                                    <label className="block text-xs font-semibold text-slate-500 normal-case tracking-wide mb-1.5">File Attachment</label>
 
                                     <div
                                         className={`flex-1 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center p-6 transition-all relative overflow-hidden ${selectedFile ? 'border-primary-100 bg-primary-50/10' : 'border-slate-200 bg-slate-50 hover:bg-slate-100 hover:border-slate-300 cursor-pointer'}`}
@@ -441,7 +444,7 @@ const ReportUpload = ({
                                                     </svg>
                                                 </div>
                                                 <p className="text-slate-900 font-semibold text-sm text-center">Drag and drop file</p>
-                                                <p className="text-slate-400 text-[10px] mt-1">PDF or Images up to 20MB</p>
+                                                <p className="text-slate-400 text-xs mt-1">PDF or Images up to 20MB</p>
                                             </>
                                         ) : (
                                             <div className="w-full h-full flex flex-col">
@@ -462,12 +465,12 @@ const ReportUpload = ({
 
                                                 <div className="mt-4 p-3 bg-white border border-slate-200 rounded-xl flex items-center justify-between shadow-sm">
                                                     <div className="flex items-center gap-3 overflow-hidden">
-                                                        <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 flex-shrink-0 font-bold text-[9px] uppercase">
+                                                        <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 flex-shrink-0 font-semibold text-xs normal-case">
                                                             {selectedFile.name.split('.').pop()}
                                                         </div>
                                                         <div className="truncate">
                                                             <p className="text-xs font-semibold text-slate-900 truncate">{selectedFile.name}</p>
-                                                            <p className="text-[9px] text-slate-500">{(selectedFile.size / (1024 * 1024)).toFixed(2)} MB</p>
+                                                            <p className="text-xs text-slate-500">{(selectedFile.size / (1024 * 1024)).toFixed(2)} MB</p>
                                                         </div>
                                                     </div>
                                                     <button
@@ -508,7 +511,7 @@ const ReportUpload = ({
                                         <svg className="w-5 h-5 text-red-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                                             <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                                         </svg>
-                                        <p className="text-sm font-bold text-red-700">{error}</p>
+                                        <p className="text-sm font-semibold text-red-700">{error}</p>
                                     </div>
                                 )}
 
@@ -517,7 +520,7 @@ const ReportUpload = ({
                                         <svg className="w-5 h-5 text-green-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                                             <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                                         </svg>
-                                        <p className="text-sm font-bold text-green-700">{successMsg}</p>
+                                        <p className="text-sm font-semibold text-green-700">{successMsg}</p>
                                     </div>
                                 )}
                             </div>

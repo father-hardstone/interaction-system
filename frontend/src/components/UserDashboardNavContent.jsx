@@ -1,0 +1,156 @@
+import { useState, useRef, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+
+const UserDashboardNavContent = ({ navState, entityIconUrl, userInfo }) => {
+    const [dropdownOpen, setDropdownOpen] = useState(false);
+    const [tabDropdownOpen, setTabDropdownOpen] = useState(false);
+    const dropdownRef = useRef(null);
+    const tabDropdownRef = useRef(null);
+
+    const { activeTab, setActiveTab, userData, serial, onLogout } = navState || {};
+
+    useEffect(() => {
+        const handleClickOutside = (e) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+                setDropdownOpen(false);
+            }
+            if (tabDropdownRef.current && !tabDropdownRef.current.contains(e.target)) {
+                setTabDropdownOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    const initials = userData?.name
+        ? userData.name
+              .split(/\s+/)
+              .map((n) => n[0])
+              .slice(0, 2)
+              .join('')
+              .toUpperCase()
+        : 'U';
+
+    return (
+        <nav className="flex justify-between items-center h-16 px-6 bg-white/80 backdrop-blur-lg sticky top-0 z-[100] border-b border-slate-200 w-full font-inherit">
+            {/* Left: Entity logo */}
+            <div className="w-1/3 flex justify-start min-w-0">
+                <Link to="/" className="flex items-center group">
+                    {entityIconUrl ? (
+                        <img
+                            src={entityIconUrl}
+                            alt={userInfo?.displayName}
+                            className="h-12 w-auto object-contain max-w-[180px]"
+                        />
+                    ) : (
+                        <span className="font-semibold text-lg normal-case tracking-tighter text-slate-900 group-hover:text-primary transition-colors truncate">
+                            {userInfo?.displayName || "Bilal's Interaction System"}
+                        </span>
+                    )}
+                </Link>
+            </div>
+
+            {/* Center: Operations | Physician tabs */}
+            <div className="w-1/3 flex justify-center shrink-0">
+                {/* Mobile: dropdown */}
+                <div className="md:hidden relative" ref={tabDropdownRef}>
+                    <button
+                        type="button"
+                        onClick={() => setTabDropdownOpen((o) => !o)}
+                        className="flex items-center gap-2 px-4 py-2 bg-slate-100 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-200 transition-colors"
+                    >
+                        {activeTab === 'reception' ? 'Operations' : 'Physician'}
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                    </button>
+                    {tabDropdownOpen && (
+                        <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-40 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-[200]">
+                            <button
+                                type="button"
+                                onClick={() => { setActiveTab?.('reception'); setTabDropdownOpen(false); }}
+                                className={`w-full px-4 py-2.5 text-left text-sm font-medium transition-colors ${activeTab === 'reception' ? 'bg-primary/10 text-primary' : 'text-slate-600 hover:bg-slate-50'}`}
+                            >
+                                Operations
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => { setActiveTab?.('officer'); setTabDropdownOpen(false); }}
+                                className={`w-full px-4 py-2.5 text-left text-sm font-medium transition-colors ${activeTab === 'officer' ? 'bg-primary/10 text-primary' : 'text-slate-600 hover:bg-slate-50'}`}
+                            >
+                                Physician
+                            </button>
+                        </div>
+                    )}
+                </div>
+                {/* Desktop: two buttons */}
+                <div className="hidden md:flex items-center gap-1 bg-slate-100 rounded-xl p-1">
+                    <button
+                        type="button"
+                        onClick={() => setActiveTab?.('reception')}
+                        className={`px-5 py-2 rounded-lg text-sm font-medium transition-colors ${
+                            activeTab === 'reception' ? 'bg-white text-primary shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                    >
+                        Operations
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setActiveTab?.('officer')}
+                        className={`px-5 py-2 rounded-lg text-sm font-medium transition-colors ${
+                            activeTab === 'officer' ? 'bg-white text-primary shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                    >
+                        Physician
+                    </button>
+                </div>
+            </div>
+
+            {/* Right: Profile with dropdown */}
+            <div className="w-1/3 flex justify-end relative" ref={dropdownRef}>
+                <button
+                    type="button"
+                    onClick={() => setDropdownOpen((o) => !o)}
+                    className="relative flex items-center justify-center w-10 h-10 rounded-full bg-primary/10 text-primary font-semibold text-sm hover:bg-primary/20 transition-colors focus:outline-none focus:ring-2 focus:ring-primary/40 focus:ring-offset-2"
+                    aria-label="Open user menu"
+                >
+                    {initials}
+                </button>
+
+                {dropdownOpen && (
+                    <div className="absolute right-6 top-full mt-2 w-72 bg-white rounded-xl shadow-lg border border-slate-200 py-2 z-[200] animate-[slideUp_0.2s_ease-out]">
+                        <div className="px-4 py-3 border-b border-slate-100">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-primary/10 text-primary font-semibold text-sm flex items-center justify-center shrink-0">
+                                    {initials}
+                                </div>
+                                <div className="min-w-0">
+                                    <p className="font-semibold text-slate-900 truncate">{userData?.name || 'Internal User'}</p>
+                                    <p className="text-sm text-slate-500 normal-case truncate">{serial}</p>
+                                    <p className="text-xs text-slate-400 capitalize">{userData?.role || ''}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="py-1">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setDropdownOpen(false);
+                                    onLogout?.();
+                                }}
+                                className="w-full flex items-center gap-3 px-4 py-3 text-left text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
+                            >
+                                <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                                </svg>
+                                Log out
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </div>
+        </nav>
+    );
+};
+
+export default UserDashboardNavContent;
