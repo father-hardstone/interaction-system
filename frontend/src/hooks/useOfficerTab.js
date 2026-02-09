@@ -4,6 +4,41 @@ import { reportService } from '../services/reportService';
 import { useMasterData } from '../contexts/MasterDataContext';
 import supabaseStorageService from '../services/supabaseService';
 
+/** Parse pad value into sheets array (legacy single or JSON array). */
+function parsePadSheets(padValue) {
+    if (!padValue) return [''];
+    if (typeof padValue === 'string' && padValue.trim().startsWith('[')) {
+        try {
+            const arr = JSON.parse(padValue);
+            return Array.isArray(arr) ? arr : [padValue];
+        } catch {
+            return [padValue];
+        }
+    }
+    return [padValue];
+}
+
+/** Extract first sheet with content for upload (legacy). */
+function getPrimarySheetForUpload(padValue) {
+    const sheets = parsePadSheets(padValue);
+    const withContent = sheets.find(s => s && (s.startsWith('data:image') || (typeof s === 'string' && s.includes('/interactions/'))));
+    return withContent || '';
+}
+
+/** Check if pad has any content (single or multi-sheet). */
+function padHasContent(padValue) {
+    if (!padValue) return false;
+    if (typeof padValue === 'string' && padValue.trim().startsWith('[')) {
+        try {
+            const arr = JSON.parse(padValue);
+            return Array.isArray(arr) && arr.some(s => s && (s.startsWith('data:image') || (typeof s === 'string' && s.includes('/interactions/'))));
+        } catch {
+            return !!padValue;
+        }
+    }
+    return !!(padValue && (padValue.startsWith('data:image') || padValue.includes('/interactions/')));
+}
+
 const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) => {
     const { services = [], diagnostics = [] } = useMasterData();
     const [selectedPatient, setSelectedPatient] = useState(null);
@@ -188,13 +223,15 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
         setAssessmentPlanPad(interaction.assessmentPlan?.scratchpad || '');
 
         if (interaction.serviceLines && interaction.serviceLines.length > 0) {
-            setServiceLines(interaction.serviceLines.map(line => ({
+            const firstDiag = interaction.serviceLines[0]?.diagnostic || '';
+            const firstDiagDesc = diagnostics.find(d => (d.code || '').toUpperCase() === (firstDiag || '').trim().toUpperCase())?.description || '';
+            setServiceLines(interaction.serviceLines.map((line, i) => ({
                 id: Math.random(),
-                serialNumber: line.serialNumber || 1,
-                diagnostic: line.diagnostic || '',
-                diagnosticDescription: diagnostics.find(d => d.code === line.diagnostic)?.description || '',
+                serialNumber: line.serialNumber || i + 1,
+                diagnostic: firstDiag,
+                diagnosticDescription: firstDiagDesc,
                 billingCode: line.service || '',
-                billingDescription: services.find(s => s.code === line.service)?.description || '',
+                billingDescription: services.find(s => (s.code || '').toUpperCase() === (line.service || '').trim().toUpperCase())?.description || '',
                 totalFee: line.totalFee !== undefined ? line.totalFee.toString() : ''
             })));
         } else {
@@ -202,7 +239,21 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
         }
 
         setReferral(interaction.referral || { type: '', reason: '', to: '', date: '' });
-        setMedications(interaction.medications || []);
+        setMedications((interaction.medications || []).map(med => {
+            const dosage = med.dosage || '';
+            const match = dosage.match(/^(\d*\.?\d*)(.*)$/);
+            const dosageAmount = match ? match[1] : '';
+            const dosageUnit = (match && match[2] ? match[2].trim().toLowerCase() : '') || '';
+            return {
+                name: med.name || '',
+                dosageAmount: med.dosageAmount ?? dosageAmount,
+                dosageUnit: med.dosageUnit ?? dosageUnit,
+                suspension: med.suspension || 'tablet',
+                frequency: med.frequency || '',
+                duration: med.duration || '',
+                refills: med.refills ?? 0,
+            };
+        }));
         setSavedNotes(interaction.savedNotes || []);
         const fr = interaction.followupRequired || interaction.followup;
         setFollowup(fr ? { required: fr.required, date: fr.date || '' } : { required: false, date: '' });
@@ -331,48 +382,60 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
 
         const { entityId, entitySerial, visitorSerial, interactionSerial } = activeInteraction;
 
-        // Save scratchpads to Supabase
+        // Save scratchpads to Supabase - each sheet uploaded with 1,2,3,4 suffix
         const imagePaths = {};
-        const imageFields = [
-            { name: 'CC', data: ccReasonPad, existing: activeInteraction.ccReason?.scratchpad || '' },
-            { name: 'S', data: subjectivePad, existing: activeInteraction.subjective?.scratchpad || '' },
-            { name: 'O', data: objectivePad, existing: activeInteraction.objective?.scratchpad || '' },
-            { name: 'AP', data: assessmentPlanPad, existing: activeInteraction.assessmentPlan?.scratchpad || '' }
+        const fieldConfigs = [
+            { name: 'CC', pad: ccReasonPad, existing: activeInteraction.ccReason?.scratchpad || '' },
+            { name: 'S', pad: subjectivePad, existing: activeInteraction.subjective?.scratchpad || '' },
+            { name: 'O', pad: objectivePad, existing: activeInteraction.objective?.scratchpad || '' },
+            { name: 'AP', pad: assessmentPlanPad, existing: activeInteraction.assessmentPlan?.scratchpad || '' }
         ];
 
-        for (const field of imageFields) {
-            // Only upload if:
-            // 1. There's new image data (base64)
-            // 2. No existing Supabase path exists (editing isn't allowed)
-            if (field.data && field.data.startsWith('data:image')) {
-                // Check if image already exists in Supabase
-                const existingPath = field.existing;
-                const isSupabasePath = existingPath && existingPath.includes('/interactions/');
-                
-                if (isSupabasePath) {
-                    // Image already exists, don't overwrite
-                    console.log(`Image for ${field.name} already exists, skipping upload`);
-                    imagePaths[field.name] = existingPath;
-                } else {
-                    // Upload new image to Supabase
-                    try {
-                        const supabasePath = await supabaseStorageService.uploadInteractionScratchpad(
-                            field.data,
-                            entityId,
-                            activeInteractionId,
-                            field.name
-                        );
-                        imagePaths[field.name] = supabasePath;
-                        console.log(`Uploaded ${field.name} image to Supabase:`, supabasePath);
-                    } catch (error) {
-                        console.error(`Error saving ${field.name} image to Supabase:`, error);
-                        // If upload fails, keep existing path or empty string
-                        imagePaths[field.name] = existingPath || '';
+        for (const field of fieldConfigs) {
+            const sheets = parsePadSheets(field.pad);
+            const existingPaths = parsePadSheets(field.existing);
+            const paths = [];
+
+            for (let i = 0; i < sheets.length; i++) {
+                const sheet = sheets[i];
+                const suffix = i + 1;
+                const fieldNameWithSuffix = `${field.name}${suffix}`;
+
+                if (sheet && sheet.startsWith('data:image')) {
+                    const existingPath = existingPaths[i];
+                    const isSupabasePath = existingPath && existingPath.includes('/interactions/');
+                    if (isSupabasePath) {
+                        paths[i] = existingPath;
+                    } else {
+                        try {
+                            const supabasePath = await supabaseStorageService.uploadInteractionScratchpad(
+                                sheet,
+                                entityId,
+                                activeInteractionId,
+                                fieldNameWithSuffix
+                            );
+                            paths[i] = supabasePath;
+                        } catch (error) {
+                            console.error(`Error saving ${fieldNameWithSuffix} to Supabase:`, error);
+                            paths[i] = '';
+                        }
                     }
+                } else if (sheet && sheet.includes('/interactions/')) {
+                    paths[i] = sheet;
+                } else if (existingPaths[i] && sheet !== '') {
+                    paths[i] = existingPaths[i];
+                } else {
+                    paths[i] = '';
                 }
-            } else if (field.existing) {
-                // Keep existing path if no new image data
-                imagePaths[field.name] = field.existing;
+            }
+
+            const hasAny = paths.some(Boolean);
+            if (!hasAny) {
+                imagePaths[field.name] = '';
+            } else if (paths.length === 1) {
+                imagePaths[field.name] = paths[0] || '';
+            } else {
+                imagePaths[field.name] = JSON.stringify(paths);
             }
         }
 
@@ -390,23 +453,23 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
         const payload = {
             ccReason: {
                 text: ccReason.trim(),
-                scratchpad: imagePaths['CC'] || ccReasonPad || '',
-                hasScratchpad: !!(imagePaths['CC'] || ccReasonPad),
+                scratchpad: imagePaths['CC'] || getPrimarySheetForUpload(ccReasonPad) || '',
+                hasScratchpad: !!(imagePaths['CC'] || padHasContent(ccReasonPad)),
             },
             subjective: {
                 text: subjective.trim(),
-                scratchpad: imagePaths['S'] || subjectivePad || '',
-                hasScratchpad: !!(imagePaths['S'] || subjectivePad),
+                scratchpad: imagePaths['S'] || getPrimarySheetForUpload(subjectivePad) || '',
+                hasScratchpad: !!(imagePaths['S'] || padHasContent(subjectivePad)),
             },
             objective: {
                 text: objective.trim(),
-                scratchpad: imagePaths['O'] || objectivePad || '',
-                hasScratchpad: !!(imagePaths['O'] || objectivePad),
+                scratchpad: imagePaths['O'] || getPrimarySheetForUpload(objectivePad) || '',
+                hasScratchpad: !!(imagePaths['O'] || padHasContent(objectivePad)),
             },
             assessmentPlan: {
                 text: assessmentPlan.trim(),
-                scratchpad: imagePaths['AP'] || assessmentPlanPad || '',
-                hasScratchpad: !!(imagePaths['AP'] || assessmentPlanPad),
+                scratchpad: imagePaths['AP'] || getPrimarySheetForUpload(assessmentPlanPad) || '',
+                hasScratchpad: !!(imagePaths['AP'] || padHasContent(assessmentPlanPad)),
             },
             serviceLines: serviceLines.map(line => ({
                 serialNumber: line.serialNumber,
@@ -415,7 +478,15 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
                 totalFee: parseFloat(line.totalFee) || 0
             })),
             referral,
-            medications,
+            medications: medications.map(med => ({
+                name: med.name || '',
+                dosage: [med.dosageAmount, med.dosageUnit].filter(Boolean).join('') || '',
+                suspension: med.suspension || '',
+                frequency: med.frequency || '',
+                duration: med.duration || '',
+                refills: parseInt(med.refills, 10) || 0,
+                instructions: ''
+            })),
             followupRequired: {
                 required: followup.required || false,
                 date: followup.date || '',
@@ -434,15 +505,15 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
     };
 
     const handleSaveInteraction = async () => {
-        if (!ccReason.trim() && !ccReasonPad) {
+        if (!ccReason.trim() && !padHasContent(ccReasonPad)) {
             alert('CC / reason is required');
             return;
         }
-        if (!subjective.trim() && !subjectivePad) {
+        if (!subjective.trim() && !padHasContent(subjectivePad)) {
             alert('S (Subjective) is required');
             return;
         }
-        if (!objective.trim() && !objectivePad) {
+        if (!objective.trim() && !padHasContent(objectivePad)) {
             alert('O (Objective) is required');
             return;
         }
@@ -481,12 +552,13 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
         if (serviceLines.length >= 4) {
             return;
         }
-
+        const sharedDiag = serviceLines[0]?.diagnostic || '';
+        const sharedDiagDesc = serviceLines[0]?.diagnosticDescription || '';
         const newLine = {
             id: Date.now(),
             serialNumber: serviceLines.length + 1,
-            diagnostic: '',
-            diagnosticDescription: '',
+            diagnostic: sharedDiag,
+            diagnosticDescription: sharedDiagDesc,
             billingCode: '',
             billingDescription: '',
             totalFee: ''
@@ -499,14 +571,16 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
         updatedLines[index] = { ...updatedLines[index], [field]: value };
 
         if (field === 'diagnostic') {
-            // value is the code typed manually
-            const foundDiag = diagnostics.find(d => d.code.toUpperCase() === value.toUpperCase());
-            updatedLines[index].diagnosticDescription = foundDiag ? foundDiag.description : '';
+            // One diagnostic for all rows: replicate to every line
+            const foundDiag = diagnostics.find(d => (d.code || '').toUpperCase() === (value || '').trim().toUpperCase());
+            const desc = foundDiag ? foundDiag.description : '';
+            updatedLines.forEach((line, i) => {
+                updatedLines[i] = { ...line, diagnostic: value, diagnosticDescription: desc };
+            });
         }
 
         if (field === 'billingCode') {
-            // value is the code typed manually
-            const service = services.find(s => s.code.toUpperCase() === value.trim().toUpperCase());
+            const service = services.find(s => (s.code || '').toUpperCase() === (value || '').trim().toUpperCase());
             if (service) {
                 updatedLines[index].billingDescription = service.description;
                 const totalFee = (service.hcpFee || 0) + (service.tFee || 0) + (service.pFee || 0) + (service.sFee || 0);
@@ -596,7 +670,7 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
         referral,
         setReferral,
         medications,
-        addMedication: () => setMedications([...medications, { name: '', dosage: '', suspension: 'tablet', frequency: '', duration: '', refills: 0, instructions: '' }]),
+        addMedication: () => setMedications([...medications, { name: '', dosageAmount: '', dosageUnit: '', suspension: 'tablet', frequency: '', duration: '', refills: 0 }]),
         removeMedication: (index) => setMedications(medications.filter((_, i) => i !== index)),
         updateMedication: (index, field, value) => {
             const updated = [...medications];

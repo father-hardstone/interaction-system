@@ -50,6 +50,22 @@ const visitorSchema = new mongoose.Schema({
         type: String,
         default: ''
     },
+    allergies: {
+        type: String,
+        default: 'N/A'
+    },
+    drugReactions: {
+        type: String,
+        default: 'N/A'
+    },
+    ongoingHealthConditions: {
+        type: String,
+        default: 'N/A'
+    },
+    specialNotes: {
+        type: String,
+        default: ''
+    },
     gender: {
         type: String,
         required: true

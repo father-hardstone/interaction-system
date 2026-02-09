@@ -10,19 +10,16 @@ const ReferralBlock = ({ referral, setReferral }) => {
             <div className="flex justify-between items-center mb-1">
                 <div className="flex items-center gap-3">
                     <div className="w-1 h-8 rounded-full bg-blue-500 shadow-sm shadow-blue-200"></div>
-                    <div>
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] block mb-0.5">Clinical Order</label>
-                        <div className="text-xs font-black text-slate-900 uppercase tracking-tighter">Referral / Requisition</div>
-                    </div>
+                    <div className="text-lg font-bold text-slate-900 normal-case">Referral/Requisition</div>
                 </div>
             </div>
 
             <div className="grid grid-cols-1 gap-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div>
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1.5 block px-1">Type</label>
+                        <label className="text-xs font-semibold text-slate-400 normal-case tracking-[0.2em] mb-1.5 block px-1">Type</label>
                         <select
-                            className="w-full p-2.5 text-sm border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:border-blue-500 transition-all font-bold text-slate-700"
+                            className="w-full p-2.5 text-sm border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:border-blue-500 transition-all font-semibold text-slate-700"
                             value={referral.type}
                             onChange={(e) => handleChange('type', e.target.value)}
                         >
@@ -35,7 +32,7 @@ const ReferralBlock = ({ referral, setReferral }) => {
                         </select>
                     </div>
                     <div className="lg:col-span-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1.5 block px-1">Reason for Referral</label>
+                        <label className="text-xs font-semibold text-slate-400 normal-case tracking-[0.2em] mb-1.5 block px-1">Reason for Referral</label>
                         <input
                             type="text"
                             className="w-full p-2.5 text-sm border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:border-blue-500 transition-all font-medium"
@@ -45,17 +42,17 @@ const ReferralBlock = ({ referral, setReferral }) => {
                         />
                     </div>
                     <div>
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1.5 block px-1">Results Date</label>
+                        <label className="text-xs font-semibold text-slate-400 normal-case tracking-[0.2em] mb-1.5 block px-1">Results Date</label>
                         <input
                             type="date"
-                            className="w-full p-2.5 text-sm border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:border-blue-500 transition-all font-bold text-slate-700"
+                            className="w-full p-2.5 text-sm border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:border-blue-500 transition-all font-semibold text-slate-700"
                             value={referral.date}
                             onChange={(e) => handleChange('date', e.target.value)}
                         />
                     </div>
                 </div>
                 <div>
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1.5 block px-1">To Whom</label>
+                    <label className="text-xs font-semibold text-slate-400 normal-case tracking-[0.2em] mb-1.5 block px-1">To Whom</label>
                     <input
                         type="text"
                         className="w-full p-2.5 text-sm border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:border-blue-500 transition-all font-medium"

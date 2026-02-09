@@ -1,5 +1,5 @@
 import React from 'react';
-import { getVisitorName, getVisitorSerial, getOfficerName, formatDate } from './utils';
+import { getVisitorName, getVisitorSerialDisplay, getOfficerName, formatDate, formatDateMMDDYYYY, formatPhoneDisplay, formatHealthCardDisplay, stripEntityPrefix } from './utils';
 
 const BilledBillingTable = ({
     billedInteractions,
@@ -13,72 +13,74 @@ const BilledBillingTable = ({
         return lines.reduce((sum, l) => sum + parseFloat(l.totalFee || 0), 0).toFixed(2);
     };
 
+    const getVisitor = (visitorId) => visitors.find((v) => v.id === visitorId);
+
     return (
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-6">
-            <h3 className="text-sm font-bold text-slate-700 mb-4">Billed</h3>
-            <div className="border border-slate-100 rounded-lg overflow-x-auto">
-                <table className="min-w-full divide-y divide-slate-100 text-sm">
-                    <thead className="bg-slate-50/50">
-                        <tr>
-                            <th className="px-4 py-3 text-left">
-                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Registration</span>
-                            </th>
-                            <th className="px-4 py-3 text-left">
-                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Patient</span>
-                            </th>
-                            <th className="px-4 py-3 text-left">
-                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Doctor</span>
-                            </th>
-                            <th className="px-4 py-3 text-left">
-                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Completed</span>
-                            </th>
-                            <th className="px-4 py-3 text-right">
-                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Total</span>
-                            </th>
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <h3 className="text-sm font-semibold text-slate-700 px-4 sm:px-6 py-4 border-b border-slate-200">Billed</h3>
+            <div className="overflow-x-auto">
+                <table className="w-full border-collapse min-w-[800px]">
+                    <thead>
+                        <tr className="bg-slate-50 border-b border-slate-200">
+                            <th className="px-4 sm:px-6 py-4 text-left text-xs sm:text-sm font-semibold text-slate-700 hidden md:table-cell">Date of Birth</th>
+                            <th className="px-4 sm:px-6 py-4 text-left text-xs sm:text-sm font-semibold text-slate-700">Name</th>
+                            <th className="px-4 sm:px-6 py-4 text-left text-xs sm:text-sm font-semibold text-slate-700">ID</th>
+                            <th className="px-4 sm:px-6 py-4 text-left text-xs sm:text-sm font-semibold text-slate-700 hidden lg:table-cell">Phone</th>
+                            <th className="px-4 sm:px-6 py-4 text-left text-xs sm:text-sm font-semibold text-slate-700 hidden xl:table-cell">Health Card</th>
+                            <th className="px-4 sm:px-6 py-4 text-left text-xs sm:text-sm font-semibold text-slate-700 hidden xl:table-cell">Version</th>
+                            <th className="px-4 sm:px-6 py-4 text-left text-xs sm:text-sm font-semibold text-slate-700">Registration</th>
+                            <th className="px-4 sm:px-6 py-4 text-left text-xs sm:text-sm font-semibold text-slate-700 hidden lg:table-cell">Doctor</th>
+                            <th className="px-4 sm:px-6 py-4 text-left text-xs sm:text-sm font-semibold text-slate-700 hidden xl:table-cell">Completed</th>
+                            <th className="px-4 sm:px-6 py-4 text-right text-xs sm:text-sm font-semibold text-slate-700">Total</th>
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100 bg-white">
+                    <tbody>
                         {billedInteractions.length === 0 ? (
                             <tr>
-                                <td colSpan={5} className="px-4 py-12 text-center text-xs text-slate-400">
+                                <td colSpan={10} className="px-6 py-12 text-center text-slate-400">
                                     No billed appointments.
                                 </td>
                             </tr>
                         ) : (
-                            billedInteractions.map((interaction) => (
-                                <tr key={interaction.id} className="hover:bg-slate-50">
-                                    <td className="px-4 py-4 align-middle">
-                                        <button
-                                            type="button"
-                                            onClick={() => onInteractionClick?.(interaction)}
-                                            className="text-xs font-black text-blue-600 hover:text-blue-800 uppercase tracking-tight"
-                                        >
-                                            {interaction.interactionSerial || 'REG-PENDING'}
-                                        </button>
-                                    </td>
-                                    <td className="px-4 py-4 align-middle">
-                                        <button
-                                            type="button"
-                                            onClick={() => onOpenPatientDetails?.(interaction.visitorId)}
-                                            className="text-left"
-                                        >
-                                            <div className="text-sm font-bold text-slate-900">
-                                                {getVisitorName(interaction.visitorId, visitors)}
-                                            </div>
-                                            <div className="text-[10px] font-bold text-slate-400">{getVisitorSerial(interaction.visitorId, visitors)}</div>
-                                        </button>
-                                    </td>
-                                    <td className="px-4 py-4 align-middle text-xs font-bold text-slate-700">
-                                        {getOfficerName(interaction.officerId, officers)}
-                                    </td>
-                                    <td className="px-4 py-4 align-middle text-xs font-bold text-slate-500">
-                                        {formatDate(interaction.editedAt || interaction.createdAt, true)}
-                                    </td>
-                                    <td className="px-4 py-4 align-middle text-right font-bold text-slate-900">
-                                        ${getTotalFee(interaction)}
-                                    </td>
-                                </tr>
-                            ))
+                            billedInteractions.map((interaction) => {
+                                const visitor = getVisitor(interaction.visitorId);
+                                return (
+                                    <tr
+                                    key={interaction.id}
+                                    className="border-b border-slate-100 hover:bg-slate-50 transition-all cursor-pointer"
+                                    onClick={() => onInteractionClick?.(interaction)}
+                                >
+                                        <td className="px-4 sm:px-6 py-4 text-slate-700 hidden md:table-cell text-sm">{visitor ? formatDateMMDDYYYY(visitor.dateOfBirth) || '-' : '-'}</td>
+                                        <td className="px-4 sm:px-6 py-4 text-slate-700" onClick={(e) => e.stopPropagation()}>
+                                            <button
+                                                type="button"
+                                                onClick={() => onOpenPatientDetails?.(interaction.visitorId)}
+                                                className="text-left"
+                                            >
+                                                <div className="font-medium text-sm">
+                                                    {getVisitorName(interaction.visitorId, visitors)}
+                                                </div>
+                                            </button>
+                                        </td>
+                                        <td className="px-4 sm:px-6 py-4 font-medium text-slate-900 text-xs sm:text-sm">{getVisitorSerialDisplay(interaction.visitorId, visitors)}</td>
+                                        <td className="px-4 sm:px-6 py-4 text-slate-700 hidden lg:table-cell text-sm">{visitor ? formatPhoneDisplay(visitor.phone) || '-' : '-'}</td>
+                                        <td className="px-4 sm:px-6 py-4 text-slate-700 hidden xl:table-cell text-sm">{visitor ? formatHealthCardDisplay(visitor.healthCardNumber || '') || '-' : '-'}</td>
+                                        <td className="px-4 sm:px-6 py-4 text-slate-700 hidden xl:table-cell text-sm">{visitor?.healthCardVersion || '-'}</td>
+                                        <td className="px-4 sm:px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                                            <button
+                                                type="button"
+                                                onClick={() => onInteractionClick?.(interaction)}
+                                                className="text-xs font-semibold text-blue-600 hover:text-blue-800 normal-case tracking-tight"
+                                            >
+                                                {stripEntityPrefix(interaction.interactionSerial) || 'REG-PENDING'}
+                                            </button>
+                                        </td>
+                                        <td className="px-4 sm:px-6 py-4 text-slate-700 hidden lg:table-cell text-sm">{getOfficerName(interaction.officerId, officers)}</td>
+                                        <td className="px-4 sm:px-6 py-4 text-slate-700 hidden xl:table-cell text-sm">{formatDate(interaction.editedAt || interaction.createdAt, true)}</td>
+                                        <td className="px-4 sm:px-6 py-4 text-right font-semibold text-slate-900">${getTotalFee(interaction)}</td>
+                                    </tr>
+                                );
+                            })
                         )}
                     </tbody>
                 </table>

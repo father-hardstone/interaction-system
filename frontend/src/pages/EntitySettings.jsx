@@ -3,6 +3,7 @@ import { jwtDecode } from 'jwt-decode';
 import { useState, useEffect, useRef } from 'react';
 import { entityService } from '../services/entityService';
 import supabaseStorageService from '../services/supabaseService';
+import { formatPhoneDisplay } from '../utils/formatUtils';
 
 const EntitySettings = () => {
     const { serial } = useParams();
@@ -243,10 +244,10 @@ const EntitySettings = () => {
             {/* Sidebar */}
             <aside className="w-64 bg-white border-r border-slate-200 flex flex-col">
                 <div className="p-6 border-b border-slate-200">
-                    <h2 className="text-lg font-bold text-slate-900 mb-1">
+                    <h2 className="text-lg font-semibold text-slate-900 mb-1">
                         {entityData?.name || 'Entity'}
                     </h2>
-                    <p className="text-sm text-slate-500 uppercase">{serial}</p>
+                    <p className="text-sm text-slate-500 normal-case">{serial}</p>
                 </div>
 
                 <nav className="flex-1 p-4">
@@ -290,7 +291,7 @@ const EntitySettings = () => {
             {/* Main Content */}
             <main className="flex-1 overflow-auto bg-slate-50">
                 <div className="bg-white border-b border-slate-200 px-8 py-6">
-                    <h1 className="text-2xl font-bold text-slate-900">Settings</h1>
+                    <h1 className="text-2xl font-semibold text-slate-900">Settings</h1>
                     <p className="text-slate-500 mt-1">Manage your entity information</p>
                 </div>
 
@@ -484,7 +485,7 @@ const EntitySettings = () => {
                                     </label>
                                     <input
                                         type="tel"
-                                        value={formData.phone || entityData?.phone || ''}
+                                        value={formatPhoneDisplay(formData.phone || entityData?.phone) || ''}
                                         disabled
                                         className="w-full py-3 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 text-slate-500 cursor-not-allowed"
                                     />

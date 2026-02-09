@@ -27,13 +27,13 @@ const BillingSection = ({
         const billed = [];
         for (const i of interactions) {
             if (!i.completed) continue;
-            const hasBilling = i.billed === true || (
-                i.serviceLines?.length > 0 &&
-                i.serviceLines.some((line) => (line.totalFee && line.totalFee > 0) || line.accountingNumber)
-            );
-            if (hasBilling) {
+            const hasBeenBilled = i.billed === true;
+            const hasBillingInfo = i.serviceLines?.length > 0 &&
+                i.serviceLines.some((line) => (line.totalFee && line.totalFee > 0) || line.accountingNumber);
+            const isClosed = i.closed || hasBillingInfo; // closed or backward compat
+            if (hasBeenBilled) {
                 billed.push(i);
-            } else {
+            } else if (isClosed) {
                 unbilled.push(i);
             }
         }

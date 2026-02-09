@@ -7,8 +7,10 @@ import {
     getOfficerName,
     getOfficerSerial,
     calculateAge,
-    formatDate
+    formatDate,
+    formatHealthCardDisplay
 } from './utils';
+import { formatDateMMDDYYYY } from '../../utils/formatUtils';
 
 const formatAccountingNumber = (v) => {
     const d = (v || '').replace(/\D/g, '').slice(0, 6);
@@ -110,13 +112,13 @@ const BillNowModal = ({
     const doctorName = getOfficerName(interaction.officerId, officers);
     const doctorId = getOfficerSerial(interaction.officerId, officers);
     const patientName = getVisitorName(interaction.visitorId, visitors);
-    const patientId = getVisitorSerial(interaction.visitorId, visitors);
+    const patientId = getVisitorSerialDisplay(interaction.visitorId, visitors);
     const age = calculateAge(visitor?.dateOfBirth);
-    const healthCard = visitor?.healthCardNumber || '-';
+    const healthCard = visitor?.healthCardNumber ? formatHealthCardDisplay(visitor.healthCardNumber) : '-';
     const healthVersion = visitor?.healthCardVersion || '-';
-    const healthExpiry = visitor?.healthCardExpiryDate || '-';
+    const healthExpiry = visitor?.healthCardExpiryDate ? formatDateMMDDYYYY(visitor.healthCardExpiryDate) : '-';
     const gender = visitor?.gender || '-';
-    const dob = visitor?.dateOfBirth || '-';
+    const dob = visitor?.dateOfBirth ? formatDateMMDDYYYY(visitor.dateOfBirth) : '-';
     const interactionDate = formatDate(interaction.editedAt || interaction.createdAt, false);
 
     const updateBillingLine = (index, field, value) => {
@@ -173,25 +175,25 @@ const BillNowModal = ({
     };
 
     return (
-        <div className="fixed inset-0 bg-black/50 flex justify-center items-center z-[1000]" onClick={onClose}>
+        <div className="fixed inset-0 bg-black/50 flex justify-center items-center px-4 pb-4 pt-0 !mt-0 z-[1000]" onClick={onClose}>
             <div
                 className="bg-white w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl shadow-xl p-6"
                 onClick={(e) => e.stopPropagation()}
             >
-                <h2 className="text-xl font-bold text-slate-900 mb-6">Bill Now</h2>
+                <h2 className="text-xl font-semibold text-slate-900 mb-6">Bill Now</h2>
 
                 {/* Doctor - single line, bordered */}
                 <div className="flex flex-wrap items-end gap-4 p-4 mb-4 border border-slate-200 rounded-xl bg-slate-50/30">
                     <div className="min-w-[80px]">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Doctor ID</label>
+                        <label className="text-xs font-semibold text-slate-400 normal-case tracking-wide block mb-1">Doctor ID</label>
                         <div className="px-3 py-2 bg-white rounded-lg text-sm font-medium text-slate-700 border border-slate-200">{doctorId}</div>
                     </div>
                     <div className="min-w-[120px] flex-1">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Doctor Name</label>
+                        <label className="text-xs font-semibold text-slate-400 normal-case tracking-wide block mb-1">Doctor Name</label>
                         <div className="px-3 py-2 bg-white rounded-lg text-sm font-medium text-slate-700 border border-slate-200">{doctorName}</div>
                     </div>
                     <div className="min-w-[100px]">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">CPSO Code</label>
+                        <label className="text-xs font-semibold text-slate-400 normal-case tracking-wide block mb-1">CPSO Code</label>
                         <input
                             type="text"
                             value={cpsocode}
@@ -201,14 +203,14 @@ const BillNowModal = ({
                         />
                     </div>
                     <div className="min-w-[100px]">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Accounting Number</label>
+                        <label className="text-xs font-semibold text-slate-400 normal-case tracking-wide block mb-1">Accounting Number</label>
                         <input
                             type="text"
                             inputMode="numeric"
                             maxLength={8}
                             value={formatAccountingNumber(accountingNumber)}
                             onChange={(e) => setAccountingNumber(parseAccountingNumber(e.target.value))}
-                            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white font-mono"
+                            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white font-sans"
                             placeholder="12-34-56"
                         />
                     </div>
@@ -217,15 +219,15 @@ const BillNowModal = ({
                 {/* Patient - single line, bordered */}
                 <div className="flex flex-wrap items-end gap-4 p-4 mb-4 border border-slate-200 rounded-xl bg-slate-50/30">
                     <div className="min-w-[80px]">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Patient ID</label>
+                        <label className="text-xs font-semibold text-slate-400 normal-case tracking-wide block mb-1">Patient ID</label>
                         <div className="px-3 py-2 bg-white rounded-lg text-sm font-medium text-slate-700 border border-slate-200">{patientId}</div>
                     </div>
                     <div className="min-w-[140px] flex-1">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Patient Name</label>
+                        <label className="text-xs font-semibold text-slate-400 normal-case tracking-wide block mb-1">Patient Name</label>
                         <div className="px-3 py-2 bg-white rounded-lg text-sm font-medium text-slate-700 border border-slate-200">{patientName}</div>
                     </div>
                     <div className="min-w-[60px]">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Age</label>
+                        <label className="text-xs font-semibold text-slate-400 normal-case tracking-wide block mb-1">Age</label>
                         <div className="px-3 py-2 bg-white rounded-lg text-sm font-medium text-slate-700 border border-slate-200">{age}</div>
                     </div>
                 </div>
@@ -233,23 +235,23 @@ const BillNowModal = ({
                 {/* Card details - single line, bordered */}
                 <div className="flex flex-wrap items-end gap-4 p-4 mb-4 border border-slate-200 rounded-xl bg-slate-50/30">
                     <div className="min-w-[100px]">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Health Card No</label>
+                        <label className="text-xs font-semibold text-slate-400 normal-case tracking-wide block mb-1">Health Card No</label>
                         <div className="px-3 py-2 bg-white rounded-lg text-sm font-medium text-slate-700 border border-slate-200">{healthCard}</div>
                     </div>
                     <div className="min-w-[70px]">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Version</label>
+                        <label className="text-xs font-semibold text-slate-400 normal-case tracking-wide block mb-1">Version</label>
                         <div className="px-3 py-2 bg-white rounded-lg text-sm font-medium text-slate-700 border border-slate-200">{healthVersion}</div>
                     </div>
                     <div className="min-w-[90px]">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Expiry Date</label>
+                        <label className="text-xs font-semibold text-slate-400 normal-case tracking-wide block mb-1">Expiry Date</label>
                         <div className="px-3 py-2 bg-white rounded-lg text-sm font-medium text-slate-700 border border-slate-200">{healthExpiry}</div>
                     </div>
                     <div className="min-w-[70px]">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Gender</label>
+                        <label className="text-xs font-semibold text-slate-400 normal-case tracking-wide block mb-1">Gender</label>
                         <div className="px-3 py-2 bg-white rounded-lg text-sm font-medium text-slate-700 border border-slate-200">{gender}</div>
                     </div>
                     <div className="min-w-[100px]">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">DOB</label>
+                        <label className="text-xs font-semibold text-slate-400 normal-case tracking-wide block mb-1">DOB</label>
                         <div className="px-3 py-2 bg-white rounded-lg text-sm font-medium text-slate-700 border border-slate-200">{dob}</div>
                     </div>
                 </div>
@@ -257,7 +259,7 @@ const BillNowModal = ({
                 {/* Billing type + Interaction date */}
                 <div className="flex flex-wrap items-end gap-4 mb-4">
                     <div className="min-w-[120px]">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Fee Type</label>
+                        <label className="text-xs font-semibold text-slate-400 normal-case tracking-wide block mb-1">Fee Type</label>
                         <select
                             value={billingType}
                             onChange={(e) => setBillingType(e.target.value)}
@@ -269,7 +271,7 @@ const BillNowModal = ({
                         </select>
                     </div>
                     <div className="min-w-[120px]">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Interaction Date</label>
+                        <label className="text-xs font-semibold text-slate-400 normal-case tracking-wide block mb-1">Interaction Date</label>
                         <div className="px-3 py-2 bg-slate-50 rounded-lg text-sm font-medium text-slate-700 border border-slate-200">{interactionDate}</div>
                     </div>
                 </div>
@@ -277,11 +279,11 @@ const BillNowModal = ({
                 {/* Billing lines - editable */}
                 <div className="mb-6">
                     <div className="flex justify-between items-center mb-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Billing Lines</label>
+                        <label className="text-xs font-semibold text-slate-400 normal-case tracking-wide">Billing Lines</label>
                         <button
                             type="button"
                             onClick={addBillingLine}
-                            className="text-xs font-bold text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-2 py-1 rounded transition-colors"
+                            className="text-xs font-semibold text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-2 py-1 rounded transition-colors"
                         >
                             + Add Line
                         </button>
@@ -290,12 +292,12 @@ const BillNowModal = ({
                         <table className="min-w-full text-sm">
                             <thead className="bg-slate-50">
                                 <tr>
-                                    <th className="px-3 py-2 text-left text-[10px] font-black text-slate-400 uppercase w-10">#</th>
-                                    <th className="px-3 py-2 text-left text-[10px] font-black text-slate-400 uppercase w-20">Suffix</th>
-                                    <th className="px-3 py-2 text-left text-[10px] font-black text-slate-400 uppercase">Billing</th>
-                                    <th className="px-3 py-2 text-left text-[10px] font-black text-slate-400 uppercase">Diagnostic</th>
-                                    <th className="px-3 py-2 text-left text-[10px] font-black text-slate-400 uppercase w-28">Accounting #</th>
-                                    <th className="px-3 py-2 text-left text-[10px] font-black text-slate-400 uppercase w-24">Fee</th>
+                                    <th className="px-3 py-2 text-left text-xs font-semibold text-slate-400 normal-case w-10">#</th>
+                                    <th className="px-3 py-2 text-left text-xs font-semibold text-slate-400 normal-case w-20">Suffix</th>
+                                    <th className="px-3 py-2 text-left text-xs font-semibold text-slate-400 normal-case">Billing</th>
+                                    <th className="px-3 py-2 text-left text-xs font-semibold text-slate-400 normal-case">Diagnostic</th>
+                                    <th className="px-3 py-2 text-left text-xs font-semibold text-slate-400 normal-case w-28">Accounting #</th>
+                                    <th className="px-3 py-2 text-left text-xs font-semibold text-slate-400 normal-case w-24">Fee</th>
                                     <th className="px-3 py-2 w-10"></th>
                                 </tr>
                             </thead>
@@ -303,7 +305,7 @@ const BillNowModal = ({
                                 {billingLines.map((line, idx) => (
                                     <tr key={idx} className="hover:bg-slate-50/50">
                                         <td className="px-3 py-2">
-                                            <div className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-600">
+                                            <div className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-xs font-semibold text-slate-600">
                                                 {line.serialNumber || idx + 1}
                                             </div>
                                         </td>
@@ -387,7 +389,7 @@ const BillNowModal = ({
                                                 maxLength={8}
                                                 value={formatAccountingNumber(line.accountingNumber ?? accountingNumber)}
                                                 onChange={(e) => updateBillingLine(idx, 'accountingNumber', parseAccountingNumber(e.target.value))}
-                                                className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm focus:ring-1 focus:ring-blue-500 focus:border-blue-500 font-mono"
+                                                className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm focus:ring-1 focus:ring-blue-500 focus:border-blue-500 font-sans"
                                                 placeholder="12-34-56"
                                             />
                                         </td>
@@ -418,8 +420,8 @@ const BillNowModal = ({
                             </tbody>
                             <tfoot className="bg-slate-50 border-t border-slate-200">
                                 <tr>
-                                    <td colSpan={5} className="px-3 py-2 text-right font-bold text-slate-600">Total</td>
-                                    <td className="px-3 py-2 text-right font-bold text-slate-900">${totalFee.toFixed(2)}</td>
+                                    <td colSpan={5} className="px-3 py-2 text-right font-semibold text-slate-600">Total</td>
+                                    <td className="px-3 py-2 text-right font-semibold text-slate-900">${totalFee.toFixed(2)}</td>
                                     <td></td>
                                 </tr>
                             </tfoot>
@@ -437,7 +439,7 @@ const BillNowModal = ({
                             className="fixed z-[9999] max-h-48 overflow-y-auto overflow-x-hidden bg-white border border-slate-200 rounded-lg shadow-xl py-1 min-w-[200px]"
                             style={{ top: billingDropdownRect.top, left: billingDropdownRect.left, width: billingDropdownRect.width }}
                         >
-                            <div className="text-[9px] font-black text-slate-400 uppercase px-3 py-1.5 border-b border-slate-100 sticky top-0 bg-white">Available codes</div>
+                            <div className="text-xs font-semibold text-slate-400 normal-case px-3 py-1.5 border-b border-slate-100 sticky top-0 bg-white">Available Codes</div>
                             {filtered.map((s, si) => (
                                 <button
                                     key={`svc-${si}-${s.code}`}
@@ -464,7 +466,7 @@ const BillNowModal = ({
                             className="fixed z-[9999] max-h-48 overflow-y-auto overflow-x-hidden bg-white border border-slate-200 rounded-lg shadow-xl py-1 min-w-[220px]"
                             style={{ top: diagnosticDropdownRect.top, left: diagnosticDropdownRect.left, width: diagnosticDropdownRect.width }}
                         >
-                            <div className="text-[9px] font-black text-slate-400 uppercase px-3 py-1.5 border-b border-slate-100 sticky top-0 bg-white">Available codes</div>
+                            <div className="text-xs font-semibold text-slate-400 normal-case px-3 py-1.5 border-b border-slate-100 sticky top-0 bg-white">Available Codes</div>
                             {filtered.map((d, di) => (
                                 <button
                                     key={`diag-${idx}-${di}-${d.code}-${d.description}`}

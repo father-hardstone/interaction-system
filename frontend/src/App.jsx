@@ -10,6 +10,8 @@ import UserProtectedRoute from './components/UserProtectedRoute';
 import UserDashboard from './pages/UserDashboard';
 import NotFoundPage from './pages/NotFoundPage';
 import ErrorBoundary from './components/ErrorBoundary';
+import { UserDashboardNavProvider, useUserDashboardNav } from './contexts/UserDashboardNavContext';
+import UserDashboardNavContent from './components/UserDashboardNavContent';
 import { jwtDecode } from 'jwt-decode';
 import { entityService } from './services/entityService';
 import supabaseStorageService from './services/supabaseService';
@@ -94,6 +96,8 @@ const NavBar = () => {
   const isUserDashboard = location.pathname.includes('/user/dashboard');
   const isEntityRoute = location.pathname.includes('/entity/');
   const shouldShowIcon = (userInfo.isEntity && isEntityRoute) || (isUserDashboard && userInfo.userEntityId);
+  const { navState } = useUserDashboardNav();
+  const showUserDashboardNav = isUserDashboard && userInfo.isAuthed && navState;
 
   // Load entity icon with caching (base64 in localStorage – survives refresh, no re-fetch)
   useEffect(() => {
@@ -190,23 +194,24 @@ const NavBar = () => {
     loadEntityIcon();
   }, [location.pathname, token, userInfo.entityId, userInfo.userEntityId, userInfo.isEntity, shouldShowIcon]);
 
+  // User Dashboard layout: center tabs + right profile
+  if (showUserDashboardNav) {
+    return (
+      <UserDashboardNavContent
+        navState={navState}
+        entityIconUrl={entityIconUrl}
+        userInfo={userInfo}
+        shouldShowIcon={shouldShowIcon}
+      />
+    );
+  }
+
+  // Default layout (entity, login, etc.)
   return (
     <nav className="flex justify-between items-center h-16 px-6 bg-white/80 backdrop-blur-lg sticky top-0 z-[100] border-b border-slate-200 w-full font-inherit">
       <div className="flex items-center gap-3">
-        {userInfo.isAuthed && isUserDashboard && (
-          <button
-            onClick={() => window.dispatchEvent(new CustomEvent('toggleSidebar'))}
-            className="lg:hidden p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
-            aria-label="Toggle sidebar"
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-          </button>
-        )}
         <Link to="/" className="flex items-center group">
           {userInfo.isAuthed && isDashboardRoute && shouldShowIcon ? (
-            // Show entity icon for entity routes and internal user routes
             entityIconUrl ? (
               <div className="flex items-center">
                 <img
@@ -214,43 +219,33 @@ const NavBar = () => {
                   alt={userInfo.displayName}
                   className="h-14 w-auto object-contain max-w-[240px]"
                   onError={(e) => {
-                    // Fallback to name if image fails
-                    console.error('Image failed to load:', entityIconUrl);
                     e.target.style.display = 'none';
-                    // Clear cache on error
                     const currentEntityId = userInfo.isEntity ? userInfo.entityId : userInfo.userEntityId;
-                    if (currentEntityId) {
-                      localStorage.removeItem(`entityIcon_${currentEntityId}`);
-                    }
+                    if (currentEntityId) localStorage.removeItem(`entityIcon_${currentEntityId}`);
                     setEntityIconUrl(null);
-                  }}
-                  onLoad={() => {
-                    console.log('Icon loaded successfully:', entityIconUrl);
                   }}
                 />
                 <span className="sr-only">{userInfo.displayName}</span>
               </div>
             ) : (
-              <span className="font-black text-xl uppercase tracking-tighter text-slate-900 group-hover:text-primary transition-colors">
+              <span className="font-semibold text-xl normal-case tracking-tighter text-slate-900 group-hover:text-primary transition-colors">
                 {userInfo.displayName}
               </span>
             )
           ) : (
-            <span className="font-black text-xl uppercase tracking-tighter text-slate-900 group-hover:text-primary transition-colors">
+            <span className="font-semibold text-xl normal-case tracking-tighter text-slate-900 group-hover:text-primary transition-colors">
               {userInfo.isAuthed && isDashboardRoute ? userInfo.displayName : "Bilal's Interaction System"}
             </span>
           )}
           {userInfo.isAuthed && isDashboardRoute && (
             <div className="flex items-center ml-3">
-              <span className="text-xl font-thin text-slate-300">|</span>
-              <span className="text-[10px] font-black text-slate-400 ml-3 uppercase tracking-[0.3em] mt-0.5">Dashboard</span>
+              <span className="text-xl font-normal text-slate-300">|</span>
+              <span className="text-xs font-semibold text-slate-400 ml-3 normal-case tracking-[0.3em] mt-0.5">Dashboard</span>
             </div>
           )}
         </Link>
       </div>
-      <div className="flex items-center gap-4">
-        {/* Right side navigation items can be added here */}
-      </div>
+      <div className="flex items-center gap-4" />
     </nav>
   );
 };
@@ -259,8 +254,9 @@ function App() {
   return (
     <ErrorBoundary>
       <Router>
-        <div className="w-full min-h-screen flex flex-col overflow-x-hidden">
-          <NavBar />
+        <UserDashboardNavProvider>
+          <div className="w-full min-h-screen flex flex-col overflow-x-hidden">
+            <NavBar />
 
           <Routes>
           {/* Public-only Routes (if logged in, redirect to correct dashboard) */}
@@ -271,7 +267,7 @@ function App() {
               <div className="flex-1 flex items-center justify-center p-8 w-full">
                 <div className="text-center">
                   <img src="/icons/interaction_system_icon.png" alt="Bilal's Interaction System" className="h-20 w-auto mx-auto mb-6 object-contain" />
-                  <h1 className="text-5xl mb-4 font-bold">Bilal's Interaction System</h1>
+                  <h1 className="text-5xl mb-4 font-semibold">Bilal's Interaction System</h1>
                   <p className="mb-8 text-gray-600">Select a portal to continue.</p>
                   <div className="flex gap-4 justify-center">
                     <Link to="/entity/login" className="px-6 py-3 bg-white text-primary border border-primary rounded-xl font-semibold text-base no-underline inline-block transition-all hover:bg-blue-50">Entity Portal</Link>
@@ -297,6 +293,7 @@ function App() {
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
         </div>
+        </UserDashboardNavProvider>
       </Router>
     </ErrorBoundary>
   );
