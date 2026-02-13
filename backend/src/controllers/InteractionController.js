@@ -3,6 +3,14 @@ const jwt = require('jsonwebtoken');
 
 const SECRET_KEY = process.env.JWT_SECRET || 'supersecretkey';
 
+/** Queue day starts at 8 AM server local time. Returns that boundary as ISO string. */
+function getQueueDayStart() {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 8, 0, 0, 0);
+    if (now < start) start.setDate(start.getDate() - 1);
+    return start.toISOString();
+}
+
 class InteractionController {
     // Get all interactions for a specific entity
     async getInteractionsByEntity(req, res) {
@@ -27,9 +35,11 @@ class InteractionController {
             }
 
             const filtered = await InteractionService.findMany(query);
-            console.log('getInteractionsByEntity - filtered interactions:', filtered.length);
+            const visitorIds = [...new Set((filtered || []).map(i => i.visitorId).filter(Boolean))];
+            const lastVisits = await InteractionService.getLastCompletedByVisitor(entityId, visitorIds);
+            console.log('getInteractionsByEntity - filtered interactions:', filtered.length, 'lastVisits keys:', Object.keys(lastVisits).length);
 
-            res.json(filtered);
+            res.json({ interactions: filtered, lastVisits });
         } catch (e) {
             console.error('getInteractionsByEntity error:', e);
             res.status(500).json({ error: e.message });
@@ -74,12 +84,19 @@ class InteractionController {
             }
 
             // Allow unassigning by passing empty strings
-            // Update interaction
+            // When assigning to a doctor, set queue number (temporarySerial); when unassigning, clear it
             const updates = {
                 officerId: officerId || '',
                 officerSerial: officerSerial || '',
                 billed: false  // Ensure billed is false when assigning/unassigning
             };
+            if (officerId && officerId.trim()) {
+                const queueDayStart = getQueueDayStart();
+                const maxTemp = await InteractionService.getMaxTemporarySerialInQueueDay(existing.entityId, queueDayStart);
+                updates.temporarySerial = maxTemp + 1;
+            } else {
+                updates.temporarySerial = 0;
+            }
 
             const updated = await InteractionService.update(id, updates);
             if (!updated) {
@@ -102,7 +119,7 @@ class InteractionController {
     // Create a new interaction
     async createInteraction(req, res) {
         try {
-            const { entityId, entitySerial, visitorId, visitorSerial, reasonForVisit } = req.body;
+            const { entityId, entitySerial, visitorId, visitorSerial, reasonForVisit, reasonForVisitNotes } = req.body;
 
             console.log('createInteraction - Received data:', {
                 entityId,
@@ -155,7 +172,8 @@ class InteractionController {
                 editedAt: now,
                 deletedAt: '',
                 billed: false,
-                reasonForVisit: reasonForVisit || ''
+                reasonForVisit: reasonForVisit || '',
+                reasonForVisitNotes: (reasonForVisitNotes != null && String(reasonForVisitNotes).trim()) ? String(reasonForVisitNotes).trim() : ''
             };
 
             console.log('createInteraction - Interaction data to save:', interactionData);
@@ -268,15 +286,21 @@ class InteractionController {
                 updates.closed = hasBillingInfo;
             }
 
-            // Billed: when set to true, also set billedAt
+            // Billed: when set to true, also set billedAt (only when transitioning to true)
             if (billed === true) {
                 updates.billed = true;
-                updates.billedAt = new Date().toISOString();
+                if (!existing.billed) updates.billedAt = new Date().toISOString();
             } else if (billed !== undefined) {
                 updates.billed = billed === true;
             } else {
                 updates.billed = false;
             }
+
+            // Set status timestamps when flag transitions to true (never overwrite)
+            const now = new Date().toISOString();
+            if (updates.started === true && !existing.started) updates.startedAt = now;
+            if (updates.completed === true && !existing.completed) updates.completedAt = now;
+            if (updates.closed === true && !existing.closed) updates.closedAt = now;
 
             // Add notes if provided
             if (ccReason !== undefined) {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { stripEntityPrefix } from '../utils/formatUtils';
+import { getRegistrationDisplayId } from '../utils/formatUtils';
 
 const CompletedInteractionsTable = ({
     completedInteractions,
@@ -9,9 +9,14 @@ const CompletedInteractionsTable = ({
     getVisitorSerial,
     formatDate,
     onInteractionClick,
-    interactions = []
+    interactions = [],
+    lastVisits = {}
 }) => {
     const getLastVisit = (interaction) => {
+        const fromBackend = lastVisits[interaction.visitorId];
+        if (fromBackend && fromBackend.id !== interaction.id) {
+            return formatDate(fromBackend.editedAt || fromBackend.createdAt, true);
+        }
         const patientHistory = interactions
             .filter(past => past.visitorId === interaction.visitorId && past.completed && past.id !== interaction.id)
             .sort((a, b) => new Date(b.editedAt || b.createdAt) - new Date(a.editedAt || a.createdAt));
@@ -68,7 +73,7 @@ const CompletedInteractionsTable = ({
                                     onClick={() => onInteractionClick(interaction)}
                                 >
                                     <td className="px-4 sm:px-6 py-4 align-middle">
-                                        <span className="text-sm font-semibold text-blue-600">{stripEntityPrefix(interaction.interactionSerial) || 'REG-PENDING'}</span>
+                                        <span className="text-sm font-semibold text-blue-600">{getRegistrationDisplayId(interaction)}</span>
                                     </td>
                                     <td className="px-4 sm:px-6 py-4 align-middle" onClick={(e) => e.stopPropagation()}>
                                         <button

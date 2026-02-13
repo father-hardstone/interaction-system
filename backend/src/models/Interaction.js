@@ -106,18 +106,30 @@ const interactionSchema = new mongoose.Schema({
         text: { type: String, default: '' },
         timestamp: { type: String, default: '' }
     }],
-    // Status flags
+    // Status flags and their timestamps (set when flag becomes true)
     started: {
         type: Boolean,
         default: false
+    },
+    startedAt: {
+        type: String,
+        default: ''
     },
     completed: {
         type: Boolean,
         default: false
     },
+    completedAt: {
+        type: String,
+        default: ''
+    },
     closed: {
         type: Boolean,
         default: false
+    },
+    closedAt: {
+        type: String,
+        default: ''
     },
     ongoing: {
         type: Boolean,
@@ -135,7 +147,16 @@ const interactionSchema = new mongoose.Schema({
         type: String,
         default: ''
     },
+    /** Queue number for the day (resets at 8 AM). Shown in queues instead of interaction serial. */
+    temporarySerial: {
+        type: Number,
+        default: 0
+    },
     reasonForVisit: {
+        type: String,
+        default: ''
+    },
+    reasonForVisitNotes: {
         type: String,
         default: ''
     }

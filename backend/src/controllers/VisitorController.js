@@ -45,13 +45,14 @@ class VisitorController {
                 postalCode,
                 gender,
                 phone,
+                phoneM,
+                phoneB,
                 phoneH,
                 email,
                 healthCardNumber,
                 healthCardVersion,
                 healthCardEffectivityDate,
                 healthCardExpiryDate,
-                phoneM,
                 notes,
                 memo,
                 guardianName,
@@ -60,7 +61,12 @@ class VisitorController {
                 allergies,
                 drugReactions,
                 ongoingHealthConditions,
-                specialNotes
+                specialNotes,
+                highBloodPressure,
+                heartDisease,
+                diabetes,
+                cholesterol,
+                smoke
             } = req.body;
 
             // Normalize province/state
@@ -75,14 +81,18 @@ class VisitorController {
                 email: email ? email.substring(0, 10) + '...' : 'missing'
             });
 
-            // Validate required fields
+            // At least one phone required: phoneM (mobile) or legacy phone
+            const mobile = (phoneM != null && String(phoneM).trim()) ? String(phoneM).trim() : (phone != null && String(phone).trim()) ? String(phone).trim() : '';
             if (!entityId || !entitySerial || !firstName || !lastName || !dateOfBirth ||
-                !addressLine || !city || !region || !gender || !phone || !healthCardNumber) {
+                !addressLine || !city || !region || !gender || !healthCardNumber) {
                 console.error('createVisitor - Missing required fields:', {
                     entityId, entitySerial, firstName, lastName, dateOfBirth,
-                    addressLine, city, region, gender, phone, healthCardNumber
+                    addressLine, city, region, gender, healthCardNumber
                 });
                 return res.status(400).json({ error: "Missing required fields" });
+            }
+            if (!mobile) {
+                return res.status(400).json({ error: "Phone (M) is required" });
             }
 
             // Validate entitySerial starts with 'E'
@@ -125,7 +135,7 @@ class VisitorController {
                 const guardian = await VisitorService.findOne({ id: guardianId });
                 if (guardian) {
                     guardianNameFinal = guardian.firstName ? `${guardian.firstName} ${guardian.lastName || ''}`.trim() : guardianNameFinal;
-                    guardianPhoneFinal = guardian.phone || guardianPhoneFinal;
+                    guardianPhoneFinal = guardian.phoneM || guardian.phone || guardianPhoneFinal;
                 }
             }
 
@@ -149,9 +159,10 @@ class VisitorController {
                 province: region.trim(),
                 postalCode: postalCode ? postalCode.trim() : '',
                 gender: gender.trim(),
-                phone: phone.trim(),
-                phoneH: phoneH ? phoneH.trim() : '',
-                phoneM: phoneM ? phoneM.trim() : '',
+                phone: mobile,
+                phoneM: mobile,
+                phoneB: (phoneB != null && String(phoneB).trim()) ? String(phoneB).trim() : '',
+                phoneH: (phoneH != null && String(phoneH).trim()) ? String(phoneH).trim() : '',
                 email: email ? email.trim() : '',
                 healthCardNumber: cleanHealthCard,
                 healthCardVersion: healthCardVersion ? healthCardVersion.trim().toUpperCase() : '',
@@ -163,6 +174,11 @@ class VisitorController {
                 drugReactions: (drugReactions && drugReactions.trim()) ? drugReactions.trim() : 'N/A',
                 ongoingHealthConditions: (ongoingHealthConditions && ongoingHealthConditions.trim()) ? ongoingHealthConditions.trim() : 'N/A',
                 specialNotes: (specialNotes && specialNotes.trim()) ? specialNotes.trim() : '',
+                highBloodPressure: (highBloodPressure === 'yes' || highBloodPressure === 'no') ? highBloodPressure : '',
+                heartDisease: (heartDisease === 'yes' || heartDisease === 'no') ? heartDisease : '',
+                diabetes: (diabetes === 'yes' || diabetes === 'no') ? diabetes : '',
+                cholesterol: (cholesterol === 'yes' || cholesterol === 'no') ? cholesterol : '',
+                smoke: (smoke === 'yes' || smoke === 'no') ? smoke : '',
                 guardianName: guardianNameFinal,
                 guardianId: guardianId || '',
                 guardianPhone: guardianPhoneFinal,
@@ -244,19 +260,40 @@ class VisitorController {
                 return res.status(400).json({ error: "Expiry date cannot be earlier than effective date" });
             }
 
-            // Normalize allergies and drugReactions: empty = N/A
-            if (updates.allergies !== undefined) {
-                updates.allergies = (updates.allergies && String(updates.allergies).trim()) ? String(updates.allergies).trim() : 'N/A';
+            // Always apply red-zone (clinical) fields from body so they are never dropped
+            updates.allergies = (req.body.allergies !== undefined && req.body.allergies !== null && String(req.body.allergies).trim())
+                ? String(req.body.allergies).trim() : 'N/A';
+            updates.drugReactions = (req.body.drugReactions !== undefined && req.body.drugReactions !== null && String(req.body.drugReactions).trim())
+                ? String(req.body.drugReactions).trim() : 'N/A';
+            updates.ongoingHealthConditions = (req.body.ongoingHealthConditions !== undefined && req.body.ongoingHealthConditions !== null && String(req.body.ongoingHealthConditions).trim())
+                ? String(req.body.ongoingHealthConditions).trim() : 'N/A';
+            updates.specialNotes = (req.body.specialNotes !== undefined && req.body.specialNotes !== null)
+                ? String(req.body.specialNotes).trim() : '';
+
+            // Past medical history (yes/no)
+            const pmh = (v) => (v === 'yes' || v === 'no' ? v : '');
+            if (req.body.highBloodPressure !== undefined) updates.highBloodPressure = pmh(req.body.highBloodPressure);
+            if (req.body.heartDisease !== undefined) updates.heartDisease = pmh(req.body.heartDisease);
+            if (req.body.diabetes !== undefined) updates.diabetes = pmh(req.body.diabetes);
+            if (req.body.cholesterol !== undefined) updates.cholesterol = pmh(req.body.cholesterol);
+            if (req.body.smoke !== undefined) updates.smoke = pmh(req.body.smoke);
+
+            // Three distinct phones: M (mobile, required), B (business), H (home). Legacy phone = phoneM.
+            const opt = (v) => (v !== undefined && v !== null ? String(v).trim() : undefined);
+            if (req.body.phoneM !== undefined) {
+                const m = opt(req.body.phoneM) || '';
+                if (!m) return res.status(400).json({ error: "Phone (M) is required" });
+                updates.phoneM = m;
+                updates.phone = m;
             }
-            if (updates.drugReactions !== undefined) {
-                updates.drugReactions = (updates.drugReactions && String(updates.drugReactions).trim()) ? String(updates.drugReactions).trim() : 'N/A';
-            }
-            if (updates.ongoingHealthConditions !== undefined) {
-                updates.ongoingHealthConditions = (updates.ongoingHealthConditions && String(updates.ongoingHealthConditions).trim()) ? String(updates.ongoingHealthConditions).trim() : 'N/A';
-            }
-            if (updates.specialNotes !== undefined) {
-                updates.specialNotes = (updates.specialNotes && String(updates.specialNotes).trim()) ? String(updates.specialNotes).trim() : '';
-            }
+            if (req.body.phoneB !== undefined) updates.phoneB = opt(req.body.phoneB) || '';
+            if (req.body.phoneH !== undefined) updates.phoneH = opt(req.body.phoneH) || '';
+            if (req.body.email !== undefined) updates.email = opt(req.body.email) || '';
+            if (req.body.guardianName !== undefined) updates.guardianName = opt(req.body.guardianName) || '';
+            if (req.body.guardianPhone !== undefined) updates.guardianPhone = opt(req.body.guardianPhone) || '';
+            if (req.body.notes !== undefined) updates.notes = opt(req.body.notes) || '';
+            if (req.body.memo !== undefined) updates.memo = opt(req.body.memo) || '';
+            if (req.body.guardianId !== undefined) updates.guardianId = opt(req.body.guardianId) || '';
 
             // Guardian autofill if guardianId provided
             if (updates.guardianId) {

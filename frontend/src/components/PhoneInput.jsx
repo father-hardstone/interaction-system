@@ -25,7 +25,7 @@ const PhoneInput = ({ value, onChange, required, disabled }) => {
     return (
         <input
             type="text"
-            placeholder="(416) 880-0766"
+            placeholder="(555) 123-4567"
             value={displayValue}
             onChange={handleNumberChange}
             disabled={disabled}

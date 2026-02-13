@@ -37,6 +37,7 @@ const BillingSection = ({
                 unbilled.push(i);
             }
         }
+        unbilled.sort((a, b) => new Date(b.editedAt || b.createdAt) - new Date(a.editedAt || a.createdAt));
         return { unbilledInteractions: unbilled, billedInteractions: billed };
     }, [interactions]);
 
@@ -80,6 +81,7 @@ const BillingSection = ({
 
             {/* Content based on active subtab */}
             {activeBillingSubTab === 'unbilled' && (
+                <div className="flex-1 flex flex-col min-h-0">
                 <UnbilledBillingTable
                     unbilledInteractions={unbilledInteractions}
                     visitors={visitors}
@@ -89,8 +91,10 @@ const BillingSection = ({
                     onInteractionClick={onInteractionClick}
                     onOpenPatientDetails={onOpenPatientDetails}
                 />
+                </div>
             )}
             {activeBillingSubTab === 'billed' && (
+                <div className="flex-1 flex flex-col min-h-0">
                 <BilledBillingTable
                     billedInteractions={billedInteractions}
                     visitors={visitors}
@@ -99,6 +103,7 @@ const BillingSection = ({
                     onInteractionClick={onInteractionClick}
                     onOpenPatientDetails={onOpenPatientDetails}
                 />
+                </div>
             )}
             <BillNowModal
                 isOpen={!!billingModalInteraction}

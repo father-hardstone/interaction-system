@@ -90,6 +90,14 @@ export const getInteractionSerialDisplay = (serial) => {
     return stripEntityPrefix(serial) || 'REG-PENDING';
 };
 
+/** Queue number for registrations (resets at 8 AM daily). Use in queues/scheduled lists; falls back to serial if no temporarySerial. */
+export const getRegistrationDisplayId = (interaction) => {
+    if (!interaction) return '—';
+    const temp = interaction.temporarySerial;
+    if (temp != null && Number(temp) > 0) return String(temp);
+    return stripEntityPrefix(interaction.interactionSerial) || 'REG-PENDING';
+};
+
 export const parseHealthCardToDigits = (value) => {
     if (!value) return '';
     return String(value).replace(/\D/g, '').slice(0, 10);
@@ -131,4 +139,24 @@ export const formatDateDisplay = (dateString, includeTime = false) => {
     const hh = String(date.getHours()).padStart(2, '0');
     const min = String(date.getMinutes()).padStart(2, '0');
     return `${normalized} ${hh}:${min}`;
+};
+
+/** Format as time only (e.g. 2:30 PM). */
+export const formatTimeOnly = (dateStringOrMs) => {
+    if (dateStringOrMs == null) return '—';
+    const d = typeof dateStringOrMs === 'number' ? new Date(dateStringOrMs) : new Date(dateStringOrMs);
+    if (isNaN(d.getTime())) return '—';
+    const h = d.getHours();
+    const m = d.getMinutes();
+    const am = h < 12;
+    const h12 = h % 12 || 12;
+    return `${h12}:${String(m).padStart(2, '0')} ${am ? 'AM' : 'PM'}`;
+};
+
+/** Display label for registration reason (new_visit, followup, refill_medicine). */
+export const getReasonForVisitLabel = (reason) => {
+    const r = (reason || '').trim();
+    if (r === 'followup') return 'Followup';
+    if (r === 'refill_medicine') return 'Refill medicine';
+    return 'New visit';
 };

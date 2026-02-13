@@ -1,5 +1,5 @@
 import React from 'react';
-import { getVisitorName, getVisitorSerialDisplay, getOfficerName, formatDate, formatDateMMDDYYYY, formatPhoneDisplay, formatHealthCardDisplay, stripEntityPrefix } from './utils';
+import { getVisitorName, getVisitorSerialDisplay, getOfficerName, formatDate, formatDateMMDDYYYY, formatPhoneDisplay, formatHealthCardDisplay, getRegistrationDisplayId } from './utils';
 
 const UnbilledBillingTable = ({
     unbilledInteractions,
@@ -13,11 +13,11 @@ const UnbilledBillingTable = ({
     const getVisitor = (visitorId) => visitors.find((v) => v.id === visitorId);
 
     return (
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-            <h3 className="text-sm font-semibold text-slate-700 px-4 sm:px-6 py-4 border-b border-slate-200">Unbilled</h3>
-            <div className="overflow-x-auto">
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col flex-1 min-h-0">
+            <p className="text-sm text-slate-500 px-4 sm:px-6 py-3 border-b border-slate-200 shrink-0">These interactions are now ready for billing.</p>
+            <div className="flex-1 min-h-0 overflow-auto">
                 <table className="w-full border-collapse min-w-[800px]">
-                    <thead>
+                    <thead className="sticky top-0 z-10 bg-white">
                         <tr className="bg-slate-50 border-b border-slate-200">
                             <th className="px-4 sm:px-6 py-4 text-left text-xs sm:text-sm font-semibold text-slate-700 hidden md:table-cell">Date of Birth</th>
                             <th className="px-4 sm:px-6 py-4 text-left text-xs sm:text-sm font-semibold text-slate-700">Name</th>
@@ -60,7 +60,7 @@ const UnbilledBillingTable = ({
                                             </button>
                                         </td>
                                         <td className="px-4 sm:px-6 py-4 font-medium text-slate-900 text-xs sm:text-sm">{getVisitorSerialDisplay(interaction.visitorId, visitors)}</td>
-                                        <td className="px-4 sm:px-6 py-4 text-slate-700 hidden lg:table-cell text-sm">{visitor ? formatPhoneDisplay(visitor.phone) || '-' : '-'}</td>
+                                        <td className="px-4 sm:px-6 py-4 text-slate-700 hidden lg:table-cell text-sm">{visitor ? formatPhoneDisplay(visitor.phoneM || visitor.phone) || '-' : '-'}</td>
                                         <td className="px-4 sm:px-6 py-4 text-slate-700 hidden xl:table-cell text-sm">{visitor ? formatHealthCardDisplay(visitor.healthCardNumber || '') || '-' : '-'}</td>
                                         <td className="px-4 sm:px-6 py-4 text-slate-700 hidden xl:table-cell text-sm">{visitor?.healthCardVersion || '-'}</td>
                                         <td className="px-4 sm:px-6 py-4" onClick={(e) => e.stopPropagation()}>
@@ -69,7 +69,7 @@ const UnbilledBillingTable = ({
                                                 onClick={() => onInteractionClick?.(interaction)}
                                                 className="text-xs font-semibold text-blue-600 hover:text-blue-800 normal-case tracking-tight"
                                             >
-                                                {stripEntityPrefix(interaction.interactionSerial) || 'REG-PENDING'}
+                                                {getRegistrationDisplayId(interaction)}
                                             </button>
                                         </td>
                                         <td className="px-4 sm:px-6 py-4 text-slate-700 hidden lg:table-cell text-sm">{getOfficerName(interaction.officerId, officers)}</td>

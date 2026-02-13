@@ -30,7 +30,7 @@ export const getVisitorSerialDisplay = (visitorId, visitors = []) => {
     return getVisitorSerialDisplayFromVisitor(v);
 };
 
-export { formatPhoneDisplay, formatHealthCardDisplay, formatDateMMDDYYYY, stripEntityPrefix } from '../../utils/formatUtils';
+export { formatPhoneDisplay, formatHealthCardDisplay, formatDateMMDDYYYY, stripEntityPrefix, getRegistrationDisplayId } from '../../utils/formatUtils';
 
 export const getOfficerName = (officerId, officers = []) => {
     const officer = officers.find((o) => o.id === officerId);
