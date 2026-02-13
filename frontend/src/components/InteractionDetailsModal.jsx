@@ -1,7 +1,7 @@
 import React from 'react';
 import InteractionDataView from './InteractionDataView';
 import { renderInteractionTags } from '../utils/interactionTags';
-import { stripEntityPrefix } from '../utils/formatUtils';
+import { stripEntityPrefix, getRegistrationDisplayId } from '../utils/formatUtils';
 
 const InteractionDetailsModal = ({
     interaction,
@@ -11,7 +11,9 @@ const InteractionDetailsModal = ({
     formatDate,
     getImageUrl,
     setViewingMedia,
-    patientReports = []
+    patientReports = [],
+    officers = [],
+    onOpenQueueModal
 }) => {
     if (!interaction) return null;
 
@@ -23,7 +25,7 @@ const InteractionDetailsModal = ({
                     <div className="flex flex-col gap-1">
                         <div className="flex items-center gap-3 flex-wrap">
                             <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-semibold normal-case tracking-widest leading-none">
-                                {stripEntityPrefix(interaction.interactionSerial) || 'REG-PENDING'}
+                                {getRegistrationDisplayId(interaction)}
                             </span>
                             <h3 className="text-lg font-semibold text-slate-900 tracking-tight">
                                 Interaction Details
@@ -72,7 +74,19 @@ const InteractionDetailsModal = ({
                 </div>
 
                 {/* Footer */}
-                <div className="px-8 py-6 border-t border-slate-100 bg-slate-50/30 flex justify-end gap-3">
+                <div className="px-8 py-6 border-t border-slate-100 bg-slate-50/30 flex justify-end gap-3 flex-wrap">
+                    {!interaction.officerId && !interaction.completed && !interaction.closed && onOpenQueueModal && (
+                        <button
+                            type="button"
+                            onClick={() => onOpenQueueModal(interaction)}
+                            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors"
+                        >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h10M4 18h16m4-6l4 4 4-4" />
+                            </svg>
+                            Queue
+                        </button>
+                    )}
                     {interaction.ongoing && (
                         <div className="px-6 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold shadow-lg shadow-blue-200 normal-case tracking-widest items-center gap-2 hidden md:flex">
                             <span className="relative flex h-2 w-2">

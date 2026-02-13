@@ -69,15 +69,21 @@ const UserDashboardNavContent = ({ navState, entityIconUrl, userInfo }) => {
                             <button
                                 type="button"
                                 onClick={() => { setActiveTab?.('reception'); setTabDropdownOpen(false); }}
-                                className={`w-full px-4 py-2.5 text-left text-sm font-medium transition-colors ${activeTab === 'reception' ? 'bg-primary/10 text-primary' : 'text-slate-600 hover:bg-slate-50'}`}
+                                className={`w-full px-4 py-2.5 text-left text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'reception' ? 'bg-primary/10 text-primary' : 'text-slate-600 hover:bg-slate-50'}`}
                             >
+                                <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                                </svg>
                                 Operations
                             </button>
                             <button
                                 type="button"
                                 onClick={() => { setActiveTab?.('officer'); setTabDropdownOpen(false); }}
-                                className={`w-full px-4 py-2.5 text-left text-sm font-medium transition-colors ${activeTab === 'officer' ? 'bg-primary/10 text-primary' : 'text-slate-600 hover:bg-slate-50'}`}
+                                className={`w-full px-4 py-2.5 text-left text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'officer' ? 'bg-primary/10 text-primary' : 'text-slate-600 hover:bg-slate-50'}`}
                             >
+                                <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                </svg>
                                 Physician
                             </button>
                         </div>
@@ -88,19 +94,25 @@ const UserDashboardNavContent = ({ navState, entityIconUrl, userInfo }) => {
                     <button
                         type="button"
                         onClick={() => setActiveTab?.('reception')}
-                        className={`px-5 py-2 rounded-lg text-sm font-medium transition-colors ${
+                        className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium transition-colors ${
                             activeTab === 'reception' ? 'bg-white text-primary shadow-sm' : 'text-slate-600 hover:text-slate-900'
                         }`}
                     >
+                        <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                        </svg>
                         Operations
                     </button>
                     <button
                         type="button"
                         onClick={() => setActiveTab?.('officer')}
-                        className={`px-5 py-2 rounded-lg text-sm font-medium transition-colors ${
+                        className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium transition-colors ${
                             activeTab === 'officer' ? 'bg-white text-primary shadow-sm' : 'text-slate-600 hover:text-slate-900'
                         }`}
                     >
+                        <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                        </svg>
                         Physician
                     </button>
                 </div>

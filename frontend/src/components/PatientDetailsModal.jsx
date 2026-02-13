@@ -16,6 +16,7 @@ const PatientDetailsModal = ({
     getVisitorName,
     getVisitorSerial,
     completedInteractionsForPatient = [],
+    lastVisits = {},
     formatDate,
     getImageUrl,
     setViewingMedia,
@@ -142,11 +143,12 @@ const PatientDetailsModal = ({
                             {[
                                 { label: 'Full Name', value: toTitleCase(getVisitorName(selectedPatient.id)) },
                                 { label: 'Sex', value: selectedPatient.gender || '-' },
-                                { label: 'Mobile Phone', value: formatPhoneDisplay(selectedPatient.phone) },
-                                { label: 'Home Phone', value: formatPhoneDisplay(selectedPatient.phoneH) },
+                                { label: 'Phone (M)', value: formatPhoneDisplay(selectedPatient.phoneM || selectedPatient.phone) },
+                                { label: 'Phone (B)', value: (() => { const m = selectedPatient.phoneM || selectedPatient.phone || ''; const b = selectedPatient.phoneB || (selectedPatient.phone && selectedPatient.phone !== m ? selectedPatient.phone : ''); return b ? formatPhoneDisplay(b) : '—'; })() },
+                                { label: 'Phone (H)', value: formatPhoneDisplay(selectedPatient.phoneH) },
                                 { label: 'Email Address', value: selectedPatient.email },
                                 { label: 'Last Visit', value: (() => {
-                                    const lastVisit = completedInteractionsForPatient
+                                    const lastVisit = lastVisits[selectedPatient?.id] || completedInteractionsForPatient
                                         .sort((a, b) => {
                                             const dateA = new Date(a.editedAt || a.createdAt);
                                             const dateB = new Date(b.editedAt || b.createdAt);
@@ -191,6 +193,29 @@ const PatientDetailsModal = ({
                                     <label className="text-sm font-semibold text-red-900 normal-case tracking-wide block">Special Notes</label>
                                     <div className="text-sm font-semibold text-slate-700 normal-case tracking-tight">{selectedPatient.specialNotes || '-'}</div>
                                 </div>
+                            </div>
+                        </div>
+
+                        {/* Past medical history */}
+                        <div className="mt-1.5 p-2 bg-slate-50 border border-slate-200 rounded-xl">
+                            <label className="text-sm font-semibold text-slate-800 normal-case tracking-wide block mb-1.5">Past medical history</label>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-1">
+                                {[
+                                    { key: 'highBloodPressure', label: 'High blood pressure' },
+                                    { key: 'heartDisease', label: 'Heart disease' },
+                                    { key: 'diabetes', label: 'Diabetes' },
+                                    { key: 'cholesterol', label: 'Cholesterol' },
+                                    { key: 'smoke', label: 'Smoke' }
+                                ].map(({ key, label }) => {
+                                    const val = selectedPatient[key];
+                                    const display = (val === 'yes' || val === 'no') ? (val === 'yes' ? 'Yes' : 'No') : '—';
+                                    return (
+                                        <div key={key} className="space-y-0">
+                                            <span className="text-xs font-semibold text-slate-600 normal-case">{label}</span>
+                                            <div className="text-sm font-semibold text-slate-700 normal-case">{display}</div>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </div>
 
