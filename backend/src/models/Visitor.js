@@ -66,19 +66,28 @@ const visitorSchema = new mongoose.Schema({
         type: String,
         default: ''
     },
+    highBloodPressure: { type: String, default: '' },
+    heartDisease: { type: String, default: '' },
+    diabetes: { type: String, default: '' },
+    cholesterol: { type: String, default: '' },
+    smoke: { type: String, default: '' },
     gender: {
         type: String,
         required: true
     },
     phone: {
         type: String,
-        required: true
-    },
-    phoneH: {
-        type: String,
         default: ''
     },
     phoneM: {
+        type: String,
+        default: ''
+    },
+    phoneB: {
+        type: String,
+        default: ''
+    },
+    phoneH: {
         type: String,
         default: ''
     },

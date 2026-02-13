@@ -53,6 +53,47 @@ class InteractionService {
         return interactions.map(i => i.toObject());
     }
 
+    /**
+     * Get the last completed interaction per visitor for the given entity.
+     * Used for "last visit" display regardless of time filter. Does not apply any date filter.
+     * @param {string} entityId
+     * @param {string[]} [visitorIds] - If provided, only return last visit for these visitors; otherwise all visitors with completed interactions.
+     * @returns {Promise<Object>} Map of visitorId -> last completed interaction (plain object).
+     */
+    async getLastCompletedByVisitor(entityId, visitorIds = null) {
+        const match = {
+            entityId,
+            deletedAt: '',
+            completed: true
+        };
+        if (Array.isArray(visitorIds) && visitorIds.length > 0) {
+            match.visitorId = { $in: visitorIds };
+        }
+        const pipeline = [
+            { $match: match },
+            { $sort: { completedAt: -1, editedAt: -1 } },
+            { $group: { _id: '$visitorId', doc: { $first: '$$ROOT' } } },
+            { $replaceRoot: { newRoot: '$doc' } }
+        ];
+        const docs = await Interaction.aggregate(pipeline);
+        const result = {};
+        docs.forEach(doc => {
+            result[doc.visitorId] = doc;
+        });
+        return result;
+    }
+
+    /** Max temporarySerial for entity where createdAt >= queueDayStart (for queue numbering). */
+    async getMaxTemporarySerialInQueueDay(entityId, queueDayStartISO) {
+        const interactions = await Interaction.find({
+            entityId,
+            deletedAt: '',
+            createdAt: { $gte: queueDayStartISO }
+        }).select('temporarySerial');
+        const max = interactions.reduce((m, i) => Math.max(m, i.temporarySerial || 0), 0);
+        return max;
+    }
+
     async assignOfficer(interactionId, officerId, officerSerial) {
         const interaction = await Interaction.findOneAndUpdate(
             { id: interactionId, deletedAt: '' },

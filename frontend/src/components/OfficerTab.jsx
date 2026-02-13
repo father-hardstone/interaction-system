@@ -9,7 +9,7 @@ import CancelInteractionModal from './CancelInteractionModal';
 import MediaViewerModal from './MediaViewerModal';
 import PastInteractionsSidebar from './PastInteractionsSidebar';
 
-const OfficerTab = ({ userData, interactions, visitors, isLoadingInteractions = false, onRefreshInteractions, onInteractionClick }) => {
+const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadingInteractions = false, onRefreshInteractions, onInteractionClick }) => {
     const {
         selectedPatient,
         showPatientDetailModal,
@@ -150,6 +150,7 @@ const OfficerTab = ({ userData, interactions, visitors, isLoadingInteractions = 
                     ongoingInteractions={ongoingInteractions}
                     onInteractionClick={onInteractionClick}
                     interactions={interactions}
+                    lastVisits={lastVisits}
                 />
                 </div>
             )}
@@ -166,6 +167,7 @@ const OfficerTab = ({ userData, interactions, visitors, isLoadingInteractions = 
                     formatDate={formatDate}
                     onInteractionClick={onInteractionClick}
                     interactions={interactions}
+                    lastVisits={lastVisits}
                 />
                 </div>
             )}
@@ -183,6 +185,7 @@ const OfficerTab = ({ userData, interactions, visitors, isLoadingInteractions = 
                     handleStartInteraction={handleStartInteraction}
                     onInteractionClick={onInteractionClick}
                     interactions={interactions}
+                    lastVisits={lastVisits}
                 />
                 </div>
             )}
@@ -321,6 +324,7 @@ const OfficerTab = ({ userData, interactions, visitors, isLoadingInteractions = 
                     getVisitorName={getVisitorName}
                     getVisitorSerial={getVisitorSerial}
                     completedInteractionsForPatient={completedInteractionsForPatient}
+                    lastVisits={lastVisits}
                     formatDate={formatDate}
                     onInteractionClick={onInteractionClick}
                     getImageUrl={getImageUrl}

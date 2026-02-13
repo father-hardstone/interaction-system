@@ -5,7 +5,7 @@ import { formatPhoneDisplay, getVisitorSerialDisplay, formatHealthCardDisplay, p
 import { useState, useMemo } from 'react';
 
 const REASON_FOR_VISIT_OPTIONS = [
-    { value: '', label: '— Select reason —' },
+    { value: 'new_visit', label: 'New visit' },
     { value: 'followup', label: 'Followup' },
     { value: 'refill_medicine', label: 'Refill medicine' }
 ];
@@ -14,6 +14,7 @@ const VisitorsSection = ({
     visitors,
     isLoadingVisitors = false,
     interactions = [],
+    lastVisits = {},
     officers = [],
     searchFirstName,
     setSearchFirstName,
@@ -79,8 +80,9 @@ const VisitorsSection = ({
     const { services = [], diagnostics = [] } = useMasterData();
     const [showRegisterConfirmModal, setShowRegisterConfirmModal] = useState(false);
     const [pendingRegisterVisitor, setPendingRegisterVisitor] = useState(null);
-    const [reasonForVisit, setReasonForVisit] = useState('');
+    const [reasonForVisit, setReasonForVisit] = useState('new_visit');
     const [parentInteractionId, setParentInteractionId] = useState('');
+    const [newVisitNotes, setNewVisitNotes] = useState('');
     const [guardianIdError, setGuardianIdError] = useState('');
     const [dobSearchFocused, setDobSearchFocused] = useState(false);
 
@@ -99,21 +101,24 @@ const VisitorsSection = ({
         if (!pendingRegisterVisitor || !handleRegisterPatient) return;
         if (reasonForVisit === 'followup' && !parentInteractionId) return;
         const success = await handleRegisterPatient(pendingRegisterVisitor, {
-            reasonForVisit: reasonForVisit || '',
-            parentInteractionId: reasonForVisit === 'followup' ? parentInteractionId : ''
+            reasonForVisit: reasonForVisit || 'new_visit',
+            parentInteractionId: (reasonForVisit === 'followup' || reasonForVisit === 'refill_medicine') ? parentInteractionId : '',
+            reasonForVisitNotes: reasonForVisit === 'new_visit' ? newVisitNotes : ''
         });
         if (success) {
             setShowRegisterConfirmModal(false);
             setPendingRegisterVisitor(null);
-            setReasonForVisit('');
+            setReasonForVisit('new_visit');
             setParentInteractionId('');
+            setNewVisitNotes('');
         }
     };
 
     const initiateRegistration = (visitor) => {
         setPendingRegisterVisitor(visitor);
-        setReasonForVisit('');
+        setReasonForVisit('new_visit');
         setParentInteractionId('');
+        setNewVisitNotes('');
         setShowRegisterConfirmModal(true);
     };
 
@@ -223,9 +228,9 @@ const VisitorsSection = ({
         });
 
     return (
-        <div className="space-y-6">
+        <div className="flex flex-col flex-1 min-h-0">
             {/* Visitors Table */}
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col flex-1 min-h-0">
                 <div className="p-4 sm:p-6 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                     <div>
                         <h2 className="text-lg font-semibold text-slate-900">Patients</h2>
@@ -297,9 +302,9 @@ const VisitorsSection = ({
                     />
                 </div>
 
-                <div className="overflow-x-auto">
+                <div className="flex-1 min-h-0 overflow-auto">
                     <table className="w-full border-collapse min-w-[800px]">
-                        <thead>
+                        <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200">
                             <tr className="bg-slate-50 border-b border-slate-200">
                                 <th className="px-4 sm:px-6 py-4 text-left text-xs sm:text-sm font-semibold text-slate-700 hidden md:table-cell">Date of Birth</th>
                                 <th className="px-4 sm:px-6 py-4 text-left text-xs sm:text-sm font-semibold text-slate-700">Name</th>
@@ -444,10 +449,10 @@ const VisitorsSection = ({
                                                 <div className="md:hidden mt-2 space-y-1 text-xs text-slate-500">
                                                     <div>DOB: {formatDateMMDDYYYY(visitor.dateOfBirth) || '-'}</div>
                                                     <div>ID: {getVisitorSerialDisplay(visitor)}</div>
-                                                    <div>Phone: {formatPhoneDisplay(visitor.phone) || '-'}</div>
+                                                    <div>Phone: {formatPhoneDisplay(visitor.phoneM || visitor.phone) || '-'}</div>
                                                     <div>Health Card: {formatHealthCardDisplay(visitor.healthCardNumber || '') || '-'}</div>
                                                     <div>Last Visit: {(() => {
-                                                        const lastVisit = interactions
+                                                        const lastVisit = lastVisits[visitor.id] || interactions
                                                             .filter(i => i.visitorId === visitor.id && i.completed)
                                                             .sort((a, b) => {
                                                                 const dateA = new Date(a.editedAt || a.createdAt);
@@ -459,20 +464,18 @@ const VisitorsSection = ({
                                                 </div>
                                             </td>
                                             <td className="px-4 sm:px-6 py-4 font-medium text-slate-900 text-xs sm:text-sm">{getVisitorSerialDisplay(visitor)}</td>
-                                            <td className="px-4 sm:px-6 py-4 text-slate-700 hidden lg:table-cell text-sm">{formatPhoneDisplay(visitor.phone) || '-'}</td>
+                                            <td className="px-4 sm:px-6 py-4 text-slate-700 hidden lg:table-cell text-sm">{formatPhoneDisplay(visitor.phoneM || visitor.phone) || '-'}</td>
                                             <td className="px-4 sm:px-6 py-4 text-slate-700 hidden xl:table-cell text-sm">{formatHealthCardDisplay(visitor.healthCardNumber || '') || '-'}</td>
                                             <td className="px-4 sm:px-6 py-4 text-slate-700 hidden xl:table-cell text-sm">{visitor.healthCardVersion || '-'}</td>
                                             <td className="px-4 sm:px-6 py-4 text-slate-700 hidden xl:table-cell text-sm">
                                                 {(() => {
-                                                    // Find last completed visit for this visitor
-                                                    const lastVisit = interactions
+                                                    const lastVisit = lastVisits[visitor.id] || interactions
                                                         .filter(i => i.visitorId === visitor.id && i.completed)
                                                         .sort((a, b) => {
                                                             const dateA = new Date(a.editedAt || a.createdAt);
                                                             const dateB = new Date(b.editedAt || b.createdAt);
                                                             return dateB - dateA;
                                                         })[0];
-                                                    
                                                     if (lastVisit) {
                                                         return formatDate(lastVisit.editedAt || lastVisit.createdAt, true);
                                                     }
@@ -571,6 +574,11 @@ const VisitorsSection = ({
                                                 drugReactions: 'N/A',
                                                 ongoingHealthConditions: 'N/A',
                                                 specialNotes: '',
+                                                highBloodPressure: '',
+                                                heartDisease: '',
+                                                diabetes: '',
+                                                cholesterol: '',
+                                                smoke: '',
                                                 guardianName: '',
                                                 guardianId: '',
                                                 guardianPhone: ''
@@ -817,22 +825,24 @@ const VisitorsSection = ({
                                         </div>
                                         <div className="flex flex-col gap-2 w-full sm:w-32">
                                             <label className="text-sm font-semibold text-slate-900">Sex <span className="text-red-500">*</span></label>
-                                            <select
-                                                value={visitorForm.gender}
-                                                onChange={(e) => {
-                                                    const val = e.target.value;
-                                                    setVisitorForm({ ...visitorForm, gender: val });
-                                                    if (!val) setFieldErrors(prev => ({ ...prev, gender: 'Sex is required' }));
-                                                    else setFieldErrors(prev => { const n = { ...prev }; delete n.gender; return n; });
-                                                }}
-                                                required
-                                                className={`w-full py-2.5 px-3.5 border ${fieldErrors.gender ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-slate-50'} rounded-xl font-inherit text-sm transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100`}
-                                            >
-                                                <option value="">Select sex</option>
-                                                <option value="male">Male</option>
-                                                <option value="female">Female</option>
-                                                <option value="other">Other</option>
-                                            </select>
+                                            <div className="flex flex-row gap-4 items-center">
+                                                {['M', 'F', 'O'].map((opt) => (
+                                                    <label key={opt} className="inline-flex items-center gap-1.5 cursor-pointer">
+                                                        <input
+                                                            type="radio"
+                                                            name="sex"
+                                                            value={opt}
+                                                            checked={visitorForm.gender === opt}
+                                                            onChange={() => {
+                                                                setVisitorForm({ ...visitorForm, gender: opt });
+                                                                setFieldErrors(prev => { const n = { ...prev }; delete n.gender; return n; });
+                                                            }}
+                                                            className="w-4 h-4 text-primary border-slate-300 focus:ring-primary"
+                                                        />
+                                                        <span className="text-sm font-medium text-slate-800">{opt}</span>
+                                                    </label>
+                                                ))}
+                                            </div>
                                             <div className={rowHasError ? 'min-h-[1.25rem]' : ''}>{fieldErrors.gender && <p className="text-red-500 text-xs">{fieldErrors.gender}</p>}</div>
                                         </div>
                                     </div>
@@ -1005,6 +1015,48 @@ const VisitorsSection = ({
                                 </div>
                             </div>
 
+                            {/* Past medical history */}
+                            <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-3">
+                                <label className="text-sm font-semibold text-slate-900 block mb-3">Past medical history</label>
+                                <div className="flex flex-wrap gap-x-6 gap-y-2">
+                                    {[
+                                        { key: 'highBloodPressure', label: 'High blood pressure' },
+                                        { key: 'heartDisease', label: 'Heart disease' },
+                                        { key: 'diabetes', label: 'Diabetes' },
+                                        { key: 'cholesterol', label: 'Cholesterol' },
+                                        { key: 'smoke', label: 'Smoke' }
+                                    ].map(({ key, label }) => (
+                                        <div key={key} className="flex items-center gap-3">
+                                            <span className="text-sm text-slate-700 whitespace-nowrap">{label}</span>
+                                            <div className="flex items-center gap-2">
+                                                <label className="inline-flex items-center gap-1 cursor-pointer">
+                                                    <input
+                                                        type="radio"
+                                                        name={key}
+                                                        value="yes"
+                                                        checked={visitorForm[key] === 'yes'}
+                                                        onChange={() => setVisitorForm({ ...visitorForm, [key]: 'yes' })}
+                                                        className="w-3.5 h-3.5 text-primary border-slate-300"
+                                                    />
+                                                    <span className="text-xs font-medium text-slate-700">Yes</span>
+                                                </label>
+                                                <label className="inline-flex items-center gap-1 cursor-pointer">
+                                                    <input
+                                                        type="radio"
+                                                        name={key}
+                                                        value="no"
+                                                        checked={visitorForm[key] === 'no'}
+                                                        onChange={() => setVisitorForm({ ...visitorForm, [key]: 'no' })}
+                                                        className="w-3.5 h-3.5 text-primary border-slate-300"
+                                                    />
+                                                    <span className="text-xs font-medium text-slate-700">No</span>
+                                                </label>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
                             {/* Guardian Info (optional) */}
                             {(() => {
                                 const rowHasError = !!guardianIdError;
@@ -1121,7 +1173,7 @@ const VisitorsSection = ({
                     <div className="fixed inset-0 z-[1100] flex items-center justify-center px-4 pb-4 pt-0 !mt-0">
                         <div
                             className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
-                            onClick={() => !isCreatingInteraction && (setShowRegisterConfirmModal(false), setPendingRegisterVisitor(null), setReasonForVisit(''), setParentInteractionId(''))}
+                            onClick={() => !isCreatingInteraction && (setShowRegisterConfirmModal(false), setPendingRegisterVisitor(null), setReasonForVisit('new_visit'), setParentInteractionId(''), setNewVisitNotes(''))}
                         />
                         <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in duration-200">
                             <div className="p-6">
@@ -1145,9 +1197,24 @@ const VisitorsSection = ({
                                             ))}
                                         </select>
                                     </div>
-                                    {reasonForVisit === 'followup' && (
+                                    {reasonForVisit === 'new_visit' && (
                                         <div>
-                                            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Prior visit (followup to)</label>
+                                            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Notes (optional)</label>
+                                            <input
+                                                type="text"
+                                                value={newVisitNotes}
+                                                onChange={(e) => setNewVisitNotes(e.target.value)}
+                                                placeholder="e.g. reason for visit, chief complaint"
+                                                className="w-full py-2.5 px-3.5 border border-slate-200 rounded-xl text-sm bg-white focus:outline-none focus:border-primary focus:ring-2 focus:ring-blue-100"
+                                            />
+                                        </div>
+                                    )}
+                                    {(reasonForVisit === 'followup' || reasonForVisit === 'refill_medicine') && (
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+                                                {reasonForVisit === 'followup' ? 'Prior visit (followup to)' : 'Prior visit (refill from)'}
+                                                {reasonForVisit === 'followup' && <span className="text-red-500 ml-0.5">*</span>}
+                                            </label>
                                             <select
                                                 value={parentInteractionId}
                                                 onChange={(e) => setParentInteractionId(e.target.value)}
@@ -1172,8 +1239,9 @@ const VisitorsSection = ({
                                             if (!isCreatingInteraction) {
                                                 setShowRegisterConfirmModal(false);
                                                 setPendingRegisterVisitor(null);
-                                                setReasonForVisit('');
+                                                setReasonForVisit('new_visit');
                                                 setParentInteractionId('');
+                                                setNewVisitNotes('');
                                             }
                                         }}
                                         disabled={isCreatingInteraction}

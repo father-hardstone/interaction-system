@@ -11,6 +11,7 @@ import ReceptionTab from '../components/ReceptionTab';
 import { MasterDataProvider } from '../contexts/MasterDataContext';
 import OfficerTab from '../components/OfficerTab';
 import InteractionDetailsModal from '../components/InteractionDetailsModal';
+import QueueRegistrationModal from '../components/QueueRegistrationModal';
 import MediaViewerModal from '../components/MediaViewerModal';
 import { reportService } from '../services/reportService';
 
@@ -49,6 +50,11 @@ const UserDashboard = () => {
         drugReactions: 'N/A',
         ongoingHealthConditions: 'N/A',
         specialNotes: '',
+        highBloodPressure: '',
+        heartDisease: '',
+        diabetes: '',
+        cholesterol: '',
+        smoke: '',
         guardianName: '',
         guardianId: '',
         guardianPhone: ''
@@ -66,9 +72,11 @@ const UserDashboard = () => {
     const [draggedPatient, setDraggedPatient] = useState(null);
     const [showDeleteRegistrationModal, setShowDeleteRegistrationModal] = useState(false);
     const [registrationToDelete, setRegistrationToDelete] = useState(null);
+    const [queueModalInteraction, setQueueModalInteraction] = useState(null);
     const [showLogoutModal, setShowLogoutModal] = useState(false);
     const [error, setError] = useState('');
     const [interactions, setInteractions] = useState([]);
+    const [lastVisits, setLastVisits] = useState({}); // visitorId -> last completed interaction (from backend, ignores time filter)
     const [isLoadingInteractions, setIsLoadingInteractions] = useState(true);
     const [officers, setOfficers] = useState([]);
     const [warningMessage, setWarningMessage] = useState('');
@@ -195,10 +203,12 @@ const UserDashboard = () => {
         setIsLoadingInteractions(true);
         try {
             const data = await interactionService.getByEntity(entityId, filter);
-            setInteractions(data || []);
+            setInteractions(data?.interactions ?? data ?? []);
+            setLastVisits(data?.lastVisits ?? {});
         } catch (e) {
             console.error('Failed to load interactions:', e);
             setInteractions([]);
+            setLastVisits({});
         } finally {
             setIsLoadingInteractions(false);
         }
@@ -333,6 +343,57 @@ const UserDashboard = () => {
             }, 1000);
         } finally {
             setIsAssigningInteraction(false);
+        }
+    };
+
+    /** Assign a registration to a doctor (same as drop-on-doctor, without drag). Returns true on success. */
+    const handleAssignToOfficer = async (interaction, officer) => {
+        if (userData?.role !== 'receptionist' && userData?.role !== 'officer') {
+            showWarning('Only receptionist and doctors can perform this action');
+            return false;
+        }
+        const interactionId = interaction.id;
+        setPendingAssignments(prev => ({ ...prev, [interactionId]: officer.id }));
+        setAssignmentFailed(prev => {
+            const next = { ...prev };
+            delete next[interactionId];
+            return next;
+        });
+        try {
+            const updated = await interactionService.assignOfficer(interaction.id, officer.id, officer.serial);
+            if (updated) {
+                setInteractions(prev =>
+                    prev.map(i => (i.id === interactionId ? { ...i, ...updated } : i))
+                );
+            }
+            setPendingAssignments(prev => {
+                const next = { ...prev };
+                delete next[interactionId];
+                return next;
+            });
+            loadInteractions(userData.entityId, interactionFilter);
+            return true;
+        } catch (err) {
+            console.error('Failed to assign officer:', err);
+            setAssignmentFailed(prev => ({ ...prev, [interactionId]: true }));
+            if (err.response?.status === 403) {
+                showWarning('Only receptionist and doctors can perform this action');
+            } else {
+                showWarning('Failed to update interaction assignment');
+            }
+            setTimeout(() => {
+                setPendingAssignments(prev => {
+                    const next = { ...prev };
+                    delete next[interactionId];
+                    return next;
+                });
+                setAssignmentFailed(prev => {
+                    const next = { ...prev };
+                    delete next[interactionId];
+                    return next;
+                });
+            }, 1000);
+            return false;
         }
     };
 
@@ -701,9 +762,10 @@ const UserDashboard = () => {
                 province: visitorForm.state.trim(),
                 postalCode: visitorForm.postalCode.trim(),
                 gender: visitorForm.gender,
-                phone: phoneData.fullNumber || phoneMData.fullNumber,
-                phoneH: phoneHData.fullNumber || '',
+                phone: phoneMData.fullNumber || '',
                 phoneM: phoneMData.fullNumber || '',
+                phoneB: phoneData.fullNumber || '',
+                phoneH: phoneHData.fullNumber || '',
                 email: visitorForm.email.trim(),
                 healthCardNumber: healthCardDigits,
                 healthCardVersion: healthCardVersion.trim().toUpperCase(),
@@ -711,10 +773,16 @@ const UserDashboard = () => {
                 healthCardExpiryDate: healthCardExpiryDate,
                 notes: visitorForm.notes,
                 memo: visitorForm.memo,
-                allergies: (visitorForm.allergies || '').trim() || 'N/A',
-                drugReactions: (visitorForm.drugReactions || '').trim() || 'N/A',
-                ongoingHealthConditions: (visitorForm.ongoingHealthConditions || '').trim() || 'N/A',
-                specialNotes: (visitorForm.specialNotes || '').trim() || '',
+                // Red-zone (clinical) fields – always send so backend persists them
+                allergies: (visitorForm.allergies != null && String(visitorForm.allergies).trim()) ? String(visitorForm.allergies).trim() : 'N/A',
+                drugReactions: (visitorForm.drugReactions != null && String(visitorForm.drugReactions).trim()) ? String(visitorForm.drugReactions).trim() : 'N/A',
+                ongoingHealthConditions: (visitorForm.ongoingHealthConditions != null && String(visitorForm.ongoingHealthConditions).trim()) ? String(visitorForm.ongoingHealthConditions).trim() : 'N/A',
+                specialNotes: (visitorForm.specialNotes != null && String(visitorForm.specialNotes).trim()) ? String(visitorForm.specialNotes).trim() : '',
+                highBloodPressure: visitorForm.highBloodPressure === 'yes' || visitorForm.highBloodPressure === 'no' ? visitorForm.highBloodPressure : '',
+                heartDisease: visitorForm.heartDisease === 'yes' || visitorForm.heartDisease === 'no' ? visitorForm.heartDisease : '',
+                diabetes: visitorForm.diabetes === 'yes' || visitorForm.diabetes === 'no' ? visitorForm.diabetes : '',
+                cholesterol: visitorForm.cholesterol === 'yes' || visitorForm.cholesterol === 'no' ? visitorForm.cholesterol : '',
+                smoke: visitorForm.smoke === 'yes' || visitorForm.smoke === 'no' ? visitorForm.smoke : '',
                 guardianName: visitorForm.guardianName || '',
                 guardianPhone: guardianPhoneData.fullNumber || '',
                 ...(visitorForm.guardianId?.length === 6 && visitors.some((v) => {
@@ -751,6 +819,11 @@ const UserDashboard = () => {
                 drugReactions: 'N/A',
                 ongoingHealthConditions: 'N/A',
                 specialNotes: '',
+                highBloodPressure: '',
+                heartDisease: '',
+                diabetes: '',
+                cholesterol: '',
+                smoke: '',
                 guardianName: '',
                 guardianId: '',
                 guardianPhone: ''
@@ -795,6 +868,11 @@ const UserDashboard = () => {
             drugReactions: 'N/A',
             ongoingHealthConditions: 'N/A',
             specialNotes: '',
+            highBloodPressure: '',
+            heartDisease: '',
+            diabetes: '',
+            cholesterol: '',
+            smoke: '',
             email: '',
             phoneH: '',
             phoneM: '',
@@ -827,12 +905,17 @@ const UserDashboard = () => {
             city: visitor.city || '',
             state: visitor.province || visitor.state || '',
             postalCode: visitor.postalCode || '',
-            gender: visitor.gender || '',
+            gender: (() => { const g = (visitor.gender || '').toLowerCase(); if (g === 'male') return 'M'; if (g === 'female') return 'F'; if (g === 'other' || g === 'm' || g === 'f' || g === 'o') return (visitor.gender || '').toUpperCase().slice(0, 1); return visitor.gender || ''; })(),
             email: visitor.email || '',
             allergies: visitor.allergies || 'N/A',
             drugReactions: visitor.drugReactions || 'N/A',
             ongoingHealthConditions: visitor.ongoingHealthConditions || 'N/A',
             specialNotes: visitor.specialNotes || '',
+            highBloodPressure: visitor.highBloodPressure || '',
+            heartDisease: visitor.heartDisease || '',
+            diabetes: visitor.diabetes || '',
+            cholesterol: visitor.cholesterol || '',
+            smoke: visitor.smoke || '',
             phoneH: visitor.phoneH || '',
             phoneM: visitor.phoneM || '',
             notes: visitor.notes || '',
@@ -841,9 +924,12 @@ const UserDashboard = () => {
             guardianId: visitor.guardianId || '',
             guardianPhone: visitor.guardianPhone || ''
         });
-        setPhoneData({ fullNumber: visitor.phone || '', valid: !!visitor.phone });
+        // Backward compat: old data may have phone (B or M) but no phoneB
+        const mobile = visitor.phoneM || visitor.phone || '';
+        const business = visitor.phoneB || (visitor.phone && visitor.phone !== mobile ? visitor.phone : '');
+        setPhoneData({ fullNumber: business, valid: !!business });
         setPhoneHData({ fullNumber: visitor.phoneH || '', valid: !!visitor.phoneH });
-        setPhoneMData({ fullNumber: visitor.phoneM || '', valid: !!visitor.phoneM });
+        setPhoneMData({ fullNumber: mobile, valid: !!mobile });
         setGuardianPhoneData({ fullNumber: visitor.guardianPhone || '', valid: !!visitor.guardianPhone });
         setHealthCardNumber(formatHealthCardDisplay(visitor.healthCardNumber || ''));
         setHealthCardVersion(visitor.healthCardVersion || '');
@@ -903,7 +989,7 @@ const UserDashboard = () => {
     const handleRegisterPatient = async (patient, options = {}) => {
         if (!patient) return false;
 
-        const { reasonForVisit = '', parentInteractionId = '' } = options;
+        const { reasonForVisit = '', parentInteractionId = '', reasonForVisitNotes = '' } = options;
 
         // Check if patient already has an active (incomplete) registration
         const isAlreadyRegistered = interactions.some(i => i.visitorId === patient.id && !i.completed);
@@ -940,7 +1026,8 @@ const UserDashboard = () => {
                 entitySerial: userData.entitySerial,
                 visitorId: patient.id,
                 visitorSerial: visitorSerial,
-                reasonForVisit: reasonForVisit || ''
+                reasonForVisit: reasonForVisit || '',
+                reasonForVisitNotes: (reasonForVisitNotes != null && String(reasonForVisitNotes).trim()) ? String(reasonForVisitNotes).trim() : ''
             });
 
             if (reasonForVisit === 'followup' && parentInteractionId) {
@@ -1078,6 +1165,8 @@ const UserDashboard = () => {
                     <MasterDataProvider>
                     {activeTab === 'reception' && (
                         <ReceptionTab
+                            interactionFilter={interactionFilter}
+                            setInteractionFilter={setInteractionFilter}
                             visitors={visitors}
                             isLoadingVisitors={isLoadingVisitors}
                             searchFirstName={searchFirstName}
@@ -1135,6 +1224,7 @@ const UserDashboard = () => {
                             handlePatientDrop={handlePatientDrop}
                             warningMessage={warningMessage}
                             interactions={interactions}
+                            lastVisits={lastVisits}
                             officers={officers}
                             userData={userData}
                             draggedOverOfficer={draggedOverOfficer}
@@ -1144,6 +1234,8 @@ const UserDashboard = () => {
                             handleDragOver={handleDragOver}
                             handleDragLeave={handleDragLeave}
                             handleDrop={handleDrop}
+                            handleAssignToOfficer={handleAssignToOfficer}
+                            onOpenQueueModal={setQueueModalInteraction}
                             handleRegistrationDropOnBin={handleRegistrationDropOnBin}
                             onRequestDelete={handleRequestDeleteRegistration}
                             showDeleteRegistrationModal={showDeleteRegistrationModal}
@@ -1155,9 +1247,6 @@ const UserDashboard = () => {
                             getVisitorHealthCard={getVisitorHealthCard}
                             getOfficerName={getOfficerName}
                             onInteractionClick={handleInteractionClick}
-
-                            interactionFilter={interactionFilter}
-                            setInteractionFilter={setInteractionFilter}
 
                             getImageUrl={getImageUrl}
                             setViewingMedia={setViewingMedia}
@@ -1182,6 +1271,7 @@ const UserDashboard = () => {
                         <OfficerTab
                             userData={userData}
                             interactions={interactions}
+                            lastVisits={lastVisits}
                             visitors={visitors}
                             isLoadingInteractions={isLoadingInteractions}
                             onRefreshInteractions={() => loadInteractions(userData.entityId, interactionFilter)}
@@ -1203,6 +1293,20 @@ const UserDashboard = () => {
                     getImageUrl={getImageUrl}
                     setViewingMedia={setViewingMedia}
                     patientReports={patientReports}
+                    officers={officers}
+                    onOpenQueueModal={setQueueModalInteraction}
+                />
+            )}
+
+            {/* Queue registration modal (from cards or from interaction detail) */}
+            {queueModalInteraction && (
+                <QueueRegistrationModal
+                    isOpen={!!queueModalInteraction}
+                    onClose={() => setQueueModalInteraction(null)}
+                    interaction={queueModalInteraction}
+                    officers={officers}
+                    getVisitorName={getVisitorName}
+                    onAssign={handleAssignToOfficer}
                 />
             )}
 

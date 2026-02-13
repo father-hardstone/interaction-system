@@ -6,6 +6,7 @@ const ReportsSection = ({
     visitors = [],
     isLoadingVisitors = false,
     interactions = [],
+    lastVisits = {},
     officers = [],
     userData,
     getVisitorName,
@@ -49,8 +50,8 @@ const ReportsSection = ({
     }, [visitors, searchFirstName, searchMiddleName, searchLastName, searchSerial, searchHealthCard, searchDob]);
 
     return (
-        <div className="space-y-6">
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="flex flex-col flex-1 min-h-0">
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col flex-1 min-h-0">
                 <div className="p-4 sm:p-6 border-b border-slate-200">
                     <h2 className="text-lg font-semibold text-slate-900">Reports</h2>
                     <p className="text-sm text-slate-500 mt-1">Manage patient medical reports</p>
@@ -111,9 +112,9 @@ const ReportsSection = ({
                     />
                 </div>
 
-                <div className="overflow-x-auto">
+                <div className="flex-1 min-h-0 overflow-auto">
                     <table className="w-full border-collapse min-w-[800px]">
-                        <thead>
+                        <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200">
                             <tr className="bg-slate-50 border-b border-slate-200">
                                 <th className="px-4 sm:px-6 py-4 text-left text-xs sm:text-sm font-semibold text-slate-700 hidden md:table-cell">Date of Birth</th>
                                 <th className="px-4 sm:px-6 py-4 text-left text-xs sm:text-sm font-semibold text-slate-700">Name</th>
@@ -146,7 +147,7 @@ const ReportsSection = ({
                                 </tr>
                             ) : (
                                 filteredVisitors.map((visitor) => {
-                                    const lastVisit = interactions
+                                    const lastVisit = lastVisits[visitor.id] || interactions
                                         .filter(i => i.visitorId === visitor.id && i.completed)
                                         .sort((a, b) => new Date(b.editedAt || b.createdAt) - new Date(a.editedAt || a.createdAt))[0];
 
@@ -163,7 +164,7 @@ const ReportsSection = ({
                                                 </div>
                                             </td>
                                             <td className="px-4 sm:px-6 py-4 font-medium text-slate-900 text-xs sm:text-sm">{getVisitorSerialDisplay(visitor) || '-'}</td>
-                                            <td className="px-4 sm:px-6 py-4 text-slate-700 hidden lg:table-cell text-sm">{formatPhoneDisplay(visitor.phone) || '-'}</td>
+                                            <td className="px-4 sm:px-6 py-4 text-slate-700 hidden lg:table-cell text-sm">{formatPhoneDisplay(visitor.phoneM || visitor.phone) || '-'}</td>
                                             <td className="px-4 sm:px-6 py-4 text-slate-700 hidden xl:table-cell text-sm">{formatHealthCardDisplay(visitor.healthCardNumber || '') || '-'}</td>
                                             <td className="px-4 sm:px-6 py-4 text-slate-700 hidden xl:table-cell text-sm">{visitor.healthCardVersion || '-'}</td>
                                             <td className="px-4 sm:px-6 py-4 text-slate-700 hidden xl:table-cell text-sm">

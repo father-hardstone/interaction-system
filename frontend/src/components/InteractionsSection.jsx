@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { renderInteractionTags } from '../utils/interactionTags';
-import { stripEntityPrefix, getVisitorSerialDisplay } from '../utils/formatUtils';
+import { stripEntityPrefix, getVisitorSerialDisplay, getReasonForVisitLabel, formatPhoneDisplay, getRegistrationDisplayId, formatTimeOnly } from '../utils/formatUtils';
 import RegisterInteractionModal from './RegisterInteractionModal';
 
 const InteractionsSection = ({
     interactions,
+    lastVisits = {},
     officers,
     userData,
     draggedOverOfficer,
@@ -14,6 +15,8 @@ const InteractionsSection = ({
     handleDragOver,
     handleDragLeave,
     handleDrop,
+    handleAssignToOfficer,
+    onOpenQueueModal,
     handlePatientDrop,
     handleRegistrationDropOnBin,
     onRequestDelete,
@@ -50,6 +53,35 @@ const InteractionsSection = ({
             setSelectedOfficerId(activeOfficers[0].id);
         }
     }, [activeOfficers, selectedOfficerId]);
+
+    const [tick, setTick] = useState(() => Date.now());
+    useEffect(() => {
+        const interval = setInterval(() => setTick(Date.now()), 60000);
+        return () => clearInterval(interval);
+    }, []);
+
+    const officerQueueSortedByCreated = useMemo(
+        () =>
+            selectedOfficer
+                ? interactions
+                    .filter(i => i.officerId === selectedOfficer.id && !(i.id in pendingAssignments) && !i.completed && !i.closed)
+                    .sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0))
+                : [],
+        [interactions, selectedOfficer, pendingAssignments]
+    );
+
+    const avgConsultationMs = useMemo(() => {
+        const completed = interactions.filter(i => i.completed && i.startedAt && i.completedAt);
+        if (completed.length === 0) return 15 * 60 * 1000;
+        const total = completed.reduce((sum, i) => sum + (new Date(i.completedAt).getTime() - new Date(i.startedAt).getTime()), 0);
+        return total / completed.length;
+    }, [interactions]);
+
+    const getExpectedTurnTime = (interactionId) => {
+        const pos = officerQueueSortedByCreated.findIndex(i => i.id === interactionId);
+        if (pos < 0) return '—';
+        return formatTimeOnly(tick + pos * avgConsultationMs);
+    };
 
 
 
@@ -131,14 +163,18 @@ const InteractionsSection = ({
                                 const isBeingUnassigned = (pendingAssignments[interaction.id] === '' || pendingAssignments[interaction.id] === null);
                                 const isFailed = assignmentFailed[interaction.id];
 
-                                // Calculate Last Visit
-                                const patientHistory = interactions
-                                    .filter(past => past.visitorId === interaction.visitorId && past.completed && past.id !== interaction.id)
-                                    .sort((a, b) => new Date(b.editedAt || b.createdAt) - new Date(a.editedAt || a.createdAt));
-
-                                const lastVisitDisplay = patientHistory.length > 0
-                                    ? formatDate(patientHistory[0].editedAt || patientHistory[0].createdAt, true)
-                                    : 'New Patient';
+                                // Calculate Last Visit (prefer backend lastVisits so it's correct regardless of time filter)
+                                const fromBackend = lastVisits[interaction.visitorId];
+                                const lastVisitDisplay = fromBackend
+                                    ? formatDate(fromBackend.editedAt || fromBackend.createdAt, true)
+                                    : (() => {
+                                        const patientHistory = interactions
+                                            .filter(past => past.visitorId === interaction.visitorId && past.completed && past.id !== interaction.id)
+                                            .sort((a, b) => new Date(b.editedAt || b.createdAt) - new Date(a.editedAt || a.createdAt));
+                                        return patientHistory.length > 0
+                                            ? formatDate(patientHistory[0].editedAt || patientHistory[0].createdAt, true)
+                                            : 'New Patient';
+                                    })();
 
                                 return (
                                     <div
@@ -173,10 +209,22 @@ const InteractionsSection = ({
                                                 </div>
                                             )}
                                             <div className="flex justify-between items-start">
-                                                <span className="text-xs font-semibold text-blue-600 bg-blue-50/80 px-2 py-0.5 rounded border border-blue-100 normal-case tracking-wide">
-                                                    {stripEntityPrefix(interaction.interactionSerial)}
+                                                <span className="inline-flex items-center justify-center min-w-[2rem] text-xs font-semibold text-blue-600 bg-blue-50/80 px-2 py-0.5 rounded border border-blue-100 normal-case tracking-wide">
+                                                    {getRegistrationDisplayId(interaction)}
                                                 </span>
                                                 <div className="flex items-center gap-1.5">
+                                                    {canDrag && onOpenQueueModal && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => { e.stopPropagation(); onOpenQueueModal(interaction); }}
+                                                            className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors opacity-70 hover:opacity-100 sm:opacity-0 sm:group-hover/card:opacity-100"
+                                                            title="Queue (assign to doctor)"
+                                                        >
+                                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h10M4 18h16m4-6l4 4 4-4" />
+                                                            </svg>
+                                                        </button>
+                                                    )}
                                                     {canDrag && (
                                                         <button
                                                             type="button"
@@ -219,6 +267,10 @@ const InteractionsSection = ({
                                                 <div>
                                                     <span className="text-xs font-semibold text-slate-400 normal-case block mb-0.5">Registration Time</span>
                                                     <span className="font-semibold text-slate-700">{formatDate(interaction.createdAt, true)}</span>
+                                                </div>
+                                                <div>
+                                                    <span className="text-xs font-semibold text-slate-400 normal-case block mb-0.5">Reason</span>
+                                                    <span className="font-semibold text-slate-700">{getReasonForVisitLabel(interaction.reasonForVisit)}</span>
                                                 </div>
                                             </div>
 
@@ -335,10 +387,11 @@ const InteractionsSection = ({
                                                 );
                                             })}
                                         {interactions
-                                            .filter(i => i.officerId === selectedOfficer.id && !(i.id in pendingAssignments))
+                                            .filter(i => i.officerId === selectedOfficer.id && !(i.id in pendingAssignments) && !i.completed && !i.closed)
                                             .sort((a, b) => new Date(b.editedAt || b.createdAt).getTime() - new Date(a.editedAt || a.createdAt).getTime())
                                             .map((interaction) => {
                                                 const canDrag = (userData?.role === 'receptionist' || userData?.role === 'officer') && !interaction.started && !interaction.completed && !interaction.closed;
+                                                const visitor = visitors.find(v => v.id === interaction.visitorId);
                                                 return (
                                                     <div
                                                         key={interaction.id}
@@ -349,8 +402,8 @@ const InteractionsSection = ({
                                                     >
                                                         <div className="flex-1 min-w-0 overflow-hidden">
                                                             <div className="flex gap-1 items-center mb-2">
-                                                                <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 normal-case tracking-tight shrink-0">
-                                                                    {stripEntityPrefix(interaction.interactionSerial) || 'REG-PENDING'}
+                                                                <span className="inline-flex items-center justify-center min-w-[2rem] text-xs font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 normal-case tracking-tight shrink-0">
+                                                                    {getRegistrationDisplayId(interaction)}
                                                                 </span>
                                                                 {canDrag && (
                                                                     <svg className="w-2.5 h-2.5 text-blue-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -366,6 +419,21 @@ const InteractionsSection = ({
                                                                 </div>
                                                             </div>
 
+                                                            <div className="mt-1.5 space-y-1 text-xs">
+                                                                <div>
+                                                                    <span className="text-slate-400 normal-case">Mobile </span>
+                                                                    <span className="font-medium text-slate-700">{formatPhoneDisplay(visitor?.phoneM || visitor?.phone) || '—'}</span>
+                                                                </div>
+                                                                <div>
+                                                                    <span className="text-slate-400 normal-case">Reason </span>
+                                                                    <span className="font-medium text-slate-700">{getReasonForVisitLabel(interaction.reasonForVisit)}</span>
+                                                                </div>
+                                                                <div>
+                                                                    <span className="text-slate-400 normal-case">Expected turn </span>
+                                                                    <span className="font-medium text-slate-700">{getExpectedTurnTime(interaction.id)}</span>
+                                                                </div>
+                                                            </div>
+
                                                             <div className="mt-2 text-xs text-slate-400 italic">
                                                                 {formatDate(interaction.createdAt)}
                                                             </div>
@@ -377,7 +445,7 @@ const InteractionsSection = ({
                                                     </div>
                                                 );
                                             })}
-                                        {interactions.filter(i => i.officerId === selectedOfficer.id && !(i.id in pendingAssignments)).length === 0 && !Object.values(pendingAssignments).some(id => id === selectedOfficer.id) && (
+                                        {interactions.filter(i => i.officerId === selectedOfficer.id && !(i.id in pendingAssignments) && !i.completed && !i.closed).length === 0 && !Object.values(pendingAssignments).some(id => id === selectedOfficer.id) && (
                                             <div className="text-xs text-slate-400 italic text-center py-4 border-2 border-dashed border-slate-200 rounded-lg">
                                                 Drop registrations here
                                             </div>
@@ -400,6 +468,7 @@ const InteractionsSection = ({
                 onClose={() => setShowRegisterModal(false)}
                 visitors={visitors}
                 interactions={interactions}
+                lastVisits={lastVisits}
                 getVisitorName={getVisitorName}
                 getVisitorSerial={getVisitorSerial}
                 getVisitorHealthCard={getVisitorHealthCard}
