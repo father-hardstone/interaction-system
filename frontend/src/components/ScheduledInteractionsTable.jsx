@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getRegistrationDisplayId, getReasonForVisitLabel, formatAccountingNumber, formatTimeOnly } from '../utils/formatUtils';
+import { getRegistrationDisplayId, getReasonForVisitLabel, formatTimeOnly } from '../utils/formatUtils';
 
 /** Wait time from registration (createdAt) to now, in whole minutes. Updates when tick changes. */
 const getWaitMinutesAgo = (createdAt, now) => {
@@ -76,16 +76,13 @@ const ScheduledInteractionsTable = ({
         return (code && String(code).trim()) ? String(code).trim() : '—';
     };
 
-    /** Billing code from last visit: prefer service code (service), then accounting number. */
+    /** Billing code from last visit (service code only; accounting number is never shown). */
     const getLastVisitBillingCode = (interaction) => {
         const last = getLastVisitInteraction(interaction);
         const line = last?.serviceLines?.[0];
         if (!line) return '—';
-        const serviceCode = (line.service || '').trim();
-        const accountingNum = (line.accountingNumber || '').trim();
-        if (serviceCode) return serviceCode;
-        if (accountingNum) return formatAccountingNumber(accountingNum);
-        return '—';
+        const serviceCode = (line.service || line.billingCode || '').trim();
+        return serviceCode || '—';
     };
 
     return (
@@ -149,7 +146,12 @@ const ScheduledInteractionsTable = ({
                                     </td>
                                     <td className="px-3 sm:px-4 py-3 align-middle text-sm text-slate-700 border-l border-slate-100">{formatTimeOnly(interaction.createdAt)}</td>
                                     <td className="px-3 sm:px-4 py-3 align-middle text-sm font-medium text-slate-700 border-l border-slate-100">{formatWaitTime(interaction.createdAt, tick)}</td>
-                                    <td className={`px-3 sm:px-4 py-3 align-middle text-sm text-slate-700 border-l border-slate-100 ${getReasonCellBg(interaction.reasonForVisit)}`}>{getReasonForVisitLabel(interaction.reasonForVisit)}</td>
+                                    <td className={`px-3 sm:px-4 py-3 align-middle text-sm text-slate-700 border-l border-slate-100 ${getReasonCellBg(interaction.reasonForVisit)}`}>
+                                        <div>{getReasonForVisitLabel(interaction.reasonForVisit)}</div>
+                                        {(interaction.reasonForVisitNotes || '').trim() && (
+                                            <div className="text-xs text-slate-600 mt-0.5 line-clamp-2" title={interaction.reasonForVisitNotes.trim()}>{interaction.reasonForVisitNotes.trim()}</div>
+                                        )}
+                                    </td>
                                     <td className="px-3 sm:px-4 py-3 align-middle text-sm text-slate-700 border-l border-slate-100">{getLastVisitDate(interaction)}</td>
                                     <td className="px-3 sm:px-4 py-3 align-middle text-sm text-slate-700 border-l border-slate-100">{getLastVisitDuration(interaction)}</td>
                                     <td className="px-3 sm:px-4 py-3 align-middle text-sm text-slate-700 border-l border-slate-100">{getLastVisitDiagCode(interaction)}</td>

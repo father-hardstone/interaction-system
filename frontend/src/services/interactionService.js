@@ -25,6 +25,11 @@ export const interactionService = {
         return response.data;
     },
 
+    cancel: async (interactionId) => {
+        const response = await api.put(`/interactions/${interactionId}/cancel`);
+        return response.data;
+    },
+
     saveDetails: async (interactionId, details) => {
         const response = await api.put(`/interactions/${interactionId}/details`, details);
         return response.data;

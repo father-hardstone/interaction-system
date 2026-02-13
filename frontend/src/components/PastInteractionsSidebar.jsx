@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import ReportDetailsModal from './ReportDetailsModal';
 import supabaseStorageService from '../services/supabaseService';
-import { formatDateMMDDYYYY, getShortInteractionId, formatAccountingNumber } from '../utils/formatUtils';
+import { formatDateMMDDYYYY, getShortInteractionId } from '../utils/formatUtils';
 
 const PastInteractionsSidebar = ({
     activePatientVisitorId,
@@ -80,33 +80,27 @@ const PastInteractionsSidebar = ({
                                 const timeStr = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
                                 const diag = interaction.serviceLines?.[0]?.diagnostic || 'No Dx';
                                 const diagShort = diag.split(' - ')[0];
-                                const acct = interaction.serviceLines?.[0]?.accountingNumber;
-                                const billingCode = acct ? formatAccountingNumber(acct) : '-';
+                                // Billing code only (service code). Accounting number is never shown.
+                                const line = interaction.serviceLines?.[0];
+                                const billingCode = (line?.service || line?.billingCode || '').trim() || '—';
 
                                 return (
                                     <button
                                         key={interaction.id}
                                         type="button"
                                         onClick={() => onInteractionClick?.(interaction)}
-                                        className="w-full text-left p-4 rounded-xl border border-slate-200 bg-slate-100 hover:bg-slate-200 hover:border-slate-300 transition-all focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-1"
+                                        className="w-full text-left px-3 py-2 rounded-lg border border-slate-200 bg-slate-100 hover:bg-slate-200 hover:border-slate-300 transition-all focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-1"
+                                        title={`${dateStr} ${timeStr} · ${diagShort} · ${billingCode}`}
                                     >
-                                        <div className="flex items-start justify-between gap-2 mb-3">
-                                            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider shrink-0">
-                                                {getShortInteractionId(interaction.interactionSerial)}
-                                            </span>
-                                            <span className="text-base font-bold text-slate-900 shrink-0">
-                                                {dateStr} {timeStr}
-                                            </span>
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-3 text-sm">
-                                            <div className="min-w-0">
-                                                <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-0.5">Diagnosis</div>
-                                                <div className="font-medium text-slate-800 truncate" title={diagShort}>{diagShort}</div>
-                                            </div>
-                                            <div className="min-w-0">
-                                                <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-0.5">Billing Code</div>
-                                                <div className="font-medium text-slate-800 font-mono">{billingCode}</div>
-                                            </div>
+                                        <div className="flex items-center gap-2 text-[11px] text-slate-800 font-medium truncate">
+                                            <span className="shrink-0 font-semibold text-slate-600">{getShortInteractionId(interaction.interactionSerial)}</span>
+                                            <span className="text-slate-400 shrink-0">·</span>
+                                            <span className="shrink-0">{dateStr}</span>
+                                            <span className="shrink-0 text-slate-500">{timeStr}</span>
+                                            <span className="text-slate-400 shrink-0">·</span>
+                                            <span className="truncate min-w-0" title={diagShort}>{diagShort}</span>
+                                            <span className="text-slate-400 shrink-0">·</span>
+                                            <span className="shrink-0 font-mono text-slate-700">{billingCode}</span>
                                         </div>
                                     </button>
                                 );

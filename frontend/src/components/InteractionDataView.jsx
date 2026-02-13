@@ -15,19 +15,6 @@ const parseScratchpadPaths = (scratchpad) => {
     return [scratchpad];
 };
 
-/** Get primary path for display (first sheet when multi-sheet). */
-const getPrimaryScratchpadPath = (scratchpad) => {
-    const paths = parseScratchpadPaths(scratchpad);
-    return paths[0] || scratchpad;
-};
-
-const formatAccountingNumber = (v) => {
-    const d = String(v || '').replace(/\D/g, '').slice(0, 6);
-    if (d.length <= 2) return d;
-    if (d.length <= 4) return `${d.slice(0, 2)}-${d.slice(2)}`;
-    return `${d.slice(0, 2)}-${d.slice(2, 4)}-${d.slice(4)}`;
-};
-
 const InteractionDataView = ({
     interaction,
     getImageUrl,
@@ -37,6 +24,7 @@ const InteractionDataView = ({
 }) => {
     const [imageLoadingStates, setImageLoadingStates] = useState({});
     const [supabaseUrls, setSupabaseUrls] = useState({});
+    const [sheetIndices, setSheetIndices] = useState({ cc: 0, subjective: 0, objective: 0, assessmentPlan: 0 });
 
     if (!interaction) return null;
 
@@ -126,6 +114,67 @@ const InteractionDataView = ({
 
     const getImageId = (type, scratchpad) => `${type}-${scratchpad}`;
 
+    const setSheetIndex = (sectionKey, index) => {
+        setSheetIndices(prev => ({ ...prev, [sectionKey]: index }));
+    };
+
+    /** Renders scratchpad image(s) with optional prev/next when multiple sheets. */
+    const renderScratchpadSheets = (sectionKey, scratchpad, zoomTitle) => {
+        const paths = parseScratchpadPaths(scratchpad);
+        if (!paths.length) return null;
+        const currentIndex = Math.min(sheetIndices[sectionKey] ?? 0, paths.length - 1);
+        const currentPath = paths[currentIndex];
+        const imgId = getImageId(sectionKey, currentPath);
+        const isLoading = imageLoadingStates[imgId] !== false;
+        const url = getResolvedImageUrl(currentPath);
+        return (
+            <div className="mt-2 relative min-h-[100px]">
+                {isLoading && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-slate-50 rounded-xl z-10">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                    </div>
+                )}
+                <img
+                    src={url}
+                    alt={`${sectionKey} Scratchpad`}
+                    className="max-w-full h-auto rounded-xl border-2 border-slate-100 cursor-zoom-in hover:border-blue-400 transition-all shadow-sm"
+                    onClick={() => url && setViewingMedia({ type: 'image', url, title: zoomTitle })}
+                    onLoad={() => handleImageLoad(imgId)}
+                    onError={() => handleImageError(imgId)}
+                    onLoadStart={() => {
+                        if (imageLoadingStates[imgId] === undefined) {
+                            setImageLoadingStates(prev => ({ ...prev, [imgId]: true }));
+                        }
+                    }}
+                    style={{ display: isLoading ? 'none' : 'block' }}
+                />
+                {paths.length > 1 && (
+                    <div className="flex items-center justify-center gap-2 mt-2">
+                        <button
+                            type="button"
+                            onClick={() => setSheetIndex(sectionKey, currentIndex - 1)}
+                            disabled={currentIndex <= 0}
+                            className="p-2 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                            aria-label="Previous sheet"
+                        >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                        </button>
+                        <span className="text-xs font-medium text-slate-600 min-w-[5rem] text-center">Sheet {currentIndex + 1} of {paths.length}</span>
+                        <button
+                            type="button"
+                            onClick={() => setSheetIndex(sectionKey, currentIndex + 1)}
+                            disabled={currentIndex >= paths.length - 1}
+                            className="p-2 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                            aria-label="Next sheet"
+                        >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                        </button>
+                    </div>
+                )}
+            </div>
+        );
+    };
+
     const formatSimpleDate = (dateString) => {
         if (!dateString) return 'N/A';
         const parts = dateString.split('-');
@@ -152,30 +201,7 @@ const InteractionDataView = ({
                                 {interaction.ccReason.text}
                             </p>
                         )}
-                        {interaction.ccReason.hasScratchpad && interaction.ccReason.scratchpad && (
-                            <div className="mt-2 relative min-h-[100px]">
-                                {imageLoadingStates[getImageId('cc', getPrimaryScratchpadPath(interaction.ccReason.scratchpad))] !== false && (
-                                    <div className="absolute inset-0 flex items-center justify-center bg-slate-50 rounded-xl z-10">
-                                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                                    </div>
-                                )}
-                                <img
-                                    src={getResolvedImageUrl(getPrimaryScratchpadPath(interaction.ccReason.scratchpad))}
-                                    alt="CC Scratchpad"
-                                    className="max-w-full h-auto rounded-xl border-2 border-slate-100 cursor-zoom-in hover:border-blue-400 transition-all shadow-sm"
-                                    onClick={() => { const url = getResolvedImageUrl(getPrimaryScratchpadPath(interaction.ccReason.scratchpad)); if (url) setViewingMedia({ type: 'image', url, title: 'Chief Complaint Handwriting' }); }}
-                                    onLoad={() => handleImageLoad(getImageId('cc', getPrimaryScratchpadPath(interaction.ccReason.scratchpad)))}
-                                    onError={() => handleImageError(getImageId('cc', getPrimaryScratchpadPath(interaction.ccReason.scratchpad)))}
-                                    onLoadStart={() => {
-                                        const imgId = getImageId('cc', getPrimaryScratchpadPath(interaction.ccReason.scratchpad));
-                                        if (imageLoadingStates[imgId] === undefined) {
-                                            setImageLoadingStates(prev => ({ ...prev, [imgId]: true }));
-                                        }
-                                    }}
-                                    style={{ display: imageLoadingStates[getImageId('cc', getPrimaryScratchpadPath(interaction.ccReason.scratchpad))] === false ? 'block' : 'none' }}
-                                />
-                            </div>
-                        )}
+                        {interaction.ccReason.hasScratchpad && interaction.ccReason.scratchpad && renderScratchpadSheets('cc', interaction.ccReason.scratchpad, 'Chief Complaint Handwriting')}
                     </div>
                 </div>
             )}
@@ -190,30 +216,7 @@ const InteractionDataView = ({
                                 {interaction.subjective.text}
                             </p>
                         )}
-                        {interaction.subjective.hasScratchpad && interaction.subjective.scratchpad && (
-                            <div className="mt-2 relative min-h-[100px]">
-                                {imageLoadingStates[getImageId('subjective', getPrimaryScratchpadPath(interaction.subjective.scratchpad))] !== false && (
-                                    <div className="absolute inset-0 flex items-center justify-center bg-slate-50 rounded-xl z-10">
-                                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                                    </div>
-                                )}
-                                <img
-                                    src={getResolvedImageUrl(getPrimaryScratchpadPath(interaction.subjective.scratchpad))}
-                                    alt="S Scratchpad"
-                                    className="max-w-full h-auto rounded-xl border-2 border-slate-100 cursor-zoom-in hover:border-blue-400 transition-all shadow-sm"
-                                    onClick={() => { const url = getResolvedImageUrl(getPrimaryScratchpadPath(interaction.subjective.scratchpad)); if (url) setViewingMedia({ type: 'image', url, title: 'Subjective Handwriting' }); }}
-                                    onLoad={() => handleImageLoad(getImageId('subjective', getPrimaryScratchpadPath(interaction.subjective.scratchpad)))}
-                                    onError={() => handleImageError(getImageId('subjective', getPrimaryScratchpadPath(interaction.subjective.scratchpad)))}
-                                    onLoadStart={() => {
-                                        const imgId = getImageId('subjective', getPrimaryScratchpadPath(interaction.subjective.scratchpad));
-                                        if (imageLoadingStates[imgId] === undefined) {
-                                            setImageLoadingStates(prev => ({ ...prev, [imgId]: true }));
-                                        }
-                                    }}
-                                    style={{ display: imageLoadingStates[getImageId('subjective', getPrimaryScratchpadPath(interaction.subjective.scratchpad))] === false ? 'block' : 'none' }}
-                                />
-                            </div>
-                        )}
+                        {interaction.subjective.hasScratchpad && interaction.subjective.scratchpad && renderScratchpadSheets('subjective', interaction.subjective.scratchpad, 'Subjective Handwriting')}
                     </div>
                 </div>
             )}
@@ -228,30 +231,7 @@ const InteractionDataView = ({
                                 {interaction.objective.text}
                             </p>
                         )}
-                        {interaction.objective.hasScratchpad && interaction.objective.scratchpad && (
-                            <div className="mt-2 relative min-h-[100px]">
-                                {imageLoadingStates[getImageId('objective', getPrimaryScratchpadPath(interaction.objective.scratchpad))] !== false && (
-                                    <div className="absolute inset-0 flex items-center justify-center bg-slate-50 rounded-xl z-10">
-                                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                                    </div>
-                                )}
-                                <img
-                                    src={getResolvedImageUrl(getPrimaryScratchpadPath(interaction.objective.scratchpad))}
-                                    alt="O Scratchpad"
-                                    className="max-w-full h-auto rounded-xl border-2 border-slate-100 cursor-zoom-in hover:border-blue-400 transition-all shadow-sm"
-                                    onClick={() => { const url = getResolvedImageUrl(getPrimaryScratchpadPath(interaction.objective.scratchpad)); if (url) setViewingMedia({ type: 'image', url, title: 'Objective Handwriting' }); }}
-                                    onLoad={() => handleImageLoad(getImageId('objective', getPrimaryScratchpadPath(interaction.objective.scratchpad)))}
-                                    onError={() => handleImageError(getImageId('objective', getPrimaryScratchpadPath(interaction.objective.scratchpad)))}
-                                    onLoadStart={() => {
-                                        const imgId = getImageId('objective', getPrimaryScratchpadPath(interaction.objective.scratchpad));
-                                        if (imageLoadingStates[imgId] === undefined) {
-                                            setImageLoadingStates(prev => ({ ...prev, [imgId]: true }));
-                                        }
-                                    }}
-                                    style={{ display: imageLoadingStates[getImageId('objective', getPrimaryScratchpadPath(interaction.objective.scratchpad))] === false ? 'block' : 'none' }}
-                                />
-                            </div>
-                        )}
+                        {interaction.objective.hasScratchpad && interaction.objective.scratchpad && renderScratchpadSheets('objective', interaction.objective.scratchpad, 'Objective Handwriting')}
                     </div>
                 </div>
             )}
@@ -266,30 +246,7 @@ const InteractionDataView = ({
                                 {interaction.assessmentPlan.text}
                             </p>
                         )}
-                        {interaction.assessmentPlan.hasScratchpad && interaction.assessmentPlan.scratchpad && (
-                            <div className="mt-2 relative min-h-[100px]">
-                                {imageLoadingStates[getImageId('assessmentPlan', getPrimaryScratchpadPath(interaction.assessmentPlan.scratchpad))] !== false && (
-                                    <div className="absolute inset-0 flex items-center justify-center bg-slate-50 rounded-xl z-10">
-                                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                                    </div>
-                                )}
-                                <img
-                                    src={getResolvedImageUrl(getPrimaryScratchpadPath(interaction.assessmentPlan.scratchpad))}
-                                    alt="A&P Scratchpad"
-                                    className="max-w-full h-auto rounded-xl border-2 border-slate-100 cursor-zoom-in hover:border-blue-400 transition-all shadow-sm"
-                                    onClick={() => { const url = getResolvedImageUrl(getPrimaryScratchpadPath(interaction.assessmentPlan.scratchpad)); if (url) setViewingMedia({ type: 'image', url, title: 'Assessment & Plan Handwriting' }); }}
-                                    onLoad={() => handleImageLoad(getImageId('assessmentPlan', getPrimaryScratchpadPath(interaction.assessmentPlan.scratchpad)))}
-                                    onError={() => handleImageError(getImageId('assessmentPlan', getPrimaryScratchpadPath(interaction.assessmentPlan.scratchpad)))}
-                                    onLoadStart={() => {
-                                        const imgId = getImageId('assessmentPlan', getPrimaryScratchpadPath(interaction.assessmentPlan.scratchpad));
-                                        if (imageLoadingStates[imgId] === undefined) {
-                                            setImageLoadingStates(prev => ({ ...prev, [imgId]: true }));
-                                        }
-                                    }}
-                                    style={{ display: imageLoadingStates[getImageId('assessmentPlan', getPrimaryScratchpadPath(interaction.assessmentPlan.scratchpad))] === false ? 'block' : 'none' }}
-                                />
-                            </div>
-                        )}
+                        {interaction.assessmentPlan.hasScratchpad && interaction.assessmentPlan.scratchpad && renderScratchpadSheets('assessmentPlan', interaction.assessmentPlan.scratchpad, 'Assessment & Plan Handwriting')}
                     </div>
                 </div>
             )}
@@ -409,11 +366,8 @@ const InteractionDataView = ({
                                     <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
                                         <td className="px-4 py-3">
                                             <div className="font-semibold text-blue-700">{line.diagnostic}</div>
-                                            {(line.suffix || line.accountingNumber) && (
-                                                <div className="text-xs text-slate-400 mt-0.5">
-                                                    {line.suffix && <span className="mr-2">Suffix: {line.suffix}</span>}
-                                                    {line.accountingNumber && <span>Acct: {formatAccountingNumber(line.accountingNumber)}</span>}
-                                                </div>
+                                            {line.suffix && (
+                                                <div className="text-xs text-slate-400 mt-0.5">Suffix: {line.suffix}</div>
                                             )}
                                         </td>
                                         <td className="px-4 py-3 text-slate-600 max-w-[150px] truncate">{line.service}</td>

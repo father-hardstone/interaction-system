@@ -3,6 +3,37 @@ import { renderInteractionTags } from '../utils/interactionTags';
 import { stripEntityPrefix, getVisitorSerialDisplay, getReasonForVisitLabel, formatPhoneDisplay, getRegistrationDisplayId, formatTimeOnly } from '../utils/formatUtils';
 import RegisterInteractionModal from './RegisterInteractionModal';
 
+/** Registration status for queue cards: Ongoing | Followup | New | Refill (from reasonForVisit / ongoing). */
+const getRegistrationStatus = (interaction) => {
+    if (interaction.ongoing || interaction.started) return { label: 'Ongoing', isNewVisit: false };
+    const r = (interaction.reasonForVisit || '').trim();
+    if (r === 'followup') return { label: 'Followup', isNewVisit: false };
+    if (r === 'refill_medicine') return { label: 'Refill', isNewVisit: false };
+    return { label: 'New', isNewVisit: true };
+};
+
+/** Last completed visit's first diagnostic code for this visitor. */
+const getLastVisitDiagCode = (interaction, interactions, lastVisits) => {
+    const fromBackend = lastVisits[interaction?.visitorId];
+    if (fromBackend?.serviceLines?.[0]?.diagnostic) {
+        const code = String(fromBackend.serviceLines[0].diagnostic).trim();
+        if (code) return code;
+    }
+    const past = interactions
+        .filter(i => i.visitorId === interaction.visitorId && i.completed && i.id !== interaction.id)
+        .sort((a, b) => new Date(b.editedAt || b.createdAt) - new Date(a.editedAt || a.createdAt))[0];
+    const code = past?.serviceLines?.[0]?.diagnostic;
+    return (code && String(code).trim()) ? String(code).trim() : '—';
+};
+
+/** Minutes waiting since registration (createdAt). */
+const getMinutesWaiting = (createdAt, now) => {
+    if (!createdAt) return '—';
+    const ms = now - new Date(createdAt).getTime();
+    if (ms < 0) return '0';
+    return String(Math.floor(ms / 60000));
+};
+
 const InteractionsSection = ({
     interactions,
     lastVisits = {},
@@ -20,10 +51,16 @@ const InteractionsSection = ({
     handlePatientDrop,
     handleRegistrationDropOnBin,
     onRequestDelete,
+    onRequestCancel,
     showDeleteRegistrationModal,
     setShowDeleteRegistrationModal,
     registrationToDelete,
     handleDeleteRegistration,
+    showCancelRegistrationModal,
+    setShowCancelRegistrationModal,
+    registrationToCancel,
+    handleCancelRegistration,
+    isCancellingRegistration,
     getVisitorName,
     getVisitorSerial,
     getVisitorHealthCard,
@@ -64,7 +101,7 @@ const InteractionsSection = ({
         () =>
             selectedOfficer
                 ? interactions
-                    .filter(i => i.officerId === selectedOfficer.id && !(i.id in pendingAssignments) && !i.completed && !i.closed)
+                    .filter(i => !i.cancelled && i.officerId === selectedOfficer.id && !(i.id in pendingAssignments) && !i.completed && !i.closed && !i.started)
                     .sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0))
                 : [],
         [interactions, selectedOfficer, pendingAssignments]
@@ -106,7 +143,7 @@ const InteractionsSection = ({
             <div className="flex-1 flex flex-col lg:flex-row gap-6 min-h-0 p-4 sm:p-6">
                 {/* Left Side - Unassigned Interactions */}
                 <div className="flex-[3] flex flex-col min-w-0">
-                    <div className="flex justify-between items-center mb-4">
+                    <div className="flex justify-between items-center mb-1">
                         <h3 className="text-sm font-semibold text-slate-700">Unassigned Registrations</h3>
                         <div
                             onDragOver={(e) => {
@@ -123,13 +160,16 @@ const InteractionsSection = ({
                                 ? 'bg-red-100 border-2 border-red-500 bg-opacity-90 shadow-lg scale-110'
                                 : 'bg-red-50 hover:bg-red-100 border-2 border-red-200'
                                 }`}
-                            title="Drop registration here to delete"
+                            title="Drop registration here to unregister"
                         >
                             <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                             </svg>
                         </div>
                     </div>
+                    <p className="text-xs text-slate-500 mb-3">
+                        {interactions.filter(i => !i.cancelled && (!i.officerId || i.officerId === '') && !pendingInteractions.find(p => p.id === i.id && p.isPending) && !(i.id in pendingAssignments)).length} in operations
+                    </p>
                     <div
                         onDragOver={(e) => {
                             e.preventDefault();
@@ -150,6 +190,7 @@ const InteractionsSection = ({
                         {/* Show existing interactions + optimistic unassigned (being moved from doctor) */}
                         {interactions
                             .filter(i => {
+                                if (i.cancelled) return false;
                                 if (pendingInteractions.find(p => p.id === i.id && p.isPending)) return false;
                                 // Being moved to an officer – show in officer column only
                                 if (i.id in pendingAssignments && pendingAssignments[i.id] !== '' && pendingAssignments[i.id] != null) return false;
@@ -176,6 +217,11 @@ const InteractionsSection = ({
                                             : 'New Patient';
                                     })();
 
+                                const status = getRegistrationStatus(interaction);
+                                const visitor = visitors.find(v => v.id === interaction.visitorId);
+                                const diagCode = getLastVisitDiagCode(interaction, interactions, lastVisits);
+                                const minsWaiting = getMinutesWaiting(interaction.createdAt, tick);
+
                                 return (
                                     <div
                                         key={interaction.id}
@@ -186,13 +232,11 @@ const InteractionsSection = ({
                                             setDraggedOverDelete(false);
                                         }}
                                         onClick={() => onInteractionClick(interaction)}
-                                        className={`group/card relative bg-white border border-slate-200 rounded-lg p-3 transition-all duration-300 hover:shadow-md hover:shadow-blue-500/5 hover:-translate-y-0.5 active:scale-[0.98] flex flex-col justify-between h-fit overflow-hidden max-w-[220px] ${isBeingDeleted ? 'ring-2 ring-red-500 bg-red-50' : isFailed ? 'ring-2 ring-red-500 bg-red-100 border-red-300 shadow-lg shadow-red-200/50' : 'hover:border-blue-400'}`}
+                                        className={`group/card relative bg-white border border-slate-200 rounded-lg p-2.5 transition-all duration-300 hover:shadow-md hover:shadow-blue-500/5 hover:-translate-y-0.5 active:scale-[0.98] flex flex-col justify-between h-fit overflow-hidden max-w-[220px] ${isBeingDeleted ? 'ring-2 ring-red-500 bg-red-50' : isFailed ? 'ring-2 ring-red-500 bg-red-100 border-red-300 shadow-lg shadow-red-200/50' : 'hover:border-blue-400'}`}
                                     >
-                                        <div className="absolute top-0 right-0 w-16 h-16 bg-blue-50/20 rounded-full -mr-6 -mt-6 transition-transform group-hover/card:scale-110"></div>
-
-                                        <div className="relative flex flex-col h-full gap-1.5">
+                                        <div className="relative flex flex-col h-full gap-1 min-w-0">
                                             {isBeingUnassigned && (
-                                                <div className={`absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-2xl transition-colors duration-200 ${isFailed ? 'bg-red-100/95' : 'bg-white/90 backdrop-blur-sm'}`}>
+                                                <div className={`absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-lg transition-colors duration-200 ${isFailed ? 'bg-red-100/95' : 'bg-white/90 backdrop-blur-sm'}`}>
                                                     {isFailed ? (
                                                         <>
                                                             <svg className="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -208,81 +252,52 @@ const InteractionsSection = ({
                                                     )}
                                                 </div>
                                             )}
-                                            <div className="flex justify-between items-start">
-                                                <span className="inline-flex items-center justify-center min-w-[2rem] text-xs font-semibold text-blue-600 bg-blue-50/80 px-2 py-0.5 rounded border border-blue-100 normal-case tracking-wide">
+                                            <div className="flex justify-between items-start gap-1 min-w-0">
+                                                <span className="inline-flex items-center justify-center min-w-[2rem] text-xs font-semibold text-blue-600 bg-blue-50/80 px-1.5 py-0.5 rounded border border-blue-100 normal-case tracking-wide shrink-0">
                                                     {getRegistrationDisplayId(interaction)}
                                                 </span>
-                                                <div className="flex items-center gap-1.5">
+                                                <span className={`shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded border normal-case ${status.label === 'Ongoing' ? 'bg-blue-50 text-blue-600 border-blue-100' : status.label === 'Followup' ? 'bg-teal-50 text-teal-600 border-teal-100' : status.label === 'Refill' ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-slate-100 text-slate-700 border-slate-200'}`}>
+                                                    {status.label}
+                                                </span>
+                                                <div className="flex items-center gap-1 shrink-0">
                                                     {canDrag && onOpenQueueModal && (
-                                                        <button
-                                                            type="button"
-                                                            onClick={(e) => { e.stopPropagation(); onOpenQueueModal(interaction); }}
-                                                            className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors opacity-70 hover:opacity-100 sm:opacity-0 sm:group-hover/card:opacity-100"
-                                                            title="Queue (assign to doctor)"
-                                                        >
-                                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h10M4 18h16m4-6l4 4 4-4" />
-                                                            </svg>
+                                                        <button type="button" onClick={(e) => { e.stopPropagation(); onOpenQueueModal(interaction); }} className="p-1 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 opacity-70 hover:opacity-100 sm:opacity-0 sm:group-hover/card:opacity-100" title="Queue (assign to doctor)">
+                                                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h10M4 18h16m4-6l4 4 4-4" /></svg>
+                                                        </button>
+                                                    )}
+                                                    {canDrag && onRequestCancel && (
+                                                        <button type="button" onClick={(e) => { e.stopPropagation(); onRequestCancel(interaction); }} className="p-1 rounded text-slate-400 hover:text-amber-600 hover:bg-amber-50 opacity-70 hover:opacity-100 sm:opacity-0 sm:group-hover/card:opacity-100" title="Cancel registration">
+                                                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                                                         </button>
                                                     )}
                                                     {canDrag && (
-                                                        <button
-                                                            type="button"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                onRequestDelete?.(interaction);
-                                                            }}
-                                                            className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors opacity-70 hover:opacity-100 sm:opacity-0 sm:group-hover/card:opacity-100"
-                                                            title="Delete registration"
-                                                        >
-                                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                                            </svg>
+                                                        <button type="button" onClick={(e) => { e.stopPropagation(); onRequestDelete?.(interaction); }} className="p-1 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 opacity-70 hover:opacity-100 sm:opacity-0 sm:group-hover/card:opacity-100" title="Unregister">
+                                                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                                                         </button>
                                                     )}
-                                                    {canDrag && (
-                                                        <div className="opacity-0 group-hover/card:opacity-100 transition-opacity">
-                                                            <svg className="w-4 h-4 text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M4 6h16M4 12h16M4 18h16" />
-                                                            </svg>
-                                                        </div>
-                                                    )}
+                                                    {canDrag && <div className="opacity-0 group-hover/card:opacity-100"><svg className="w-3.5 h-3.5 text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M4 6h16M4 12h16M4 18h16" /></svg></div>}
                                                 </div>
                                             </div>
-
-                                            <div className="text-xl font-bold text-slate-900 truncate normal-case leading-tight">
+                                            {status.isNewVisit && (interaction.reasonForVisitNotes || '').trim() && (
+                                                <p className="text-[10px] text-slate-600 leading-tight line-clamp-2 pr-1">{interaction.reasonForVisitNotes.trim()}</p>
+                                            )}
+                                            <div className="text-sm font-bold text-slate-900 truncate normal-case leading-tight">
                                                 {getVisitorName(interaction.visitorId)}
                                             </div>
-
-                                            <div className="flex flex-col gap-2 text-sm">
-                                                <div>
-                                                    <span className="text-xs font-semibold text-slate-400 normal-case block mb-0.5">Health Card</span>
-                                                    <span className="font-semibold text-slate-700 font-sans tracking-wider">
-                                                        {getVisitorHealthCard(interaction.visitorId)}
-                                                        {(visitors.find(v => v.id === interaction.visitorId)?.healthCardVersion || '').trim()
-                                                            ? ` (${(visitors.find(v => v.id === interaction.visitorId)?.healthCardVersion || '').toUpperCase()})`
-                                                            : ''}
-                                                    </span>
+                                            <div className="flex flex-col gap-0.5 text-[10px] text-slate-900">
+                                                <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0 truncate">
+                                                    <span className="text-slate-500 shrink-0">Phone</span><span className="font-medium truncate">{formatPhoneDisplay(visitor?.phoneM || visitor?.phone) || '—'}</span>
+                                                    <span className="text-slate-400 shrink-0">·</span>
+                                                    <span className="text-slate-500 shrink-0">Turn</span><span className="font-medium">—</span>
+                                                    <span className="text-slate-400 shrink-0">·</span>
+                                                    <span className="text-slate-500 shrink-0">Date</span><span className="font-medium truncate">{formatDate(interaction.createdAt, true)}</span>
                                                 </div>
-                                                <div>
-                                                    <span className="text-xs font-semibold text-slate-400 normal-case block mb-0.5">Registration Time</span>
-                                                    <span className="font-semibold text-slate-700">{formatDate(interaction.createdAt, true)}</span>
-                                                </div>
-                                                <div>
-                                                    <span className="text-xs font-semibold text-slate-400 normal-case block mb-0.5">Reason</span>
-                                                    <span className="font-semibold text-slate-700">{getReasonForVisitLabel(interaction.reasonForVisit)}</span>
-                                                </div>
-                                            </div>
-
-                                            <div className="pt-2 border-t border-slate-100 space-y-1.5">
-                                                <div className="flex gap-1 flex-wrap">
-                                                    {renderInteractionTags(interaction, { size: 'text-xs' })}
-                                                </div>
-                                                <div className="flex flex-col">
-                                                    <span className="text-xs font-semibold text-slate-400 normal-case block mb-0.5">Last Visit</span>
-                                                    <span className={`text-sm font-semibold normal-case ${lastVisitDisplay === 'New Patient' ? 'text-emerald-500' : 'text-blue-600'}`}>
-                                                        {lastVisitDisplay}
-                                                    </span>
+                                                <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0 truncate">
+                                                    <span className="text-slate-500 shrink-0">Wait</span><span className="font-medium">{minsWaiting === '—' ? '—' : `${minsWaiting} min`}</span>
+                                                    <span className="text-slate-400 shrink-0">·</span>
+                                                    <span className="text-slate-500 shrink-0">Last</span><span className={`font-medium truncate ${lastVisitDisplay === 'New Patient' ? 'text-emerald-600' : ''}`}>{lastVisitDisplay}</span>
+                                                    <span className="text-slate-400 shrink-0">·</span>
+                                                    <span className="text-slate-500 shrink-0">Diag</span><span className="font-medium truncate">{diagCode}</span>
                                                 </div>
                                             </div>
                                         </div>
@@ -317,7 +332,7 @@ const InteractionsSection = ({
                                     </div>
                                 );
                             })}
-                        {interactions.filter(i => !i.officerId || i.officerId === '').length === 0 && pendingInteractions.filter(i => i.isPending).length === 0 && (
+                        {interactions.filter(i => !i.cancelled && (!i.officerId || i.officerId === '')).length === 0 && pendingInteractions.filter(i => i.isPending).length === 0 && (
                             <div className="col-span-1 sm:col-span-2 lg:col-span-3 xl:col-span-4 text-center py-8 text-slate-400 text-sm">
                                 No unassigned registrations
                             </div>
@@ -330,7 +345,7 @@ const InteractionsSection = ({
 
                 {/* Right Side - Officers (Columns) */}
                 <div className="flex-[1] flex flex-col min-w-0 min-h-0 lg:max-w-[400px]">
-                    <div className="flex items-center gap-3 mb-4 shrink-0">
+                    <div className="flex items-center gap-3 mb-1 shrink-0">
                         {activeOfficers.length > 1 && (
                             <select
                                 value={selectedOfficerId || ''}
@@ -344,6 +359,9 @@ const InteractionsSection = ({
                         )}
                         <h3 className="text-sm font-semibold text-slate-700">Doctors</h3>
                     </div>
+                    <p className="text-xs text-slate-500 mb-3">
+                        {selectedOfficer ? interactions.filter(i => !i.cancelled && i.officerId === selectedOfficer.id && !(i.id in pendingAssignments) && !i.completed && !i.closed && !i.started).length + (Object.values(pendingAssignments).filter(id => id === selectedOfficer?.id).length || 0) : 0} in scheduled registrations
+                    </p>
                     <div className="flex flex-col flex-1 min-h-0">
                         {selectedOfficer ? (
                                 <div
@@ -387,65 +405,77 @@ const InteractionsSection = ({
                                                 );
                                             })}
                                         {interactions
-                                            .filter(i => i.officerId === selectedOfficer.id && !(i.id in pendingAssignments) && !i.completed && !i.closed)
-                                            .sort((a, b) => new Date(b.editedAt || b.createdAt).getTime() - new Date(a.editedAt || a.createdAt).getTime())
+                                            .filter(i => !i.cancelled && i.officerId === selectedOfficer.id && !(i.id in pendingAssignments) && !i.completed && !i.closed && !i.started)
+                                            .sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0))
                                             .map((interaction) => {
                                                 const canDrag = (userData?.role === 'receptionist' || userData?.role === 'officer') && !interaction.started && !interaction.completed && !interaction.closed;
                                                 const visitor = visitors.find(v => v.id === interaction.visitorId);
+                                                const status = getRegistrationStatus(interaction);
+                                                const fromBackend = lastVisits[interaction.visitorId];
+                                                const lastVisitDisplay = fromBackend
+                                                    ? formatDate(fromBackend.editedAt || fromBackend.createdAt, true)
+                                                    : (() => {
+                                                        const patientHistory = interactions
+                                                            .filter(past => past.visitorId === interaction.visitorId && past.completed && past.id !== interaction.id)
+                                                            .sort((a, b) => new Date(b.editedAt || b.createdAt) - new Date(a.editedAt || a.createdAt));
+                                                        return patientHistory.length > 0
+                                                            ? formatDate(patientHistory[0].editedAt || patientHistory[0].createdAt, true)
+                                                            : 'New Patient';
+                                                    })();
+                                                const diagCode = getLastVisitDiagCode(interaction, interactions, lastVisits);
+                                                const minsWaiting = getMinutesWaiting(interaction.createdAt, tick);
                                                 return (
                                                     <div
                                                         key={interaction.id}
                                                         draggable={canDrag}
                                                         onDragStart={(e) => canDrag ? handleDragStart(e, interaction) : e.preventDefault()}
                                                         onClick={() => onInteractionClick(interaction)}
-                                                        className={`group/item relative bg-white border border-slate-100 rounded-xl p-3 shadow-sm transition-all hover:border-blue-300 hover:shadow-lg hover:shadow-blue-500/5 cursor-pointer active:scale-95 flex ${canDrag ? 'cursor-move' : ''}`}
+                                                        className={`group/item relative bg-white border border-slate-100 rounded-lg p-2.5 shadow-sm transition-all hover:border-blue-300 hover:shadow-md cursor-pointer active:scale-[0.98] flex flex-col min-w-0 ${canDrag ? 'cursor-move' : ''}`}
                                                     >
-                                                        <div className="flex-1 min-w-0 overflow-hidden">
-                                                            <div className="flex gap-1 items-center mb-2">
-                                                                <span className="inline-flex items-center justify-center min-w-[2rem] text-xs font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 normal-case tracking-tight shrink-0">
-                                                                    {getRegistrationDisplayId(interaction)}
-                                                                </span>
+                                                        <div className="flex justify-between items-start gap-1 min-w-0">
+                                                            <span className="inline-flex items-center justify-center min-w-[2rem] text-[10px] font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 normal-case shrink-0">
+                                                                {getRegistrationDisplayId(interaction)}
+                                                            </span>
+                                                            <span className={`shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded border normal-case ${status.label === 'Ongoing' ? 'bg-blue-50 text-blue-600 border-blue-100' : status.label === 'Followup' ? 'bg-teal-50 text-teal-600 border-teal-100' : status.label === 'Refill' ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-slate-100 text-slate-700 border-slate-200'}`}>
+                                                                {status.label}
+                                                            </span>
+                                                            <div className="flex items-center gap-0.5 shrink-0">
+                                                                {canDrag && onRequestCancel && (
+                                                                    <button type="button" onClick={(e) => { e.stopPropagation(); onRequestCancel(interaction); }} className="p-1 rounded text-slate-400 hover:text-amber-600 hover:bg-amber-50" title="Cancel registration">
+                                                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                                                    </button>
+                                                                )}
                                                                 {canDrag && (
-                                                                    <svg className="w-2.5 h-2.5 text-blue-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M4 6h16M4 12h16M4 18h16" />
-                                                                    </svg>
+                                                                    <svg className="w-3 h-3 text-blue-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M4 6h16M4 12h16M4 18h16" /></svg>
                                                                 )}
                                                             </div>
-
-                                                            <div className="space-y-0.5">
-                                                                <label className="text-xs font-semibold text-slate-400 normal-case tracking-wide block">Patient</label>
-                                                                <div className="text-xs font-semibold text-slate-900 truncate normal-case">
-                                                                    {getVisitorName(interaction.visitorId)}
-                                                                </div>
-                                                            </div>
-
-                                                            <div className="mt-1.5 space-y-1 text-xs">
-                                                                <div>
-                                                                    <span className="text-slate-400 normal-case">Mobile </span>
-                                                                    <span className="font-medium text-slate-700">{formatPhoneDisplay(visitor?.phoneM || visitor?.phone) || '—'}</span>
-                                                                </div>
-                                                                <div>
-                                                                    <span className="text-slate-400 normal-case">Reason </span>
-                                                                    <span className="font-medium text-slate-700">{getReasonForVisitLabel(interaction.reasonForVisit)}</span>
-                                                                </div>
-                                                                <div>
-                                                                    <span className="text-slate-400 normal-case">Expected turn </span>
-                                                                    <span className="font-medium text-slate-700">{getExpectedTurnTime(interaction.id)}</span>
-                                                                </div>
-                                                            </div>
-
-                                                            <div className="mt-2 text-xs text-slate-400 italic">
-                                                                {formatDate(interaction.createdAt)}
-                                                            </div>
                                                         </div>
-
-                                                        <div className="flex flex-col gap-1 items-end justify-start shrink-0 ml-2 pl-2 border-l border-slate-100">
-                                                            {renderInteractionTags(interaction, { size: 'text-xs' })}
+                                                        {status.isNewVisit && (interaction.reasonForVisitNotes || '').trim() && (
+                                                            <p className="text-[10px] text-slate-600 leading-tight line-clamp-2 mt-0.5">{interaction.reasonForVisitNotes.trim()}</p>
+                                                        )}
+                                                        <div className="text-xs font-bold text-slate-900 truncate normal-case leading-tight mt-0.5">
+                                                            {getVisitorName(interaction.visitorId)}
+                                                        </div>
+                                                        <div className="flex flex-col gap-0.5 text-[10px] text-slate-900 mt-1">
+                                                            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0 truncate">
+                                                                <span className="text-slate-500 shrink-0">Phone</span><span className="font-medium truncate">{formatPhoneDisplay(visitor?.phoneM || visitor?.phone) || '—'}</span>
+                                                                <span className="text-slate-400 shrink-0">·</span>
+                                                                <span className="text-slate-500 shrink-0">Turn</span><span className="font-medium">{getExpectedTurnTime(interaction.id)}</span>
+                                                                <span className="text-slate-400 shrink-0">·</span>
+                                                                <span className="text-slate-500 shrink-0">Date</span><span className="font-medium truncate">{formatDate(interaction.createdAt, true)}</span>
+                                                            </div>
+                                                            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0 truncate">
+                                                                <span className="text-slate-500 shrink-0">Wait</span><span className="font-medium">{minsWaiting === '—' ? '—' : `${minsWaiting} min`}</span>
+                                                                <span className="text-slate-400 shrink-0">·</span>
+                                                                <span className="text-slate-500 shrink-0">Last</span><span className={`font-medium truncate ${lastVisitDisplay === 'New Patient' ? 'text-emerald-600' : ''}`}>{lastVisitDisplay}</span>
+                                                                <span className="text-slate-400 shrink-0">·</span>
+                                                                <span className="text-slate-500 shrink-0">Diag</span><span className="font-medium truncate">{diagCode}</span>
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 );
                                             })}
-                                        {interactions.filter(i => i.officerId === selectedOfficer.id && !(i.id in pendingAssignments) && !i.completed && !i.closed).length === 0 && !Object.values(pendingAssignments).some(id => id === selectedOfficer.id) && (
+                                        {interactions.filter(i => !i.cancelled && i.officerId === selectedOfficer.id && !(i.id in pendingAssignments) && !i.completed && !i.closed && !i.started).length === 0 && !Object.values(pendingAssignments).some(id => id === selectedOfficer.id) && (
                                             <div className="text-xs text-slate-400 italic text-center py-4 border-2 border-dashed border-slate-200 rounded-lg">
                                                 Drop registrations here
                                             </div>
@@ -478,13 +508,13 @@ const InteractionsSection = ({
                 onPatientClick={onPatientClick}
             />
 
-            {/* Delete Registration Confirmation Modal */}
+            {/* Unregister Registration Confirmation Modal */}
             {showDeleteRegistrationModal && registrationToDelete && (
                 <div className="fixed inset-0 bg-black/50 flex justify-center items-center px-4 pb-4 pt-0 !mt-0 z-[1000]" onClick={() => setShowDeleteRegistrationModal(false)}>
                     <div className="bg-white w-full max-w-[400px] p-4 sm:p-8 rounded-3xl shadow-lg animate-[slideUp_0.4s_ease-out]" onClick={(e) => e.stopPropagation()}>
-                        <h2 className="text-xl font-semibold text-slate-900 mb-4">Delete Registration</h2>
+                        <h2 className="text-xl font-semibold text-slate-900 mb-4">Unregister</h2>
                         <p className="text-slate-600 mb-6">
-                            Do you want to delete this unassigned registration?
+                            Do you want to unregister this registration? The registration will be removed from the queue.
                         </p>
                         <div className="flex gap-4">
                             <button
@@ -507,10 +537,50 @@ const InteractionsSection = ({
                                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                         </svg>
-                                        Deleting...
+                                        Unregistering...
                                     </>
                                 ) : (
-                                    'Yes'
+                                    'Yes, unregister'
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Cancel Registration Confirmation Modal */}
+            {showCancelRegistrationModal && registrationToCancel && (
+                <div className="fixed inset-0 bg-black/50 flex justify-center items-center px-4 pb-4 pt-0 !mt-0 z-[1000]" onClick={() => setShowCancelRegistrationModal(false)}>
+                    <div className="bg-white w-full max-w-[400px] p-4 sm:p-8 rounded-3xl shadow-lg animate-[slideUp_0.4s_ease-out]" onClick={(e) => e.stopPropagation()}>
+                        <h2 className="text-xl font-semibold text-slate-900 mb-4">Cancel registration</h2>
+                        <p className="text-slate-600 mb-6">
+                            Cancel this registration? It will be marked as cancelled and moved to the Cancelled list. You can still view it under Interactions → Cancelled.
+                        </p>
+                        <div className="flex gap-4">
+                            <button
+                                onClick={() => {
+                                    setShowCancelRegistrationModal(false);
+                                    setRegistrationToCancel(null);
+                                }}
+                                className="flex-1 py-3 px-4 bg-slate-200 text-slate-800 rounded-xl font-semibold hover:bg-slate-300 transition-colors"
+                            >
+                                No
+                            </button>
+                            <button
+                                onClick={handleCancelRegistration}
+                                disabled={isCancellingRegistration}
+                                className="flex-1 py-3 px-4 bg-amber-500 text-white rounded-xl font-semibold hover:bg-amber-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                            >
+                                {isCancellingRegistration ? (
+                                    <>
+                                        <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                        Cancelling...
+                                    </>
+                                ) : (
+                                    'Yes, cancel'
                                 )}
                             </button>
                         </div>

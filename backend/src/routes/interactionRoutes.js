@@ -18,7 +18,10 @@ router.put('/:id/assign-officer', InteractionController.assignOfficer);
 // Save interaction details (notes, service lines, etc.)
 router.put('/:id/details', InteractionController.saveInteractionDetails);
 
-// Delete an interaction
+// Delete an interaction (unregister)
 router.delete('/:id', InteractionController.deleteInteraction);
+
+// Cancel an interaction (set cancelled; only before start)
+router.put('/:id/cancel', InteractionController.cancelInteraction);
 
 module.exports = router;

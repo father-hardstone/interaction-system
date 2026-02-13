@@ -202,18 +202,6 @@ const BillNowModal = ({
                             placeholder="CPSO"
                         />
                     </div>
-                    <div className="min-w-[100px]">
-                        <label className="text-xs font-semibold text-slate-400 normal-case tracking-wide block mb-1">Accounting Number</label>
-                        <input
-                            type="text"
-                            inputMode="numeric"
-                            maxLength={8}
-                            value={formatAccountingNumber(accountingNumber)}
-                            onChange={(e) => setAccountingNumber(parseAccountingNumber(e.target.value))}
-                            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white font-sans"
-                            placeholder="12-34-56"
-                        />
-                    </div>
                 </div>
 
                 {/* Patient - single line, bordered */}
@@ -296,7 +284,6 @@ const BillNowModal = ({
                                     <th className="px-3 py-2 text-left text-xs font-semibold text-slate-400 normal-case w-20">Suffix</th>
                                     <th className="px-3 py-2 text-left text-xs font-semibold text-slate-400 normal-case">Billing</th>
                                     <th className="px-3 py-2 text-left text-xs font-semibold text-slate-400 normal-case">Diagnostic</th>
-                                    <th className="px-3 py-2 text-left text-xs font-semibold text-slate-400 normal-case w-28">Accounting #</th>
                                     <th className="px-3 py-2 text-left text-xs font-semibold text-slate-400 normal-case w-24">Fee</th>
                                     <th className="px-3 py-2 w-10"></th>
                                 </tr>
@@ -381,17 +368,6 @@ const BillNowModal = ({
                                                     placeholder="—"
                                                 />
                                             </div>
-                                        </td>
-                                        <td className="px-3 py-2">
-                                            <input
-                                                type="text"
-                                                inputMode="numeric"
-                                                maxLength={8}
-                                                value={formatAccountingNumber(line.accountingNumber ?? accountingNumber)}
-                                                onChange={(e) => updateBillingLine(idx, 'accountingNumber', parseAccountingNumber(e.target.value))}
-                                                className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm focus:ring-1 focus:ring-blue-500 focus:border-blue-500 font-sans"
-                                                placeholder="12-34-56"
-                                            />
                                         </td>
                                         <td className="px-3 py-2">
                                             <input
