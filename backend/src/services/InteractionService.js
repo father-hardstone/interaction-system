@@ -48,6 +48,16 @@ class InteractionService {
         return interaction ? interaction.toObject() : null;
     }
 
+    async cancel(id) {
+        const now = new Date().toISOString();
+        const interaction = await Interaction.findOneAndUpdate(
+            { id, deletedAt: '' },
+            { cancelled: true, cancelledAt: now, editedAt: now },
+            { new: true }
+        );
+        return interaction ? interaction.toObject() : null;
+    }
+
     async getByEntity(entityId) {
         const interactions = await Interaction.find({ entityId, deletedAt: '' });
         return interactions.map(i => i.toObject());

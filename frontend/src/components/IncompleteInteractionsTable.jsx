@@ -32,13 +32,6 @@ const IncompleteInteractionsTable = ({
 
     return (
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-6 flex flex-col flex-1 min-h-0">
-            <div className="flex items-center justify-between mb-4 shrink-0">
-                <div>
-                    <h2 className="text-lg font-semibold text-slate-900">Incomplete interactions</h2>
-                    <p className="text-xs text-slate-500 mt-1">Visits with draft saved — resume later</p>
-                </div>
-            </div>
-
             <div className="overflow-x-auto flex-1 min-h-0 border border-slate-100 rounded-lg">
                 <table className="w-full border-collapse min-w-[700px]">
                     <thead>

@@ -215,6 +215,30 @@ class InteractionController {
         }
     }
 
+    // Cancel an interaction (set status cancelled; only before start)
+    async cancelInteraction(req, res) {
+        try {
+            const { id } = req.params;
+            const existing = await InteractionService.findOne({ id });
+            if (!existing) {
+                return res.status(404).json({ error: 'Interaction not found' });
+            }
+            if (existing.started || existing.completed || existing.closed) {
+                return res.status(400).json({
+                    error: 'Cannot cancel interaction that has been started, completed, or closed'
+                });
+            }
+            const updated = await InteractionService.cancel(id);
+            if (!updated) {
+                return res.status(404).json({ error: 'Interaction not found' });
+            }
+            res.json(updated);
+        } catch (e) {
+            console.error('cancelInteraction error:', e);
+            res.status(500).json({ error: e.message });
+        }
+    }
+
     // Save interaction details (notes, service lines, etc.)
     async saveInteractionDetails(req, res) {
         try {
@@ -273,17 +297,20 @@ class InteractionController {
                 updates.incomplete = false;
             }
 
-            // Closed: set when billing info is added (completed + service lines with billing)
-            // Clear closed when not completed (e.g. moved to incomplete/scheduled)
+            // Closed = ready for billing: completed and at least one service line has both diagnostic and billing (service code or fee)
             if (closed !== undefined) {
                 updates.closed = closed === true;
             } else if (!updates.completed) {
                 updates.closed = false;
             } else {
                 const serviceLinesToUse = serviceLines !== undefined ? serviceLines : existing.serviceLines;
-                const hasBillingInfo = Array.isArray(serviceLinesToUse) && serviceLinesToUse.length > 0 &&
-                    serviceLinesToUse.some(line => (line.totalFee && Number(line.totalFee) > 0) || (line.accountingNumber && String(line.accountingNumber).trim()));
-                updates.closed = hasBillingInfo;
+                const hasDiagAndBilling = Array.isArray(serviceLinesToUse) && serviceLinesToUse.length > 0 &&
+                    serviceLinesToUse.some(line => {
+                        const hasDiag = line.diagnostic && String(line.diagnostic).trim();
+                        const hasBilling = (line.service && String(line.service).trim()) || (line.totalFee != null && Number(line.totalFee) > 0) || (line.accountingNumber && String(line.accountingNumber).trim());
+                        return hasDiag && hasBilling;
+                    });
+                updates.closed = hasDiagAndBilling;
             }
 
             // Billed: when set to true, also set billedAt (only when transitioning to true)

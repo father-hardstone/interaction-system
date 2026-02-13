@@ -72,6 +72,8 @@ const UserDashboard = () => {
     const [draggedPatient, setDraggedPatient] = useState(null);
     const [showDeleteRegistrationModal, setShowDeleteRegistrationModal] = useState(false);
     const [registrationToDelete, setRegistrationToDelete] = useState(null);
+    const [showCancelRegistrationModal, setShowCancelRegistrationModal] = useState(false);
+    const [registrationToCancel, setRegistrationToCancel] = useState(null);
     const [queueModalInteraction, setQueueModalInteraction] = useState(null);
     const [showLogoutModal, setShowLogoutModal] = useState(false);
     const [error, setError] = useState('');
@@ -94,6 +96,7 @@ const UserDashboard = () => {
     const [isCreatingVisitor, setIsCreatingVisitor] = useState(false);
     const [deletingVisitorId, setDeletingVisitorId] = useState(null);
     const [isDeletingRegistration, setIsDeletingRegistration] = useState(false);
+    const [isCancellingRegistration, setIsCancellingRegistration] = useState(false);
     const [isCreatingInteraction, setIsCreatingInteraction] = useState(false);
     const [isAssigningInteraction, setIsAssigningInteraction] = useState(false);
     const [registeringFollowupForId, setRegisteringFollowupForId] = useState(null);
@@ -642,6 +645,7 @@ const UserDashboard = () => {
             const emailValidation = validateEmail(visitorForm.email);
             if (!emailValidation.valid) {
                 setError(emailValidation.error);
+                setIsCreatingVisitor(false);
                 return;
             }
         }
@@ -1090,10 +1094,26 @@ const UserDashboard = () => {
             setShowDeleteRegistrationModal(false);
             setRegistrationToDelete(null);
         } catch (err) {
-            console.error('Failed to delete registration:', err);
-            showWarning('Failed to delete registration');
+            console.error('Failed to unregister:', err);
+            showWarning('Failed to unregister');
         } finally {
             setIsDeletingRegistration(false);
+        }
+    };
+
+    const handleCancelRegistration = async () => {
+        if (!registrationToCancel) return;
+        setIsCancellingRegistration(true);
+        try {
+            await interactionService.cancel(registrationToCancel.id);
+            await loadInteractions(userData.entityId, interactionFilter);
+            setShowCancelRegistrationModal(false);
+            setRegistrationToCancel(null);
+        } catch (err) {
+            console.error('Failed to cancel registration:', err);
+            showWarning(err.response?.data?.error || 'Failed to cancel registration');
+        } finally {
+            setIsCancellingRegistration(false);
         }
     };
 
@@ -1110,6 +1130,13 @@ const UserDashboard = () => {
         if (interaction) {
             setRegistrationToDelete(interaction);
             setShowDeleteRegistrationModal(true);
+        }
+    };
+
+    const handleRequestCancelRegistration = (interaction) => {
+        if (interaction) {
+            setRegistrationToCancel(interaction);
+            setShowCancelRegistrationModal(true);
         }
     };
 
@@ -1238,10 +1265,16 @@ const UserDashboard = () => {
                             onOpenQueueModal={setQueueModalInteraction}
                             handleRegistrationDropOnBin={handleRegistrationDropOnBin}
                             onRequestDelete={handleRequestDeleteRegistration}
+                            onRequestCancel={handleRequestCancelRegistration}
                             showDeleteRegistrationModal={showDeleteRegistrationModal}
                             setShowDeleteRegistrationModal={setShowDeleteRegistrationModal}
                             registrationToDelete={registrationToDelete}
                             handleDeleteRegistration={handleDeleteRegistration}
+                            showCancelRegistrationModal={showCancelRegistrationModal}
+                            setShowCancelRegistrationModal={setShowCancelRegistrationModal}
+                            registrationToCancel={registrationToCancel}
+                            handleCancelRegistration={handleCancelRegistration}
+                            isCancellingRegistration={isCancellingRegistration}
                             getVisitorName={getVisitorName}
                             getVisitorSerial={getVisitorSerial}
                             getVisitorHealthCard={getVisitorHealthCard}

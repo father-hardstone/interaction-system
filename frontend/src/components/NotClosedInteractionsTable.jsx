@@ -11,7 +11,8 @@ const NotClosedInteractionsTable = ({
     getOfficerName = () => 'N/A',
     onInteractionClick,
     interactions = [],
-    lastVisits = {}
+    lastVisits = {},
+    emptyMessage = 'No not-closed interactions found.'
 }) => {
     const getLastVisit = (interaction) => {
         const fromBackend = lastVisits[interaction.visitorId];
@@ -63,7 +64,7 @@ const NotClosedInteractionsTable = ({
                                     colSpan={showOfficer ? 6 : 5}
                                     className="px-4 py-12 text-center text-xs text-slate-400"
                                 >
-                                    No not-closed interactions found.
+                                    {emptyMessage}
                                 </td>
                             </tr>
                         ) : (
