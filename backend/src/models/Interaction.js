@@ -159,6 +159,14 @@ const interactionSchema = new mongoose.Schema({
     reasonForVisitNotes: {
         type: String,
         default: ''
+    },
+    cancelled: {
+        type: Boolean,
+        default: false
+    },
+    cancelledAt: {
+        type: String,
+        default: ''
     }
 }, {
     timestamps: false,

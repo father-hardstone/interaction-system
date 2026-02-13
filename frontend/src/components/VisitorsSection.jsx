@@ -883,6 +883,20 @@ const VisitorsSection = ({
                                 );
                             })()}
 
+                            {/* Email */}
+                            <div className="flex flex-wrap gap-3">
+                                <div className="flex flex-col gap-2 w-full sm:min-w-[12rem] sm:w-72">
+                                    <label className="text-sm font-semibold text-slate-900">Email</label>
+                                    <input
+                                        type="email"
+                                        placeholder="Email address"
+                                        value={visitorForm.email ?? ''}
+                                        onChange={(e) => setVisitorForm({ ...visitorForm, email: e.target.value })}
+                                        className="w-full py-2.5 px-3.5 border border-slate-200 rounded-xl font-inherit text-sm bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
+                                    />
+                                </div>
+                            </div>
+
                             {/* Street, City, Province, Postal Code */}
                             {(() => {
                                 const rowHasError = fieldErrors.street || fieldErrors.city || fieldErrors.state || fieldErrors.postalCode;
