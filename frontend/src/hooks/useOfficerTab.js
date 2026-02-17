@@ -2,20 +2,31 @@ import { useState, useEffect, useMemo } from 'react';
 import api from '../services/api';
 import { reportService } from '../services/reportService';
 import { useMasterData } from '../contexts/MasterDataContext';
-import supabaseStorageService from '../services/supabaseService';
+import { useToast } from '../contexts/ToastContext';
+import supabaseStorageService, { extractStoragePathFromSupabaseUrl } from '../services/supabaseService';
 
-/** Parse pad value into sheets array (legacy single or JSON array). */
+const SUPABASE_BUCKET = 'CRM testing';
+
+/** Parse pad value into sheets array (legacy single or JSON array). Handles string or array from API. */
 function parsePadSheets(padValue) {
-    if (!padValue) return [''];
+    if (padValue == null || padValue === '') return [''];
+    if (Array.isArray(padValue)) return padValue.slice(0, 4);
     if (typeof padValue === 'string' && padValue.trim().startsWith('[')) {
         try {
             const arr = JSON.parse(padValue);
-            return Array.isArray(arr) ? arr : [padValue];
+            return Array.isArray(arr) ? arr.slice(0, 4) : [padValue];
         } catch {
             return [padValue];
         }
     }
     return [padValue];
+}
+
+/** Normalize scratchpad to string for state (API may return array). */
+function normalizeScratchpad(scratchpad) {
+    if (scratchpad == null || scratchpad === '') return '';
+    if (Array.isArray(scratchpad)) return scratchpad.length <= 1 ? (scratchpad[0] || '') : JSON.stringify(scratchpad);
+    return String(scratchpad);
 }
 
 /** Extract first sheet with content for upload (legacy). */
@@ -39,8 +50,62 @@ function padHasContent(padValue) {
     return !!(padValue && (padValue.startsWith('data:image') || padValue.includes('/interactions/')));
 }
 
+/** Get storage paths from a scratchpad value (string or JSON array). Only returns paths that look like Supabase storage (e.g. contain /interactions/). */
+function getStoragePathsFromScratchpadValue(value) {
+    if (!value) return [];
+    let raw = [];
+    if (typeof value === 'string' && value.trim().startsWith('[')) {
+        try {
+            const arr = JSON.parse(value);
+            raw = Array.isArray(arr) ? arr.filter(Boolean) : [value];
+        } catch {
+            raw = [value];
+        }
+    } else if (typeof value === 'string') {
+        raw = [value];
+    } else if (Array.isArray(value)) {
+        raw = value.filter(Boolean);
+    }
+    return raw
+        .map((p) => {
+            if (typeof p !== 'string') return null;
+            if (!p.includes('/interactions/')) return null;
+            if (p.startsWith('http') || p.includes('/storage/')) return extractStoragePathFromSupabaseUrl(p) || p;
+            return p;
+        })
+        .filter(Boolean);
+}
+
+/** Collect all scratchpad storage paths from an interaction (for cleanup). */
+function collectInteractionScratchpadPaths(interaction) {
+    if (!interaction) return [];
+    const paths = [
+        ...getStoragePathsFromScratchpadValue(interaction.ccReason?.scratchpad),
+        ...getStoragePathsFromScratchpadValue(interaction.subjective?.scratchpad),
+        ...getStoragePathsFromScratchpadValue(interaction.objective?.scratchpad),
+        ...getStoragePathsFromScratchpadValue(interaction.assessmentPlan?.scratchpad)
+    ];
+    return [...new Set(paths)];
+}
+
+/** Flatten imagePaths (CC, S, O, AP) to array of storage paths. */
+function imagePathsToStoragePaths(imagePaths) {
+    if (!imagePaths) return [];
+    const paths = [];
+    for (const key of ['CC', 'S', 'O', 'AP']) {
+        const v = imagePaths[key];
+        paths.push(...getStoragePathsFromScratchpadValue(v));
+    }
+    return [...new Set(paths)];
+}
+
 const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) => {
     const { services = [], diagnostics = [] } = useMasterData();
+    const toast = useToast();
+    const showToast = (message, type = 'info') => {
+        if (toast?.showToast) toast.showToast(message, type);
+        else alert(message);
+    };
     const [selectedPatient, setSelectedPatient] = useState(null);
     const [showPatientDetailModal, setShowPatientDetailModal] = useState(false);
     const [expandedInteractionIds, setExpandedInteractionIds] = useState({});
@@ -64,6 +129,8 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
     }, [activeViewTab]);
 
     const [showCancelModal, setShowCancelModal] = useState(false);
+    const [isCleaning, setIsCleaning] = useState(false);
+    const [cleanupMessage, setCleanupMessage] = useState('');
     const [patientReports, setPatientReports] = useState([]);
     const [isLoadingReports, setIsLoadingReports] = useState(false);
     const [viewingMedia, setViewingMedia] = useState(null);
@@ -102,9 +169,15 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
     const [medications, setMedications] = useState([]);
     const [additionalNotes, setAdditionalNotes] = useState('');
     const [savedNotes, setSavedNotes] = useState([]);
-    const [followup, setFollowup] = useState({ required: false, date: '' });
+    const [followup, setFollowup] = useState({ required: false, date: '', intervalWeeks: null, intervalMonths: null, addedLater: false });
 
     const [isSaving, setIsSaving] = useState(false);
+    const [isEditingCompleted, setIsEditingCompleted] = useState(false);
+    /** When editing: number of original sheets per SOAP field (existing sheets are read-only). */
+    const [originalPadSheetCounts, setOriginalPadSheetCounts] = useState({ cc: 0, s: 0, o: 0, ap: 0 });
+    /** When editing: number of medications at open (medications at index >= this are "added later"). */
+    const [initialMedicationCount, setInitialMedicationCount] = useState(0);
+    const [isLoadingEdit, setIsLoadingEdit] = useState(false);
 
     const [hasRecovered, setHasRecovered] = useState(false);
 
@@ -142,10 +215,11 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
         [interactions, doctorId]
     );
 
+    /** Scheduled queue: oldest first (ascending by queuedAt/createdAt). Serial 1 = oldest in queue. */
     const scheduledInteractions = useMemo(() => {
-        return doctorInteractions.filter(
-            (i) => !i.completed && !i.ongoing && !i.incomplete
-        );
+        return doctorInteractions
+            .filter((i) => !i.completed && !i.ongoing && !i.incomplete && !i.started)
+            .sort((a, b) => new Date(a.queuedAt || a.createdAt || 0) - new Date(b.queuedAt || b.createdAt || 0));
     }, [doctorInteractions]);
 
     const incompleteInteractions = useMemo(() => {
@@ -154,10 +228,18 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
         );
     }, [doctorInteractions]);
 
+    /** Completed but not closed: key fields present, diag/billing not yet filled. Latest first by completedAt. */
     const completedInteractions = useMemo(() => {
-        return doctorInteractions.filter(
-            (i) => i.completed
-        ).sort((a, b) => new Date(b.editedAt || b.createdAt).getTime() - new Date(a.editedAt || a.createdAt).getTime());
+        return doctorInteractions
+            .filter((i) => i.completed && !i.closed)
+            .sort((a, b) => new Date(b.completedAt || b.editedAt || b.createdAt).getTime() - new Date(a.completedAt || a.editedAt || a.createdAt).getTime());
+    }, [doctorInteractions]);
+
+    /** Closed: have diag code and billing code (finalized). Latest first by closedAt. */
+    const closedInteractions = useMemo(() => {
+        return doctorInteractions
+            .filter((i) => i.closed)
+            .sort((a, b) => new Date(b.closedAt || b.editedAt || b.createdAt).getTime() - new Date(a.closedAt || a.editedAt || a.createdAt).getTime());
     }, [doctorInteractions]);
 
     const ongoingInteractions = useMemo(() => {
@@ -200,69 +282,119 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
                 totalFee: ''
             }
         ]);
-        setReferral({ type: '', reason: '', to: '', date: '' });
+        setReferral({ type: '', reason: '', to: '', date: '', addedLater: false });
         setMedications([]);
         setAdditionalNotes('');
         setSavedNotes([]);
-        setFollowup({ required: false, date: '' });
+        setFollowup({ required: false, date: '', intervalWeeks: null, intervalMonths: null, addedLater: false });
+    };
+
+    /** Resolve scratchpad paths to full Supabase URLs so canvas can load images. Returns a new interaction object with resolved scratchpads (so pad state gets URLs, not paths). */
+    const resolveScratchpadUrls = async (interaction) => {
+        if (!interaction) return interaction;
+        const resolveOne = async (p) => {
+            if (!p || typeof p !== 'string') return p;
+            if (p.startsWith('data:image')) return p;
+            if (p.startsWith('http') && !p.includes('/storage/')) return p;
+            const path = p.startsWith('http') ? extractStoragePathFromSupabaseUrl(p) : p;
+            if (!path || !path.includes('/interactions/')) return p;
+            try {
+                return await supabaseStorageService.getFileUrl(SUPABASE_BUCKET, path);
+            } catch (e) {
+                console.warn('resolveScratchpadUrls resolveOne failed:', path, e);
+                return p;
+            }
+        };
+        const out = { ...interaction };
+        for (const key of ['ccReason', 'subjective', 'objective', 'assessmentPlan']) {
+            const obj = interaction[key];
+            if (!obj || !obj.scratchpad) {
+                if (obj) out[key] = { ...obj };
+                continue;
+            }
+            let val = obj.scratchpad;
+            try {
+                if (Array.isArray(val)) {
+                    const resolved = await Promise.all(val.map(resolveOne));
+                    out[key] = { ...obj, scratchpad: resolved.length <= 1 ? (resolved[0] || '') : JSON.stringify(resolved) };
+                } else if (typeof val === 'string' && val.trim().startsWith('[')) {
+                    const arr = JSON.parse(val);
+                    const resolved = await Promise.all(arr.map(resolveOne));
+                    out[key] = { ...obj, scratchpad: resolved.length <= 1 ? (resolved[0] || '') : JSON.stringify(resolved) };
+                } else if (val && typeof val === 'string') {
+                    const resolved = val.includes('/interactions/') ? await resolveOne(val) : val;
+                    out[key] = { ...obj, scratchpad: resolved };
+                } else {
+                    out[key] = { ...obj };
+                }
+            } catch (e) {
+                console.warn(`Resolve scratchpad URLs for ${key}:`, e);
+                out[key] = { ...obj };
+            }
+        }
+        return out;
     };
 
     const loadInteractionToState = (interaction) => {
         if (!interaction) return;
 
         setCcReason(interaction.ccReason?.text || '');
-        setCcReasonPad(interaction.ccReason?.scratchpad || '');
+        setCcReasonPad(normalizeScratchpad(interaction.ccReason?.scratchpad));
 
         setSubjective(interaction.subjective?.text || '');
-        setSubjectivePad(interaction.subjective?.scratchpad || '');
+        setSubjectivePad(normalizeScratchpad(interaction.subjective?.scratchpad));
 
         setObjective(interaction.objective?.text || '');
-        setObjectivePad(interaction.objective?.scratchpad || '');
+        setObjectivePad(normalizeScratchpad(interaction.objective?.scratchpad));
 
         setAssessmentPlan(interaction.assessmentPlan?.text || '');
-        setAssessmentPlanPad(interaction.assessmentPlan?.scratchpad || '');
+        setAssessmentPlanPad(normalizeScratchpad(interaction.assessmentPlan?.scratchpad));
 
         if (interaction.serviceLines && interaction.serviceLines.length > 0) {
-            const firstDiag = interaction.serviceLines[0]?.diagnostic || '';
-            const firstDiagDesc = diagnostics.find(d => (d.code || '').toUpperCase() === (firstDiag || '').trim().toUpperCase())?.description || '';
-            setServiceLines(interaction.serviceLines.map((line, i) => ({
-                id: Math.random(),
-                serialNumber: line.serialNumber || i + 1,
-                diagnostic: firstDiag,
-                diagnosticDescription: firstDiagDesc,
-                billingCode: line.service || '',
-                billingDescription: services.find(s => (s.code || '').toUpperCase() === (line.service || '').trim().toUpperCase())?.description || '',
-                totalFee: line.totalFee !== undefined ? line.totalFee.toString() : ''
-            })));
+            setServiceLines(interaction.serviceLines.map((line, i) => {
+                const diag = line.diagnostic || '';
+                const diagDesc = diagnostics.find(d => (d.code || '').toUpperCase() === (diag || '').trim().toUpperCase())?.description || '';
+                return {
+                    id: Math.random(),
+                    serialNumber: line.serialNumber || i + 1,
+                    diagnostic: diag,
+                    diagnosticDescription: diagDesc,
+                    billingCode: line.service || '',
+                    billingDescription: services.find(s => (s.code || '').toUpperCase() === (line.service || '').trim().toUpperCase())?.description || '',
+                    totalFee: line.totalFee !== undefined ? line.totalFee.toString() : ''
+                };
+            }));
         } else {
             resetInteractionFields();
         }
 
-        setReferral(interaction.referral || { type: '', reason: '', to: '', date: '' });
+        setReferral({ type: (interaction.referral || {}).type || '', reason: (interaction.referral || {}).reason || '', to: (interaction.referral || {}).to || '', date: (interaction.referral || {}).date || '', addedLater: (interaction.referral || {}).addedLater === true });
         setMedications((interaction.medications || []).map(med => {
-            const dosage = med.dosage || '';
-            const match = dosage.match(/^(\d*\.?\d*)(.*)$/);
-            const dosageAmount = match ? match[1] : '';
-            const dosageUnit = (match && match[2] ? match[2].trim().toLowerCase() : '') || '';
+            const strength = (med.dosage ?? [med.dosageAmount, med.dosageUnit].filter(Boolean).join(' ')) || '';
             return {
                 name: med.name || '',
-                dosageAmount: med.dosageAmount ?? dosageAmount,
-                dosageUnit: med.dosageUnit ?? dosageUnit,
-                suspension: med.suspension || 'tablet',
+                strength: strength.trim(),
                 frequency: med.frequency || '',
                 duration: med.duration || '',
-                refills: med.refills ?? 0,
+                repeat: med.refills ?? 0,
+                addedLater: med.addedLater === true,
             };
         }));
         setSavedNotes(interaction.savedNotes || []);
         const fr = interaction.followupRequired || interaction.followup;
-        setFollowup(fr ? { required: fr.required, date: fr.date || '' } : { required: false, date: '' });
+        setFollowup(fr ? {
+            required: fr.required,
+            date: fr.date || '',
+            addedLater: (interaction.followupRequired || {}).addedLater === true,
+            intervalWeeks: fr.intervalWeeks != null ? fr.intervalWeeks : null,
+            intervalMonths: fr.intervalMonths != null ? fr.intervalMonths : null
+        } : { required: false, date: '', intervalWeeks: null, intervalMonths: null, addedLater: false });
         setAdditionalNotes(''); // Always clear input on load
     };
 
-    // Recovery effect
+    // Recovery effect (restore draft when reopening an ongoing interaction; do not clear when editing a completed one)
     useEffect(() => {
-        if (!hasRecovered && activeInteractionId && interactions.length > 0 && services.length > 0 && diagnostics.length > 0) {
+        if (!hasRecovered && activeInteractionId && interactions.length > 0 && services.length > 0 && diagnostics.length > 0 && !isEditingCompleted) {
             const activeInt = interactions.find(i => i.id === activeInteractionId);
             if (activeInt && !activeInt.completed) {
                 loadInteractionToState(activeInt);
@@ -272,7 +404,7 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
                 setActiveViewTab('scheduled');
             }
         }
-    }, [interactions, activeInteractionId, services, diagnostics, hasRecovered]);
+    }, [interactions, activeInteractionId, services, diagnostics, hasRecovered, isEditingCompleted]);
 
     // Auto-select ongoing interaction if activeInteractionId is null but an ongoing interaction exists
     useEffect(() => {
@@ -292,22 +424,81 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
         }
     }, [activeInteractionId, doctorInteractions, activeViewTab]);
 
+    const handleEditCompleted = async (interaction) => {
+        if (!interaction) return;
+        setActiveInteractionId(interaction.id);
+        setActiveViewTab('ongoing');
+        setIsEditingCompleted(true);
+        setIsLoadingEdit(true);
+        try {
+            const { data } = await api.get(`/interactions/${interaction.id}`);
+            const resolved = await resolveScratchpadUrls(data);
+            const interactionToLoad = resolved || data;
+            const sheetCount = (key) => {
+                const raw = interactionToLoad[key]?.scratchpad;
+                const arr = parsePadSheets(Array.isArray(raw) ? raw : raw);
+                return arr.filter((s) => s && (String(s).startsWith('data:image') || String(s).includes('/interactions/'))).length;
+            };
+            setOriginalPadSheetCounts({
+                cc: sheetCount('ccReason'),
+                s: sheetCount('subjective'),
+                o: sheetCount('objective'),
+                ap: sheetCount('assessmentPlan')
+            });
+            setInitialMedicationCount((interactionToLoad.medications || []).length);
+            loadInteractionToState(interactionToLoad);
+            // Keep spinner until state has been applied and form has rendered (elements in place)
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    setTimeout(() => setIsLoadingEdit(false), 350);
+                });
+            });
+        } catch (e) {
+            console.error('Failed to load interaction for edit:', e);
+            let fallback = interaction;
+            try {
+                const resolved = await resolveScratchpadUrls(interaction);
+                if (resolved) fallback = resolved;
+            } catch (_) {}
+            loadInteractionToState(fallback);
+            setOriginalPadSheetCounts({ cc: 0, s: 0, o: 0, ap: 0 });
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    setTimeout(() => setIsLoadingEdit(false), 350);
+                });
+            });
+        }
+    };
+
     const handleStartInteraction = async (interactionId) => {
+        setIsEditingCompleted(false);
         const currentOngoing = ongoingInteractions.find(i => i.id !== interactionId);
         if (currentOngoing && activeViewTab !== 'ongoing') {
-            alert('You already have an interaction in progress. Please complete or pause it before starting a new one.');
+            showToast('You already have an interaction in progress. Please complete or pause it before starting a new one.', 'error');
             setActiveViewTab('ongoing');
             return;
         }
 
-        const interaction = interactions.find(i => i.id === interactionId);
-        if (interaction) {
-            loadInteractionToState(interaction);
-        } else {
-            resetInteractionFields();
-        }
-
         setActiveInteractionId(interactionId);
+
+        // Always fetch full interaction by ID so we have the latest draft (CC, etc.); list may be stale or filtered out
+        try {
+            const { data } = await api.get(`/interactions/${interactionId}`);
+            const resolved = data ? await resolveScratchpadUrls(data) : data;
+            const toLoad = resolved || data;
+            if (toLoad) {
+                loadInteractionToState(toLoad);
+            } else {
+                const fromList = interactions.find(i => i.id === interactionId);
+                if (fromList) loadInteractionToState(fromList);
+                else resetInteractionFields();
+            }
+        } catch (e) {
+            console.warn('Resume: could not fetch interaction by ID, using list:', e?.message);
+            const fromList = interactions.find(i => i.id === interactionId);
+            if (fromList) loadInteractionToState(fromList);
+            else resetInteractionFields();
+        }
 
         try {
             await api.put(`/interactions/${interactionId}/details`, {
@@ -324,33 +515,79 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
         }
     };
 
+    const handleCloseEditMode = () => {
+        setActiveInteractionId(null);
+        resetInteractionFields();
+        setIsEditingCompleted(false);
+        setOriginalPadSheetCounts({ cc: 0, s: 0, o: 0, ap: 0 });
+        setInitialMedicationCount(0);
+        setActiveViewTab('completed');
+    };
+
     const confirmCancel = async () => {
+        setIsEditingCompleted(false);
         if (!activeInteractionId) {
-            alert('No active interaction selected to cancel.');
+            showToast('No active interaction selected to cancel.', 'error');
             return;
         }
+        const interaction = interactions.find((i) => i.id === activeInteractionId);
+        const pathsToDelete = collectInteractionScratchpadPaths(interaction);
+
         try {
-            await api.put(`/interactions/${activeInteractionId}/details`, {
+            if (pathsToDelete.length > 0) {
+                setIsCleaning(true);
+                setCleanupMessage('Cleaning previous state before canceling.');
+                await deleteSupabasePaths(pathsToDelete);
+                setIsCleaning(false);
+                setCleanupMessage('');
+            }
+
+            const clearPayload = {
+                ccReason: { text: '', scratchpad: '', hasScratchpad: false },
+                subjective: { text: '', scratchpad: '', hasScratchpad: false },
+                objective: { text: '', scratchpad: '', hasScratchpad: false },
+                assessmentPlan: { text: '', scratchpad: '', hasScratchpad: false },
+                serviceLines: [],
+                referral: { type: '', reason: '', to: '', date: '', addedLater: false },
+                medications: [],
+                followupRequired: { required: false, date: '', followupInteractionId: '', addedLater: false, intervalWeeks: null, intervalMonths: null },
+                savedNotes: [],
                 started: false,
                 ongoing: false,
                 incomplete: false,
                 completed: false,
                 billed: false
-            });
+            };
+            await api.put(`/interactions/${activeInteractionId}/details`, clearPayload);
             setShowCancelModal(false);
             resetInteractionFields();
             setActiveInteractionId(null);
             setActiveViewTab('scheduled');
+            showToast('Interaction canceled', 'success');
             if (onRefreshInteractions) onRefreshInteractions();
         } catch (error) {
+            setIsCleaning(false);
+            setCleanupMessage('');
             console.error('Error canceling interaction:', error);
-            alert('Failed to cancel interaction');
+            showToast('Failed to cancel interaction', 'error');
+        }
+    };
+
+    /** Delete scratchpad files from Supabase (e.g. before cancel or before overwriting with new save). */
+    const deleteSupabasePaths = async (paths) => {
+        if (!paths?.length) return;
+        for (const path of paths) {
+            try {
+                await supabaseStorageService.deleteFile(SUPABASE_BUCKET, path);
+            } catch (err) {
+                console.warn('Supabase cleanup: could not delete path', path, err);
+            }
         }
     };
 
     const moveToIncomplete = async () => {
         if (!activeInteractionId) {
-            alert('No active interaction selected to move.');
+            showToast('No active interaction selected to move.', 'error');
             return;
         }
         setIsSaving(true);
@@ -365,13 +602,58 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
             resetInteractionFields();
             setActiveInteractionId(null);
             setActiveViewTab('scheduled');
+            showToast('Moved to incomplete', 'success');
             if (onRefreshInteractions) onRefreshInteractions();
         } catch (error) {
             console.error('Error moving interaction to incomplete:', error);
-            alert('Failed to move interaction to incomplete');
+            showToast('Failed to move interaction to incomplete', 'error');
         } finally {
             setIsSaving(false);
         }
+    };
+
+    /** Upload pad images to Supabase and return imagePaths (CC, S, O, AP). Used by save and edit save. */
+    const uploadPadImagesToSupabase = async (interaction, interactionId) => {
+        const { entityId } = interaction;
+        const imagePaths = {};
+        const fieldConfigs = [
+            { name: 'CC', pad: ccReasonPad, existing: interaction.ccReason?.scratchpad || '' },
+            { name: 'S', pad: subjectivePad, existing: interaction.subjective?.scratchpad || '' },
+            { name: 'O', pad: objectivePad, existing: interaction.objective?.scratchpad || '' },
+            { name: 'AP', pad: assessmentPlanPad, existing: interaction.assessmentPlan?.scratchpad || '' }
+        ];
+        for (const field of fieldConfigs) {
+            const sheets = parsePadSheets(field.pad);
+            const existingPaths = parsePadSheets(field.existing);
+            const paths = [];
+            for (let i = 0; i < sheets.length; i++) {
+                const sheet = sheets[i];
+                const suffix = i + 1;
+                const fieldNameWithSuffix = `${field.name}${suffix}`;
+                // data URL = current canvas content (user drew or changed the image). Always upload so changes are saved.
+                if (sheet && sheet.startsWith('data:image')) {
+                    try {
+                        paths[i] = await supabaseStorageService.uploadInteractionScratchpad(sheet, entityId, interactionId, fieldNameWithSuffix);
+                    } catch (error) {
+                        const isAlreadyExists = error?.message?.includes('already exists') || error?.statusCode === '409';
+                        if (isAlreadyExists) {
+                            paths[i] = `${entityId}/interactions/${interactionId}/${fieldNameWithSuffix}.png`;
+                        } else {
+                            console.error(`Error saving ${fieldNameWithSuffix} to Supabase:`, error);
+                            paths[i] = '';
+                        }
+                    }
+                } else if (sheet && sheet.includes('/interactions/')) {
+                    paths[i] = sheet.startsWith('http') ? (extractStoragePathFromSupabaseUrl(sheet) || sheet) : sheet;
+                } else if (existingPaths[i] && sheet !== '') paths[i] = existingPaths[i];
+                else paths[i] = '';
+            }
+            const hasAny = paths.some(Boolean);
+            if (!hasAny) imagePaths[field.name] = '';
+            else if (paths.length === 1) imagePaths[field.name] = paths[0] || '';
+            else imagePaths[field.name] = JSON.stringify(paths);
+        }
+        return imagePaths;
     };
 
     const saveInteractionData = async (statusOverride = {}) => {
@@ -380,63 +662,17 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
         const activeInteraction = interactions.find(i => i.id === activeInteractionId);
         if (!activeInteraction) return null;
 
-        const { entityId, entitySerial, visitorSerial, interactionSerial } = activeInteraction;
+        const oldPaths = collectInteractionScratchpadPaths(activeInteraction);
+        const imagePaths = await uploadPadImagesToSupabase(activeInteraction, activeInteractionId);
+        const newPaths = imagePathsToStoragePaths(imagePaths);
+        const pathsToDelete = oldPaths.filter((p) => !newPaths.includes(p));
 
-        // Save scratchpads to Supabase - each sheet uploaded with 1,2,3,4 suffix
-        const imagePaths = {};
-        const fieldConfigs = [
-            { name: 'CC', pad: ccReasonPad, existing: activeInteraction.ccReason?.scratchpad || '' },
-            { name: 'S', pad: subjectivePad, existing: activeInteraction.subjective?.scratchpad || '' },
-            { name: 'O', pad: objectivePad, existing: activeInteraction.objective?.scratchpad || '' },
-            { name: 'AP', pad: assessmentPlanPad, existing: activeInteraction.assessmentPlan?.scratchpad || '' }
-        ];
-
-        for (const field of fieldConfigs) {
-            const sheets = parsePadSheets(field.pad);
-            const existingPaths = parsePadSheets(field.existing);
-            const paths = [];
-
-            for (let i = 0; i < sheets.length; i++) {
-                const sheet = sheets[i];
-                const suffix = i + 1;
-                const fieldNameWithSuffix = `${field.name}${suffix}`;
-
-                if (sheet && sheet.startsWith('data:image')) {
-                    const existingPath = existingPaths[i];
-                    const isSupabasePath = existingPath && existingPath.includes('/interactions/');
-                    if (isSupabasePath) {
-                        paths[i] = existingPath;
-                    } else {
-                        try {
-                            const supabasePath = await supabaseStorageService.uploadInteractionScratchpad(
-                                sheet,
-                                entityId,
-                                activeInteractionId,
-                                fieldNameWithSuffix
-                            );
-                            paths[i] = supabasePath;
-                        } catch (error) {
-                            console.error(`Error saving ${fieldNameWithSuffix} to Supabase:`, error);
-                            paths[i] = '';
-                        }
-                    }
-                } else if (sheet && sheet.includes('/interactions/')) {
-                    paths[i] = sheet;
-                } else if (existingPaths[i] && sheet !== '') {
-                    paths[i] = existingPaths[i];
-                } else {
-                    paths[i] = '';
-                }
-            }
-
-            const hasAny = paths.some(Boolean);
-            if (!hasAny) {
-                imagePaths[field.name] = '';
-            } else if (paths.length === 1) {
-                imagePaths[field.name] = paths[0] || '';
-            } else {
-                imagePaths[field.name] = JSON.stringify(paths);
-            }
+        if (pathsToDelete.length > 0) {
+            setIsCleaning(true);
+            setCleanupMessage('Cleaning previous state before saving.');
+            await deleteSupabasePaths(pathsToDelete);
+            setIsCleaning(false);
+            setCleanupMessage('');
         }
 
         // Handle additional notes timestamping - only if it's a final save or explicit draft save with content
@@ -471,26 +707,30 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
                 scratchpad: imagePaths['AP'] || getPrimarySheetForUpload(assessmentPlanPad) || '',
                 hasScratchpad: !!(imagePaths['AP'] || padHasContent(assessmentPlanPad)),
             },
-            serviceLines: serviceLines.map(line => ({
-                serialNumber: line.serialNumber,
-                service: line.billingCode,
-                diagnostic: line.diagnostic,
-                totalFee: parseFloat(line.totalFee) || 0
-            })),
+            serviceLines: serviceLines
+                .filter((line) => (line.diagnostic && String(line.diagnostic).trim()) && (line.billingCode && String(line.billingCode).trim()))
+                .map((line, i) => ({
+                    serialNumber: i + 1,
+                    service: line.billingCode,
+                    diagnostic: line.diagnostic,
+                    totalFee: parseFloat(line.totalFee) || 0
+                })),
             referral,
             medications: medications.map(med => ({
                 name: med.name || '',
-                dosage: [med.dosageAmount, med.dosageUnit].filter(Boolean).join('') || '',
-                suspension: med.suspension || '',
+                dosage: (med.strength || '').trim(),
+                suspension: '',
                 frequency: med.frequency || '',
                 duration: med.duration || '',
-                refills: parseInt(med.refills, 10) || 0,
+                refills: parseInt(med.repeat, 10) || 0,
                 instructions: ''
             })),
             followupRequired: {
                 required: followup.required || false,
                 date: followup.date || '',
-                followupInteractionId: (interactions.find(i => i.id === activeInteractionId)?.followupRequired?.followupInteractionId || interactions.find(i => i.id === activeInteractionId)?.followupInteractionId || '')
+                followupInteractionId: (interactions.find(i => i.id === activeInteractionId)?.followupRequired?.followupInteractionId || interactions.find(i => i.id === activeInteractionId)?.followupInteractionId || ''),
+                intervalWeeks: followup.intervalWeeks != null ? followup.intervalWeeks : null,
+                intervalMonths: followup.intervalMonths != null ? followup.intervalMonths : null
             },
             savedNotes: updatedSavedNotes,
             ongoing: false,
@@ -506,25 +746,25 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
 
     const handleSaveInteraction = async () => {
         if (!ccReason.trim() && !padHasContent(ccReasonPad)) {
-            alert('CC / reason is required');
+            showToast('CC / reason is required', 'error');
             return;
         }
         if (!subjective.trim() && !padHasContent(subjectivePad)) {
-            alert('S (Subjective) is required');
+            showToast('S (Subjective) is required', 'error');
             return;
         }
         if (!objective.trim() && !padHasContent(objectivePad)) {
-            alert('O (Objective) is required');
+            showToast('O (Objective) is required', 'error');
             return;
         }
 
         setIsSaving(true);
         try {
             await saveInteractionData({ completed: true });
-            alert('Interaction saved successfully!');
+            showToast('Interaction saved successfully!', 'success');
         } catch (error) {
             console.error('Error saving interaction:', error);
-            alert(`Error saving interaction: ${error.response?.data?.error || error.message}`);
+            showToast(`Error saving interaction: ${error.response?.data?.error || error.message}`, 'error');
         } finally {
             setIsSaving(false);
             setActiveInteractionId(null);
@@ -537,12 +777,125 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
     const handleSaveDraft = async () => {
         setIsSaving(true);
         try {
-            await saveInteractionData({ ongoing: true, incomplete: false, completed: false });
-            alert('Draft saved successfully!');
-            if (onRefreshInteractions) onRefreshInteractions();
+            await saveInteractionData({ ongoing: false, incomplete: true, completed: false });
+            setActiveInteractionId(null);
+            resetInteractionFields();
+            setActiveViewTab('incomplete');
+            if (onRefreshInteractions) await onRefreshInteractions();
+            showToast('Draft saved successfully!', 'success');
         } catch (error) {
             console.error('Error saving draft:', error);
-            alert(`Error saving draft: ${error.response?.data?.error || error.message}`);
+            showToast(`Error saving draft: ${error.response?.data?.error || error.message}`, 'error');
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleSaveEdit = async () => {
+        if (!activeInteractionId) return;
+        const interaction = interactions.find(i => i.id === activeInteractionId);
+        if (!interaction) return;
+        const prevEditCount = interaction.editCount ?? 0;
+        const nextEditCount = prevEditCount + 1;
+        let updatedSavedNotes = [...savedNotes];
+        if (additionalNotes.trim()) {
+            updatedSavedNotes.push({
+                text: `Edit (${nextEditCount})\n${additionalNotes.trim()}`,
+                timestamp: new Date().toISOString()
+            });
+            setSavedNotes(updatedSavedNotes);
+            setAdditionalNotes('');
+        }
+        setIsSaving(true);
+        try {
+            const oldPaths = collectInteractionScratchpadPaths(interaction);
+            const imagePaths = await uploadPadImagesToSupabase(interaction, activeInteractionId);
+            const newPaths = imagePathsToStoragePaths(imagePaths);
+            const pathsToDelete = oldPaths.filter((p) => !newPaths.includes(p));
+
+            if (pathsToDelete.length > 0) {
+                setIsCleaning(true);
+                setCleanupMessage('Cleaning previous state before saving.');
+                await deleteSupabasePaths(pathsToDelete);
+                setIsCleaning(false);
+                setCleanupMessage('');
+            }
+
+            const addedLaterIndices = (originalCount, padValue) => {
+                const n = parsePadSheets(padValue).length;
+                const arr = [];
+                for (let i = originalCount; i < n; i++) arr.push(i);
+                return arr;
+            };
+            const payload = {
+                ccReason: {
+                    text: ccReason.trim(),
+                    scratchpad: imagePaths['CC'] || getPrimarySheetForUpload(ccReasonPad) || '',
+                    hasScratchpad: !!(imagePaths['CC'] || padHasContent(ccReasonPad)),
+                    addedLaterSheetIndices: addedLaterIndices(originalPadSheetCounts.cc, ccReasonPad)
+                },
+                subjective: {
+                    text: subjective.trim(),
+                    scratchpad: imagePaths['S'] || getPrimarySheetForUpload(subjectivePad) || '',
+                    hasScratchpad: !!(imagePaths['S'] || padHasContent(subjectivePad)),
+                    addedLaterSheetIndices: addedLaterIndices(originalPadSheetCounts.s, subjectivePad)
+                },
+                objective: {
+                    text: objective.trim(),
+                    scratchpad: imagePaths['O'] || getPrimarySheetForUpload(objectivePad) || '',
+                    hasScratchpad: !!(imagePaths['O'] || padHasContent(objectivePad)),
+                    addedLaterSheetIndices: addedLaterIndices(originalPadSheetCounts.o, objectivePad)
+                },
+                assessmentPlan: {
+                    text: assessmentPlan.trim(),
+                    scratchpad: imagePaths['AP'] || getPrimarySheetForUpload(assessmentPlanPad) || '',
+                    hasScratchpad: !!(imagePaths['AP'] || padHasContent(assessmentPlanPad)),
+                    addedLaterSheetIndices: addedLaterIndices(originalPadSheetCounts.ap, assessmentPlanPad)
+                },
+                serviceLines: serviceLines
+                    .filter((line) => (line.diagnostic && String(line.diagnostic).trim()) && (line.billingCode && String(line.billingCode).trim()))
+                    .map((line, i) => ({
+                        serialNumber: i + 1,
+                        service: line.billingCode,
+                        diagnostic: line.diagnostic || '',
+                        totalFee: parseFloat(line.totalFee) || 0
+                    })),
+                referral: {
+                    ...referral,
+                    addedLater: !(interaction.referral?.type) && !!referral.type
+                },
+                medications: medications.map((med, i) => ({
+                    name: med.name || '',
+                    dosage: (med.strength || '').trim(),
+                    suspension: '',
+                    frequency: med.frequency || '',
+                    duration: med.duration || '',
+                    refills: parseInt(med.repeat, 10) || 0,
+                    instructions: '',
+                    addedLater: med.addedLater === true || i >= initialMedicationCount
+                })),
+                followupRequired: {
+                    required: followup.required || false,
+                    date: followup.date || '',
+                    followupInteractionId: interaction.followupRequired?.followupInteractionId || interaction.followup?.followupInteractionId || '',
+                    addedLater: followup.addedLater === true || (!(interaction.followupRequired?.required && interaction.followupRequired?.date) && !!(followup.required && followup.date)),
+                    intervalWeeks: followup.intervalWeeks != null ? followup.intervalWeeks : null,
+                    intervalMonths: followup.intervalMonths != null ? followup.intervalMonths : null
+                },
+                savedNotes: updatedSavedNotes,
+                editCount: nextEditCount,
+                completed: true,
+                started: true,
+                ongoing: false,
+                incomplete: false,
+                billed: interaction.billed || false
+            };
+            await api.put(`/interactions/${activeInteractionId}/details`, payload);
+            if (onRefreshInteractions) onRefreshInteractions();
+            handleCloseEditMode();
+        } catch (error) {
+            console.error('Error saving edit:', error);
+            showToast(`Error saving: ${error.response?.data?.error || error.message}`, 'error');
         } finally {
             setIsSaving(false);
         }
@@ -552,13 +905,15 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
         if (serviceLines.length >= 4) {
             return;
         }
-        const sharedDiag = serviceLines[0]?.diagnostic || '';
-        const sharedDiagDesc = serviceLines[0]?.diagnosticDescription || '';
+        // Copy diag code from last line (or first) so new line starts with it; each line stays independent after that
+        const source = serviceLines[serviceLines.length - 1] || serviceLines[0];
+        const copyDiag = source?.diagnostic || '';
+        const copyDiagDesc = source?.diagnosticDescription || diagnostics.find(d => (d.code || '').toUpperCase() === (copyDiag || '').trim().toUpperCase())?.description || '';
         const newLine = {
             id: Date.now(),
             serialNumber: serviceLines.length + 1,
-            diagnostic: sharedDiag,
-            diagnosticDescription: sharedDiagDesc,
+            diagnostic: copyDiag,
+            diagnosticDescription: copyDiagDesc,
             billingCode: '',
             billingDescription: '',
             totalFee: ''
@@ -571,12 +926,10 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
         updatedLines[index] = { ...updatedLines[index], [field]: value };
 
         if (field === 'diagnostic') {
-            // One diagnostic for all rows: replicate to every line
+            // Each line has its own diag; only update this line
             const foundDiag = diagnostics.find(d => (d.code || '').toUpperCase() === (value || '').trim().toUpperCase());
             const desc = foundDiag ? foundDiag.description : '';
-            updatedLines.forEach((line, i) => {
-                updatedLines[i] = { ...line, diagnostic: value, diagnosticDescription: desc };
-            });
+            updatedLines[index].diagnosticDescription = desc;
         }
 
         if (field === 'billingCode') {
@@ -627,6 +980,8 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
         setActiveViewTab,
         showCancelModal,
         setShowCancelModal,
+        isCleaning,
+        cleanupMessage,
         patientReports,
         isLoadingReports,
         loadReports,
@@ -659,18 +1014,25 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
         scheduledInteractions,
         incompleteInteractions,
         completedInteractions,
+        closedInteractions,
         ongoingInteractions,
         completedInteractionsForPatient,
         handleStartInteraction,
         handleSaveInteraction,
         handleSaveDraft,
+        handleEditCompleted,
+        handleCloseEditMode,
+        handleSaveEdit,
+        isEditingCompleted,
+        isLoadingEdit,
+        originalPadSheetCounts,
         confirmCancel,
         moveToIncomplete,
         handleOpenPatientDetails,
         referral,
         setReferral,
         medications,
-        addMedication: () => setMedications([...medications, { name: '', dosageAmount: '', dosageUnit: '', suspension: 'tablet', frequency: '', duration: '', refills: 0 }]),
+        addMedication: () => setMedications([...medications, { name: '', strength: '', frequency: '', duration: '', repeat: 0, addedLater: isEditingCompleted }]),
         removeMedication: (index) => setMedications(medications.filter((_, i) => i !== index)),
         updateMedication: (index, field, value) => {
             const updated = [...medications];

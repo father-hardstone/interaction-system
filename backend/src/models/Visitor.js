@@ -52,15 +52,15 @@ const visitorSchema = new mongoose.Schema({
     },
     allergies: {
         type: String,
-        default: 'N/A'
+        default: ''
     },
     drugReactions: {
         type: String,
-        default: 'N/A'
+        default: ''
     },
     ongoingHealthConditions: {
         type: String,
-        default: 'N/A'
+        default: ''
     },
     specialNotes: {
         type: String,
@@ -128,6 +128,23 @@ const visitorSchema = new mongoose.Schema({
         default: ''
     },
     guardianPhone: {
+        type: String,
+        default: ''
+    },
+    emergencyName: {
+        type: String,
+        default: ''
+    },
+    emergencyRelation: {
+        type: String,
+        default: ''
+    },
+    emergencyPhone: {
+        type: String,
+        default: ''
+    },
+    /** ISO date of the visitor's most recent completed interaction (updated when an interaction is completed/closed). */
+    lastVisitAt: {
         type: String,
         default: ''
     },

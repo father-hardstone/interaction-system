@@ -27,8 +27,11 @@ const InteractionDetailsModal = ({
                             <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-semibold normal-case tracking-widest leading-none">
                                 {getRegistrationDisplayId(interaction)}
                             </span>
-                            <h3 className="text-lg font-semibold text-slate-900 tracking-tight">
+                            <h3 className="text-lg font-semibold text-slate-900 tracking-tight flex items-center gap-2 flex-wrap">
                                 Interaction Details
+                                {(interaction.editCount ?? 0) > 0 && (
+                                    <span className="text-xs font-semibold text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">Edited</span>
+                                )}
                             </h3>
                             {renderInteractionTags(interaction, { size: 'text-xs' })}
                         </div>
@@ -38,7 +41,10 @@ const InteractionDetailsModal = ({
                         <div className="flex items-center gap-6 text-xs font-semibold normal-case tracking-widest text-slate-500 mt-1">
                             <span>Started: {formatDate(interaction.createdAt)}</span>
                             {interaction.completed && (
-                                <span>Completed: {formatDate(interaction.editedAt || interaction.createdAt)}</span>
+                                <span>Completed: {formatDate(interaction.completedAt || interaction.editedAt || interaction.createdAt)}</span>
+                            )}
+                            {(interaction.editCount ?? 0) > 0 && interaction.editedAt && (
+                                <span>Edited: {formatDate(interaction.editedAt)}</span>
                             )}
                             {interaction.closed && interaction.billedAt && (
                                 <span>Closed: {formatDate(interaction.billedAt)}</span>

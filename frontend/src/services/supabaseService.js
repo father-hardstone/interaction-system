@@ -5,6 +5,26 @@ import supabase from '../config/supabase';
  * Handles file uploads and storage operations
  */
 
+/** Extract storage path from a Supabase signed/public URL. Returns null if not a Supabase storage URL or if the extracted path is itself a URL (malformed data). */
+export function extractStoragePathFromSupabaseUrl(url) {
+    if (!url || typeof url !== 'string') return null;
+    if (!url.includes('/storage/') || !url.includes('/object/')) return null;
+    // Signed: .../object/sign/BUCKET/PATH?token=...  Public: .../object/public/PATH
+    const signMatch = url.match(/\/object\/sign\/[^/]+\/(.+?)(\?|$)/);
+    if (signMatch) {
+        const path = decodeURIComponent(signMatch[1]);
+        if (path.startsWith('http')) return null;
+        return path;
+    }
+    const publicMatch = url.match(/\/object\/public\/(.+?)(\?|$)/);
+    if (publicMatch) {
+        const path = decodeURIComponent(publicMatch[1]);
+        if (path.startsWith('http')) return null;
+        return path;
+    }
+    return null;
+}
+
 class SupabaseStorageService {
     /**
      * Upload a file to Supabase Storage bucket
@@ -227,7 +247,7 @@ class SupabaseStorageService {
             const path = `${entityId}/interactions/${interactionId}/${fieldName}.png`;
             
             const result = await this.uploadFile(file, 'CRM testing', path, {
-                upsert: false, // Don't overwrite existing files
+                upsert: true, // Overwrite if exists (e.g. re-saving edit without changing image)
                 contentType: 'image/png'
             });
             

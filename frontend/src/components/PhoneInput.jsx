@@ -12,12 +12,11 @@ const PhoneInput = ({ value, onChange, required, disabled }) => {
 
     const handleNumberChange = (e) => {
         const input = e.target.value;
-        let digits = input.replace(/\D/g, '');
-        if (digits.length > PHONE_LENGTH) digits = digits.slice(0, PHONE_LENGTH);
+        const digits = parsePhoneToDigits(input);
 
         setPhoneNumber(digits);
         const valid = digits.length === PHONE_LENGTH;
-        onChange({ fullNumber: digits ? `+1${digits}` : '', valid, raw: digits });
+        onChange({ fullNumber: digits, valid, raw: digits });
     };
 
     const displayValue = formatPhoneDisplay(phoneNumber);

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 
 /**
- * Warning icon that shows red-zone content (allergies, drug reactions, etc.) on hover or click (touch).
+ * Warning icon that shows red-zone content (allergies, type of reaction, etc.) on hover or click (touch).
  * Popup matches the red zone styling from PatientDetailsModal.
  */
 const PatientHealthWarningTooltip = ({ visitor, className = '' }) => {
@@ -28,24 +28,19 @@ const PatientHealthWarningTooltip = ({ visitor, className = '' }) => {
     const hasContent =
         (visitor.allergies && visitor.allergies !== 'N/A') ||
         (visitor.drugReactions && visitor.drugReactions !== 'N/A') ||
-        (visitor.ongoingHealthConditions && visitor.ongoingHealthConditions !== 'N/A') ||
         (visitor.specialNotes && visitor.specialNotes !== '-');
 
     const RedZoneContent = () => (
         <div className="p-2 bg-red-50 border-2 border-red-200 rounded-xl min-w-[280px] max-w-[360px] shadow-xl">
-            <div className="text-xs font-medium text-slate-500 mb-2 normal-case">Allergies, drug reactions & health conditions</div>
+            <div className="text-xs font-medium text-slate-500 mb-2 normal-case">Allergies, type of reaction & special notes</div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1">
                 <div className="space-y-0.5">
                     <label className="text-sm font-semibold text-red-900 normal-case tracking-wide block">Allergies</label>
                     <div className="text-sm font-semibold text-slate-700 normal-case tracking-tight">{visitor.allergies || 'N/A'}</div>
                 </div>
                 <div className="space-y-0.5">
-                    <label className="text-sm font-semibold text-red-900 normal-case tracking-wide block">Drug Reactions</label>
+                    <label className="text-sm font-semibold text-red-900 normal-case tracking-wide block">Type of Reaction</label>
                     <div className="text-sm font-semibold text-slate-700 normal-case tracking-tight">{visitor.drugReactions || 'N/A'}</div>
-                </div>
-                <div className="space-y-0.5">
-                    <label className="text-sm font-semibold text-red-900 normal-case tracking-wide block">Ongoing Health Conditions</label>
-                    <div className="text-sm font-semibold text-slate-700 normal-case tracking-tight">{visitor.ongoingHealthConditions || 'N/A'}</div>
                 </div>
                 <div className="space-y-0.5">
                     <label className="text-sm font-semibold text-red-900 normal-case tracking-wide block">Special Notes</label>

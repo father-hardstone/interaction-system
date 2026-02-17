@@ -1,5 +1,22 @@
 const Interaction = require('../models/Interaction');
 
+/** Derive interactionStatus from flags. One of: registered | queued | ongoing | incomplete | complete | closed | billed | cancelled. */
+function computeInteractionStatus(interaction) {
+    if (!interaction) return 'registered';
+    if (interaction.cancelled) return 'cancelled';
+    if (interaction.billed) return 'billed';
+    if (interaction.closed) return 'closed';
+    if (interaction.completed) return 'complete';
+    if (interaction.started) {
+        if (interaction.incomplete) return 'incomplete';
+        if (interaction.ongoing) return 'ongoing';
+        return 'ongoing';
+    }
+    const hasOfficer = interaction.officerId && String(interaction.officerId).trim() !== '';
+    if (hasOfficer) return 'queued';
+    return 'registered';
+}
+
 class InteractionService {
     async getAll() {
         const interactions = await Interaction.find({ deletedAt: '' });
@@ -52,10 +69,15 @@ class InteractionService {
         const now = new Date().toISOString();
         const interaction = await Interaction.findOneAndUpdate(
             { id, deletedAt: '' },
-            { cancelled: true, cancelledAt: now, editedAt: now },
+            { cancelled: true, cancelledAt: now, editedAt: now, interactionStatus: 'cancelled' },
             { new: true }
         );
         return interaction ? interaction.toObject() : null;
+    }
+
+    /** Derive interactionStatus from flags. Exposed on the exported instance so controller can call it. */
+    computeInteractionStatus(interaction) {
+        return computeInteractionStatus(interaction);
     }
 
     async getByEntity(entityId) {
@@ -91,31 +113,6 @@ class InteractionService {
             result[doc.visitorId] = doc;
         });
         return result;
-    }
-
-    /** Max temporarySerial for entity where createdAt >= queueDayStart (for queue numbering). */
-    async getMaxTemporarySerialInQueueDay(entityId, queueDayStartISO) {
-        const interactions = await Interaction.find({
-            entityId,
-            deletedAt: '',
-            createdAt: { $gte: queueDayStartISO }
-        }).select('temporarySerial');
-        const max = interactions.reduce((m, i) => Math.max(m, i.temporarySerial || 0), 0);
-        return max;
-    }
-
-    async assignOfficer(interactionId, officerId, officerSerial) {
-        const interaction = await Interaction.findOneAndUpdate(
-            { id: interactionId, deletedAt: '' },
-            {
-                officerId: officerId || '',
-                officerSerial: officerSerial || '',
-                editedAt: new Date().toISOString(),
-                billed: false  // Ensure billed is false when assigning/unassigning
-            },
-            { new: true }
-        );
-        return interaction ? interaction.toObject() : null;
     }
 
     // Get next serial for a specific entity (composite format: E1-V1-I1, E1-V1-I2, etc.)

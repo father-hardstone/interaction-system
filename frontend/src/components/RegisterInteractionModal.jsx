@@ -1,4 +1,4 @@
-import { formatPhoneDisplay, formatHealthCardDisplay, parseHealthCardToDigits, formatDateMMDDYYYY, stripEntityPrefix, getVisitorSerialDisplay } from '../utils/formatUtils';
+import { formatPhoneDisplay, formatHealthCardDisplay, parseHealthCardToDigits, formatDateMMDDYYYY, stripEntityPrefix, getVisitorSerialDisplay, getLastVisitDisplay } from '../utils/formatUtils';
 
 import { useState, useMemo } from 'react';
 
@@ -64,10 +64,9 @@ const RegisterInteractionModal = ({
 
     const confirmRegistration = async () => {
         if (!pendingRegisterVisitor || !handleRegisterPatient) return;
-        if (reasonForVisit === 'followup' && !parentInteractionId) return; // Must select prior visit for followup
         const success = await handleRegisterPatient(pendingRegisterVisitor, {
             reasonForVisit: reasonForVisit || 'new_visit',
-            parentInteractionId: (reasonForVisit === 'followup' || reasonForVisit === 'refill_medicine') ? parentInteractionId : '',
+            parentInteractionId: (reasonForVisit === 'followup' || reasonForVisit === 'refill_medicine') ? (parentInteractionId || '') : '',
             reasonForVisitNotes: reasonForVisit === 'new_visit' ? newVisitNotes : ''
         });
         if (success) {
@@ -192,10 +191,6 @@ const RegisterInteractionModal = ({
                                         const isRegisteringThis = isCreatingInteraction && pendingRegisterVisitor?.id === visitor.id;
                                         const isDisabled = isRegistered || isRegisteringThis;
 
-                                        const lastVisit = lastVisits[visitor.id] || interactions
-                                            .filter(i => i.visitorId === visitor.id && i.completed)
-                                            .sort((a, b) => new Date(b.editedAt || b.createdAt) - new Date(a.editedAt || a.createdAt))[0];
-
                                         return (
                                             <tr
                                                 key={visitor.id}
@@ -213,7 +208,7 @@ const RegisterInteractionModal = ({
                                                 <td className="px-4 py-3 text-slate-700 hidden xl:table-cell text-sm">{formatHealthCardDisplay(visitor.healthCardNumber || '') || '-'}</td>
                                                 <td className="px-4 py-3 text-slate-700 hidden xl:table-cell text-sm">{(visitor.healthCardVersion || '-').toUpperCase()}</td>
                                                 <td className="px-4 py-3 text-slate-700 hidden xl:table-cell text-sm">
-                                                    {lastVisit ? formatDate(lastVisit.editedAt || lastVisit.createdAt, true) : '-'}
+                                                    {getLastVisitDisplay(visitor, lastVisits, interactions)}
                                                 </td>
                                                 <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                                                     <button
@@ -288,7 +283,7 @@ const RegisterInteractionModal = ({
                                     <div>
                                         <label className="block text-xs font-semibold text-slate-600 mb-1.5">
                                             {reasonForVisit === 'followup' ? 'Prior visit (followup to)' : 'Prior visit (refill from)'}
-                                            {reasonForVisit === 'followup' && <span className="text-red-500 ml-0.5">*</span>}
+                                            <span className="text-slate-400 font-normal ml-0.5">(optional)</span>
                                         </label>
                                         <select
                                             value={parentInteractionId}
@@ -326,7 +321,7 @@ const RegisterInteractionModal = ({
                                 </button>
                                 <button
                                     onClick={confirmRegistration}
-                                    disabled={isCreatingInteraction || (reasonForVisit === 'followup' && !parentInteractionId)}
+                                    disabled={isCreatingInteraction}
                                     className="px-4 py-2 rounded-lg bg-green-600 text-white font-medium hover:bg-green-700 transition-colors shadow-lg shadow-green-200/50 disabled:opacity-90 disabled:cursor-not-allowed flex items-center justify-center gap-2 min-w-[140px]"
                                 >
                                     {isCreatingInteraction ? (

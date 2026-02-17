@@ -1,9 +1,29 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import DrawingPad from './DrawingPad';
 
-const SoapBlock = ({ label, value, onChange, padValue, onPadChange, required = false, placeholder, enableSheets = false }) => {
-    // Default to 'handwriting' as requested
+const padHasContent = (pv) => {
+    if (!pv) return false;
+    if (typeof pv === 'string' && pv.trim().startsWith('[')) {
+        try {
+            const arr = JSON.parse(pv);
+            return Array.isArray(arr) && arr.some(s => s && (s.startsWith('data:image') || (typeof s === 'string' && s.includes('/interactions/'))));
+        } catch {
+            return !!pv;
+        }
+    }
+    return !!(pv && (pv.startsWith('data:image') || pv.includes('/interactions/')));
+};
+
+const SoapBlock = ({ label, value, onChange, padValue, onPadChange, required = false, placeholder, enableSheets = false, readOnly = false, padReadOnly, existingSheetCount = 0, addedLaterSheetIndices }) => {
+    const padIsReadOnly = padReadOnly !== undefined ? padReadOnly : readOnly;
     const [mode, setMode] = useState('handwriting');
+
+    // When text is read-only, default to the view that has content so fields populate like create view
+    useEffect(() => {
+        if (!readOnly) return;
+        if (padHasContent(padValue)) setMode('handwriting');
+        else if (value && String(value).trim()) setMode('text');
+    }, [readOnly, padValue, value]);
 
     return (
         <div className="space-y-3 bg-white rounded-2xl shadow-sm relative group transition-all hover:shadow-md">
@@ -16,7 +36,6 @@ const SoapBlock = ({ label, value, onChange, padValue, onPadChange, required = f
                     )}
                 </div>
 
-                {/* Switch Toggle */}
                 <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200 shadow-inner">
                     <button
                         type="button"
@@ -37,12 +56,22 @@ const SoapBlock = ({ label, value, onChange, padValue, onPadChange, required = f
 
             <div className="relative">
                 {mode === 'text' ? (
-                    <textarea
-                        className="w-full p-4 border border-slate-200 rounded-xl text-sm bg-slate-50 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-50 transition-all min-h-[180px] resize-none placeholder:text-slate-300 font-medium leading-relaxed"
-                        placeholder={placeholder}
-                        value={value}
-                        onChange={(e) => onChange(e.target.value)}
-                    />
+                    readOnly ? (
+                        <textarea
+                            readOnly
+                            className="w-full p-4 border border-slate-200 rounded-xl text-sm bg-slate-50 min-h-[180px] resize-none font-medium leading-relaxed text-slate-700 cursor-default"
+                            placeholder={placeholder}
+                            value={value}
+                            onChange={() => {}}
+                        />
+                    ) : (
+                        <textarea
+                            className="w-full p-4 border border-slate-200 rounded-xl text-sm bg-slate-50 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-50 transition-all min-h-[180px] resize-none placeholder:text-slate-300 font-medium leading-relaxed"
+                            placeholder={placeholder}
+                            value={value}
+                            onChange={(e) => onChange(e.target.value)}
+                        />
+                    )
                 ) : (
                     <div className="animate-in fade-in zoom-in-95 duration-200">
                         <DrawingPad
@@ -51,12 +80,14 @@ const SoapBlock = ({ label, value, onChange, padValue, onPadChange, required = f
                             onChange={onPadChange}
                             minHeight="400px"
                             enableSheets={enableSheets}
+                            readOnly={padIsReadOnly}
+                            existingSheetCount={existingSheetCount}
+                            addedLaterSheetIndices={addedLaterSheetIndices}
                         />
                     </div>
                 )}
             </div>
 
-            {/* Hidden content indicator */}
             {((mode === 'handwriting' && value) || (mode === 'text' && padValue)) && (
                 <div className="flex items-center gap-1.5 py-1 px-2 bg-slate-50 border border-slate-100 rounded-lg w-fit">
                     <div className="flex -space-x-1">

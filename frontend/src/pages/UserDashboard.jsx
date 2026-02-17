@@ -5,7 +5,7 @@ import { visitorService } from '../services/visitorService';
 import { interactionService } from '../services/interactionService';
 import { officerService } from '../services/officerService';
 import { validateEmail } from '../utils/crypto';
-import { formatHealthCardDisplay, parseHealthCardToDigits, getVisitorSerialDisplay } from '../utils/formatUtils';
+import { formatHealthCardDisplay, parseHealthCardToDigits, parsePhoneToDigits, getVisitorSerialDisplay } from '../utils/formatUtils';
 import { useUserDashboardNav } from '../contexts/UserDashboardNavContext';
 import ReceptionTab from '../components/ReceptionTab';
 import { MasterDataProvider } from '../contexts/MasterDataContext';
@@ -26,7 +26,7 @@ const UserDashboard = () => {
     const [searchMiddleName, setSearchMiddleName] = useState('');
     const [searchLastName, setSearchLastName] = useState('');
     const [searchSerial, setSearchSerial] = useState('');
-    const [searchPhone, setSearchPhone] = useState('');
+    const [searchContact, setSearchContact] = useState('');
     const [searchHealthCard, setSearchHealthCard] = useState('');
     const [searchDob, setSearchDob] = useState('');
     const [showVisitorModal, setShowVisitorModal] = useState(false);
@@ -46,18 +46,18 @@ const UserDashboard = () => {
         phoneM: '',
         notes: '',
         memo: '',
-        allergies: 'N/A',
-        drugReactions: 'N/A',
-        ongoingHealthConditions: 'N/A',
+        allergies: '',
+        drugReactions: '',
+        ongoingHealthConditions: '',
         specialNotes: '',
         highBloodPressure: '',
         heartDisease: '',
         diabetes: '',
         cholesterol: '',
         smoke: '',
-        guardianName: '',
-        guardianId: '',
-        guardianPhone: ''
+        emergencyName: '',
+        emergencyRelation: '',
+        emergencyPhone: ''
     });
     const [phoneData, setPhoneData] = useState({ fullNumber: '', valid: false });
     const [phoneHData, setPhoneHData] = useState({ fullNumber: '', valid: false });
@@ -90,6 +90,7 @@ const UserDashboard = () => {
 
     // Filter state
     const [interactionFilter, setInteractionFilter] = useState('this_week');
+    const [receptionSubTab, setReceptionSubTab] = useState('patients');
 
     // Loading states
     const [isLoadingVisitors, setIsLoadingVisitors] = useState(true);
@@ -164,7 +165,7 @@ const UserDashboard = () => {
         }
     }, [userData?.entityId]);
 
-    // 3. Load Interactions once on mount/filter change (no polling - fetch only when needed)
+    // 3. Load interactions on mount and when time filter changes. Do not refetch on Operations tab switch (last visit comes from visitor.lastVisitAt).
     useEffect(() => {
         if (!userData?.entityId) {
             setIsLoadingInteractions(false);
@@ -552,7 +553,7 @@ const UserDashboard = () => {
         }
         const dup = checkHealthCardDuplicate(parseHealthCardToDigits(healthCardNumber), val);
         if (dup) {
-            setFieldErrors(prev => ({ ...prev, healthCard: `Health card already in use (${dup.firstName} ${dup.lastName})` }));
+            setFieldErrors(prev => ({ ...prev, healthCard: `HC already in use (${dup.firstName} ${dup.lastName})` }));
         } else {
             setFieldErrors(prev => { const n = { ...prev }; delete n.healthCard; return n; });
         }
@@ -564,12 +565,12 @@ const UserDashboard = () => {
         setHealthCardNumber(masked);
 
         const digits = parseHealthCardToDigits(masked);
-        if (!digits) setFieldErrors(prev => ({ ...prev, healthCard: 'Health card number is required' }));
+        if (!digits) setFieldErrors(prev => ({ ...prev, healthCard: 'HC is required' }));
         else if (digits.length < 10) setFieldErrors(prev => ({ ...prev, healthCard: 'Must be 10 digits (XXXX-XXX-XXX)' }));
         else {
             const dup = checkHealthCardDuplicate(digits, healthCardVersion);
             if (dup) {
-                setFieldErrors(prev => ({ ...prev, healthCard: `Health card already in use (${dup.firstName} ${dup.lastName})` }));
+                setFieldErrors(prev => ({ ...prev, healthCard: `HC already in use (${dup.firstName} ${dup.lastName})` }));
             } else {
                 setFieldErrors(prev => { const n = { ...prev }; delete n.healthCard; return n; });
             }
@@ -599,11 +600,11 @@ const UserDashboard = () => {
         }
         if (!visitorForm.gender) newErrors.gender = 'Sex is required';
         if (!phoneMData.valid) newErrors.phoneM = 'Phone (M) is required';
-        if (!healthCardNumber?.trim()) newErrors.healthCard = 'Health card number is required';
+        if (!healthCardNumber?.trim()) newErrors.healthCard = 'HC is required';
         else if (parseHealthCardToDigits(healthCardNumber).length !== 10) newErrors.healthCard = 'Must be 10 digits (XXXX-XXX-XXX)';
-        if (!healthCardVersion?.trim()) newErrors.healthCardVersion = 'Health card version is required';
+        if (!healthCardVersion?.trim()) newErrors.healthCardVersion = 'Version is required';
         else if (!/^[A-Za-z]{1,2}$/.test(healthCardVersion.trim())) newErrors.healthCardVersion = 'Version must be 1-2 letters (e.g. AB)';
-        if (!healthCardEffectivityDate) newErrors.healthCardEffectivity = 'Effectivity date is required';
+        if (!healthCardEffectivityDate) newErrors.healthCardEffectivity = 'Issue date is required';
         if (!healthCardExpiryDate) newErrors.healthCardExpiry = 'Expiry date is required';
 
         // Date comparison validation
@@ -611,9 +612,14 @@ const UserDashboard = () => {
             const eff = new Date(healthCardEffectivityDate);
             const exp = new Date(healthCardExpiryDate);
             if (exp < eff) {
-                newErrors.healthCardDate = 'Expiry date cannot be before effectivity date';
+                newErrors.healthCardDate = 'Expiry date cannot be before issue date';
             }
         }
+
+        // Past medical history: all five required (yes or no)
+        const pmhKeys = ['highBloodPressure', 'heartDisease', 'diabetes', 'cholesterol', 'smoke'];
+        const pastMedicalHistoryFilled = pmhKeys.every(k => visitorForm[k] === 'yes' || visitorForm[k] === 'no');
+        if (!pastMedicalHistoryFilled) newErrors.pastMedicalHistory = 'Fill the past medical history.';
 
         if (Object.keys(newErrors).length > 0) {
             setFieldErrors(newErrors);
@@ -624,7 +630,7 @@ const UserDashboard = () => {
         // Validate health card number (10 digits, unique)
         const healthCardDigits = parseHealthCardToDigits(healthCardNumber);
         if (healthCardDigits.length !== 10) {
-            setError('Health card number must be exactly 10 digits (XXXX-XXX-XXX)');
+            setError('HC must be exactly 10 digits (XXXX-XXX-XXX)');
             setIsCreatingVisitor(false);
             return;
         }
@@ -635,7 +641,7 @@ const UserDashboard = () => {
             (v.healthCardVersion || '').trim().toUpperCase() === versionNorm
         );
         if (duplicate) {
-            setError('Health card number and version already in use');
+            setError('HC and version already in use');
             setIsCreatingVisitor(false);
             return;
         }
@@ -714,19 +720,19 @@ const UserDashboard = () => {
 
         // Validate health card version (1-2 alphabetic, required)
         if (!healthCardVersion?.trim()) {
-            setError('Health card version is required (e.g. AB)');
+            setError('Version is required');
             setIsCreatingVisitor(false);
             return;
         }
         if (!/^[A-Za-z]{1,2}$/.test(healthCardVersion.trim())) {
-            setError('Health card version must be 1-2 letters (e.g. AB)');
+            setError('Version must be 1-2 letters (e.g. AB)');
             setIsCreatingVisitor(false);
             return;
         }
 
-        // Dates: required, expiry >= effectivity
+        // Dates: required, expiry >= issue date
         if (!healthCardEffectivityDate) {
-            setError('Effectivity date is required');
+            setError('Issue date is required');
             setIsCreatingVisitor(false);
             return;
         }
@@ -738,7 +744,7 @@ const UserDashboard = () => {
         const effDate = new Date(healthCardEffectivityDate);
         const expDate = new Date(healthCardExpiryDate);
         if (isNaN(effDate.getTime())) {
-            setError('Effectivity date is invalid');
+            setError('Issue date is invalid');
             setIsCreatingVisitor(false);
             return;
         }
@@ -748,7 +754,7 @@ const UserDashboard = () => {
             return;
         }
         if (expDate < effDate) {
-            setError('Expiry date must be after or equal to effectivity date');
+            setError('Expiry date must be after or equal to issue date');
             setIsCreatingVisitor(false);
             return;
         }
@@ -777,24 +783,28 @@ const UserDashboard = () => {
                 healthCardExpiryDate: healthCardExpiryDate,
                 notes: visitorForm.notes,
                 memo: visitorForm.memo,
-                // Red-zone (clinical) fields – always send so backend persists them
-                allergies: (visitorForm.allergies != null && String(visitorForm.allergies).trim()) ? String(visitorForm.allergies).trim() : 'N/A',
-                drugReactions: (visitorForm.drugReactions != null && String(visitorForm.drugReactions).trim()) ? String(visitorForm.drugReactions).trim() : 'N/A',
-                ongoingHealthConditions: (visitorForm.ongoingHealthConditions != null && String(visitorForm.ongoingHealthConditions).trim()) ? String(visitorForm.ongoingHealthConditions).trim() : 'N/A',
+                // Red-zone (clinical) fields – optional (send empty if not provided)
+                allergies: (() => {
+                    const v = (visitorForm.allergies != null) ? String(visitorForm.allergies).trim() : '';
+                    return v && v.toUpperCase() !== 'N/A' ? v : '';
+                })(),
+                drugReactions: (() => {
+                    const v = (visitorForm.drugReactions != null) ? String(visitorForm.drugReactions).trim() : '';
+                    return v && v.toUpperCase() !== 'N/A' ? v : '';
+                })(),
+                ongoingHealthConditions: (() => {
+                    const v = (visitorForm.ongoingHealthConditions != null) ? String(visitorForm.ongoingHealthConditions).trim() : '';
+                    return v && v.toUpperCase() !== 'N/A' ? v : '';
+                })(),
                 specialNotes: (visitorForm.specialNotes != null && String(visitorForm.specialNotes).trim()) ? String(visitorForm.specialNotes).trim() : '',
                 highBloodPressure: visitorForm.highBloodPressure === 'yes' || visitorForm.highBloodPressure === 'no' ? visitorForm.highBloodPressure : '',
                 heartDisease: visitorForm.heartDisease === 'yes' || visitorForm.heartDisease === 'no' ? visitorForm.heartDisease : '',
                 diabetes: visitorForm.diabetes === 'yes' || visitorForm.diabetes === 'no' ? visitorForm.diabetes : '',
                 cholesterol: visitorForm.cholesterol === 'yes' || visitorForm.cholesterol === 'no' ? visitorForm.cholesterol : '',
                 smoke: visitorForm.smoke === 'yes' || visitorForm.smoke === 'no' ? visitorForm.smoke : '',
-                guardianName: visitorForm.guardianName || '',
-                guardianPhone: guardianPhoneData.fullNumber || '',
-                ...(visitorForm.guardianId?.length === 6 && visitors.some((v) => {
-                    const serial = v.serial ? String(v.serial).padStart(6, '0') : '';
-                    return serial === visitorForm.guardianId;
-                })
-                    ? { guardianId: visitorForm.guardianId }
-                    : {}),
+                emergencyName: (visitorForm.emergencyName || '').trim(),
+                emergencyRelation: (visitorForm.emergencyRelation || '').trim(),
+                emergencyPhone: guardianPhoneData.fullNumber || '',
             };
 
             if (editingVisitorId) {
@@ -819,18 +829,18 @@ const UserDashboard = () => {
                 phoneM: '',
                 notes: '',
                 memo: '',
-                allergies: 'N/A',
-                drugReactions: 'N/A',
-                ongoingHealthConditions: 'N/A',
+                allergies: '',
+                drugReactions: '',
+                ongoingHealthConditions: '',
                 specialNotes: '',
                 highBloodPressure: '',
                 heartDisease: '',
                 diabetes: '',
                 cholesterol: '',
                 smoke: '',
-                guardianName: '',
-                guardianId: '',
-                guardianPhone: ''
+                emergencyName: '',
+                emergencyRelation: '',
+                emergencyPhone: ''
             });
             setPhoneData({ fullNumber: '', valid: false });
             setPhoneHData({ fullNumber: '', valid: false });
@@ -847,7 +857,7 @@ const UserDashboard = () => {
             // Reload visitors and interactions
             await loadVisitors(userData.entityId);
             if (!editingVisitorId) {
-                await loadInteractions(userData.entityId);
+                await loadInteractions(userData.entityId, interactionFilter);
             }
         } catch (err) {
             setError(err.response?.data?.error || (editingVisitorId ? 'Failed to update patient' : 'Failed to create visitor'));
@@ -868,9 +878,9 @@ const UserDashboard = () => {
             state: '',
             postalCode: '',
             gender: '',
-            allergies: 'N/A',
-            drugReactions: 'N/A',
-            ongoingHealthConditions: 'N/A',
+            allergies: '',
+            drugReactions: '',
+            ongoingHealthConditions: '',
             specialNotes: '',
             highBloodPressure: '',
             heartDisease: '',
@@ -882,9 +892,9 @@ const UserDashboard = () => {
             phoneM: '',
             notes: '',
             memo: '',
-            guardianName: '',
-            guardianId: '',
-            guardianPhone: ''
+            emergencyName: '',
+            emergencyRelation: '',
+            emergencyPhone: ''
         });
         setPhoneData({ fullNumber: '', valid: false });
         setPhoneHData({ fullNumber: '', valid: false });
@@ -911,9 +921,9 @@ const UserDashboard = () => {
             postalCode: visitor.postalCode || '',
             gender: (() => { const g = (visitor.gender || '').toLowerCase(); if (g === 'male') return 'M'; if (g === 'female') return 'F'; if (g === 'other' || g === 'm' || g === 'f' || g === 'o') return (visitor.gender || '').toUpperCase().slice(0, 1); return visitor.gender || ''; })(),
             email: visitor.email || '',
-            allergies: visitor.allergies || 'N/A',
-            drugReactions: visitor.drugReactions || 'N/A',
-            ongoingHealthConditions: visitor.ongoingHealthConditions || 'N/A',
+            allergies: (visitor.allergies && String(visitor.allergies).trim().toUpperCase() !== 'N/A') ? visitor.allergies : '',
+            drugReactions: (visitor.drugReactions && String(visitor.drugReactions).trim().toUpperCase() !== 'N/A') ? visitor.drugReactions : '',
+            ongoingHealthConditions: (visitor.ongoingHealthConditions && String(visitor.ongoingHealthConditions).trim().toUpperCase() !== 'N/A') ? visitor.ongoingHealthConditions : '',
             specialNotes: visitor.specialNotes || '',
             highBloodPressure: visitor.highBloodPressure || '',
             heartDisease: visitor.heartDisease || '',
@@ -924,17 +934,18 @@ const UserDashboard = () => {
             phoneM: visitor.phoneM || '',
             notes: visitor.notes || '',
             memo: visitor.memo || '',
-            guardianName: visitor.guardianName || '',
-            guardianId: visitor.guardianId || '',
-            guardianPhone: visitor.guardianPhone || ''
+            emergencyName: visitor.emergencyName || visitor.guardianName || '',
+            emergencyRelation: visitor.emergencyRelation || '',
+            emergencyPhone: visitor.emergencyPhone || visitor.guardianPhone || ''
         });
-        // Backward compat: old data may have phone (B or M) but no phoneB
+        // Backward compat: old data may have phone (B or M) but no phoneB. Store digits only so PhoneInput doesn't double "1".
         const mobile = visitor.phoneM || visitor.phone || '';
         const business = visitor.phoneB || (visitor.phone && visitor.phone !== mobile ? visitor.phone : '');
-        setPhoneData({ fullNumber: business, valid: !!business });
-        setPhoneHData({ fullNumber: visitor.phoneH || '', valid: !!visitor.phoneH });
-        setPhoneMData({ fullNumber: mobile, valid: !!mobile });
-        setGuardianPhoneData({ fullNumber: visitor.guardianPhone || '', valid: !!visitor.guardianPhone });
+        setPhoneData({ fullNumber: parsePhoneToDigits(business), valid: !!business });
+        setPhoneHData({ fullNumber: parsePhoneToDigits(visitor.phoneH || ''), valid: !!visitor.phoneH });
+        setPhoneMData({ fullNumber: parsePhoneToDigits(mobile), valid: !!mobile });
+        const emergencyPhone = visitor.emergencyPhone || visitor.guardianPhone || '';
+        setGuardianPhoneData({ fullNumber: parsePhoneToDigits(emergencyPhone), valid: !!emergencyPhone });
         setHealthCardNumber(formatHealthCardDisplay(visitor.healthCardNumber || ''));
         setHealthCardVersion(visitor.healthCardVersion || '');
         setHealthCardEffectivityDate(visitor.healthCardEffectivityDate || '');
@@ -1034,7 +1045,7 @@ const UserDashboard = () => {
                 reasonForVisitNotes: (reasonForVisitNotes != null && String(reasonForVisitNotes).trim()) ? String(reasonForVisitNotes).trim() : ''
             });
 
-            if (reasonForVisit === 'followup' && parentInteractionId) {
+            if ((reasonForVisit === 'followup' || reasonForVisit === 'refill_medicine') && parentInteractionId) {
                 const parentInteraction = interactions.find(i => i.id === parentInteractionId);
                 if (parentInteraction) {
                     const existingFr = parentInteraction.followupRequired || parentInteraction.followup;
@@ -1046,7 +1057,7 @@ const UserDashboard = () => {
                         }
                     });
                     await interactionService.saveDetails(response.id, {
-                        followup: { isFollowup: true, parentInteractionId },
+                        followup: { isFollowup: reasonForVisit === 'followup', parentInteractionId },
                         started: false,
                         ongoing: false,
                         incomplete: false
@@ -1194,6 +1205,7 @@ const UserDashboard = () => {
                         <ReceptionTab
                             interactionFilter={interactionFilter}
                             setInteractionFilter={setInteractionFilter}
+                            onReceptionSubTabChange={setReceptionSubTab}
                             visitors={visitors}
                             isLoadingVisitors={isLoadingVisitors}
                             searchFirstName={searchFirstName}
@@ -1206,8 +1218,8 @@ const UserDashboard = () => {
                             setSearchLastName={setSearchLastName}
                             searchSerial={searchSerial}
                             setSearchSerial={setSearchSerial}
-                            searchPhone={searchPhone}
-                            setSearchPhone={setSearchPhone}
+                            searchContact={searchContact}
+                            setSearchContact={setSearchContact}
                             searchHealthCard={searchHealthCard}
                             setSearchHealthCard={setSearchHealthCard}
                             searchDob={searchDob}

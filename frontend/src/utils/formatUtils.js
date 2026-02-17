@@ -1,10 +1,16 @@
 /**
- * Format phone for display/input: (XXX) XXX-XXXX (no +1)
- * Accepts: +14168880766, 4168880766, 416-888-0766, etc.
+ * Normalize to 10 digits only. No country code; we accept, store, and display 10 digits.
+ */
+const toTenDigits = (str) => {
+    const digits = String(str || '').replace(/\D/g, '');
+    return digits.slice(0, 10);
+};
+
+/**
+ * Format phone for display: (XXX) XXX-XXXX. 10 digits only.
  */
 export const formatPhoneDisplay = (phone) => {
-    if (!phone) return '';
-    const digits = String(phone).replace(/\D/g, '').replace(/^1/, '').slice(0, 10);
+    const digits = toTenDigits(phone);
     if (digits.length === 0) return '';
     if (digits.length <= 3) return `(${digits}`;
     if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
@@ -12,11 +18,11 @@ export const formatPhoneDisplay = (phone) => {
 };
 
 /**
- * Extract digits from phone (strip +1 if present)
+ * Extract up to 10 digits from phone input. No country code handling.
  */
 export const parsePhoneToDigits = (phone) => {
     if (!phone) return '';
-    return String(phone).replace(/\D/g, '').replace(/^1/, '').slice(0, 10);
+    return toTenDigits(phone);
 };
 
 /** Strip entity prefix from ID (e.g. E2-000001 -> 000001). Never show entity tag in IDs. */
@@ -90,11 +96,22 @@ export const getInteractionSerialDisplay = (serial) => {
     return stripEntityPrefix(serial) || 'REG-PENDING';
 };
 
-/** Queue number for registrations (resets at 8 AM daily). Use in queues/scheduled lists; falls back to serial if no temporarySerial. */
+/** Current status from backend or derived from flags. One of: registered | queued | ongoing | incomplete | complete | closed | billed | cancelled. */
+export const getInteractionStatus = (interaction) => {
+    if (!interaction) return 'registered';
+    if (interaction.interactionStatus && typeof interaction.interactionStatus === 'string') return interaction.interactionStatus;
+    if (interaction.cancelled) return 'cancelled';
+    if (interaction.billed) return 'billed';
+    if (interaction.closed) return 'closed';
+    if (interaction.completed) return 'complete';
+    if (interaction.started) return interaction.incomplete ? 'incomplete' : (interaction.ongoing ? 'ongoing' : 'ongoing');
+    const hasOfficer = interaction.officerId && String(interaction.officerId).trim() !== '';
+    return hasOfficer ? 'queued' : 'registered';
+};
+
+/** Registration/queue display id: in queue views use position; elsewhere use interaction serial (no temporary serial). */
 export const getRegistrationDisplayId = (interaction) => {
     if (!interaction) return '—';
-    const temp = interaction.temporarySerial;
-    if (temp != null && Number(temp) > 0) return String(temp);
     return stripEntityPrefix(interaction.interactionSerial) || 'REG-PENDING';
 };
 
@@ -151,6 +168,49 @@ export const formatTimeOnly = (dateStringOrMs) => {
     const am = h < 12;
     const h12 = h % 12 || 12;
     return `${h12}:${String(m).padStart(2, '0')} ${am ? 'AM' : 'PM'}`;
+};
+
+/** Age as "X yr Y mo" or "X mo" if under 1 year. Uses visitor.dateOfBirth. */
+export const getAgeYearsMonthsDisplay = (visitor) => {
+    const dob = visitor?.dateOfBirth;
+    if (!dob) return '—';
+    const parts = String(dob).split(/[-/]/);
+    if (parts.length < 3) return '—';
+    let month, day, year;
+    if (parts[0].length === 4) {
+        [year, month, day] = parts;
+    } else {
+        [month, day, year] = parts;
+    }
+    month = parseInt(month, 10) - 1;
+    day = parseInt(day, 10);
+    year = parseInt(year, 10);
+    const birth = new Date(year, month, day);
+    const today = new Date();
+    let years = today.getFullYear() - birth.getFullYear();
+    let months = today.getMonth() - birth.getMonth();
+    if (today.getDate() < birth.getDate()) months--;
+    if (months < 0) { years--; months += 12; }
+    if (isNaN(years) || years < 0) return '—';
+    if (years === 0) return `${months} mo`;
+    return months > 0 ? `${years} yr ${months} mo` : `${years} yr`;
+};
+
+/**
+ * Last visit display for a visitor: prefer visitor.lastVisitAt (stored on person), then lastVisits map, then from interactions.
+ * @param {Object} visitor - Visitor with optional lastVisitAt (ISO date)
+ * @param {Object} lastVisitsMap - Optional map visitorId -> last completed interaction { editedAt, createdAt }
+ * @param {Array} interactions - Optional all interactions (fallback: use latest completed for this visitor)
+ * @returns {string} Formatted date with time, or '-'
+ */
+export const getLastVisitDisplay = (visitor, lastVisitsMap = {}, interactions = []) => {
+    if (visitor?.lastVisitAt) return formatDateDisplay(visitor.lastVisitAt, true);
+    const fromMap = lastVisitsMap?.[visitor?.id];
+    if (fromMap) return formatDateDisplay(fromMap.editedAt || fromMap.createdAt, true);
+    const sorted = (interactions || []).filter(i => i.visitorId === visitor?.id && i.completed)
+        .sort((a, b) => new Date(b.editedAt || b.createdAt) - new Date(a.editedAt || a.createdAt));
+    const first = sorted[0];
+    return first ? formatDateDisplay(first.editedAt || first.createdAt, true) : '-';
 };
 
 /** Display label for registration reason (new_visit, followup, refill_medicine). */
