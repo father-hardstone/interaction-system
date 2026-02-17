@@ -19,6 +19,8 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
         setActiveViewTab,
         showCancelModal,
         setShowCancelModal,
+        isCleaning,
+        cleanupMessage,
         patientReports,
         isLoadingReports,
         loadReports,
@@ -43,11 +45,18 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
         scheduledInteractions,
         incompleteInteractions,
         completedInteractions,
+        closedInteractions,
         ongoingInteractions,
         completedInteractionsForPatient,
         handleStartInteraction,
         handleSaveInteraction,
         handleSaveDraft,
+        handleEditCompleted,
+        handleCloseEditMode,
+        handleSaveEdit,
+        isEditingCompleted,
+        isLoadingEdit,
+        originalPadSheetCounts,
         confirmCancel,
         moveToIncomplete,
         handleOpenPatientDetails,
@@ -120,7 +129,7 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
                     onClick={() => setActiveViewTab('ongoing')}
                     className={`px-3 py-1.5 sm:px-6 sm:py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all shrink-0 ${activeViewTab === 'ongoing' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
                 >
-                    Ongoing
+                    {isEditingCompleted ? 'Editing interaction' : 'Ongoing'}
                 </button>
                 <button
                     onClick={() => setActiveViewTab('incomplete')}
@@ -133,6 +142,12 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
                     className={`px-3 py-1.5 sm:px-6 sm:py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all shrink-0 ${activeViewTab === 'completed' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
                 >
                     Completed
+                </button>
+                <button
+                    onClick={() => setActiveViewTab('closed')}
+                    className={`px-3 py-1.5 sm:px-6 sm:py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all shrink-0 ${activeViewTab === 'closed' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                >
+                    Closed
                 </button>
             </div>
 
@@ -151,6 +166,7 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
                     onInteractionClick={onInteractionClick}
                     interactions={interactions}
                     lastVisits={lastVisits}
+                    visitors={visitors}
                 />
                 </div>
             )}
@@ -159,16 +175,43 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
             {activeViewTab === 'completed' && (
                 <div className="flex flex-col flex-1 min-h-0">
                     <CompletedInteractionsTable
-                    completedInteractions={completedInteractions}
-                    isLoading={isLoadingInteractions}
-                    handleOpenPatientDetails={handleOpenPatientDetails}
-                    getVisitorName={getVisitorName}
-                    getVisitorSerial={getVisitorSerial}
-                    formatDate={formatDate}
-                    onInteractionClick={onInteractionClick}
-                    interactions={interactions}
-                    lastVisits={lastVisits}
-                />
+                        variant="completed"
+                        completedInteractions={completedInteractions}
+                        isLoading={isLoadingInteractions}
+                        handleOpenPatientDetails={handleOpenPatientDetails}
+                        getVisitorName={getVisitorName}
+                        getVisitorSerial={getVisitorSerial}
+                        formatDate={formatDate}
+                        onInteractionClick={onInteractionClick}
+                        onEditCompleted={handleEditCompleted}
+                        interactions={interactions}
+                        lastVisits={lastVisits}
+                        title="Completed interactions"
+                        emptyMessage="No completed interactions"
+                        loadingMessage="Loading completed interactions…"
+                    />
+                </div>
+            )}
+
+            {/* Closed Tab */}
+            {activeViewTab === 'closed' && (
+                <div className="flex flex-col flex-1 min-h-0">
+                    <CompletedInteractionsTable
+                        variant="closed"
+                        completedInteractions={closedInteractions}
+                        isLoading={isLoadingInteractions}
+                        handleOpenPatientDetails={handleOpenPatientDetails}
+                        getVisitorName={getVisitorName}
+                        getVisitorSerial={getVisitorSerial}
+                        formatDate={formatDate}
+                        onInteractionClick={onInteractionClick}
+                        onEditCompleted={handleEditCompleted}
+                        interactions={interactions}
+                        lastVisits={lastVisits}
+                        title="Closed interactions"
+                        emptyMessage="No closed interactions"
+                        loadingMessage="Loading closed interactions…"
+                    />
                 </div>
             )}
 
@@ -185,7 +228,6 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
                     handleStartInteraction={handleStartInteraction}
                     onInteractionClick={onInteractionClick}
                     interactions={interactions}
-                    lastVisits={lastVisits}
                 />
                 </div>
             )}
@@ -211,7 +253,10 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
                         )}
                         <OngoingInteractionsView
                             isLoading={isLoadingInteractions}
+                            isLoadingEdit={isLoadingEdit}
+                            originalPadSheetCounts={originalPadSheetCounts}
                             ongoingInteractions={ongoingInteractions}
+                            editingInteraction={isEditingCompleted ? (interactions.find(i => i.id === activeInteractionId) || null) : null}
                             visitors={visitors}
                             getVisitorName={getVisitorName}
                             getVisitorSerial={getVisitorSerial}
@@ -241,6 +286,9 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
                             diagnostics={diagnostics}
                             handleSaveInteraction={handleSaveInteraction}
                             handleSaveDraft={handleSaveDraft}
+                            handleSaveEdit={handleSaveEdit}
+                            handleCloseEditMode={handleCloseEditMode}
+                            isEditingCompleted={isEditingCompleted}
                             patientReports={patientReports}
                             loadReports={loadReports}
                             setViewingMedia={setViewingMedia}
@@ -268,6 +316,7 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
                             <div className="hidden xl:flex xl:max-h-full xl:min-h-0 xl:overflow-hidden shrink-0 flex-col">
                                 <PastInteractionsSidebar
                                     activePatientVisitorId={activePatientVisitorId}
+                                    visitor={visitors.find((v) => v.id === activePatientVisitorId)}
                                     interactions={interactions}
                                     activeInteractionId={activeInteractionId}
                                     patientReports={patientReports}
@@ -303,6 +352,7 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
                                     <PastInteractionsSidebar
                                         isOverlay={true}
                                         activePatientVisitorId={activePatientVisitorId}
+                                        visitor={visitors.find((v) => v.id === activePatientVisitorId)}
                                         interactions={interactions}
                                         activeInteractionId={activeInteractionId}
                                         patientReports={patientReports}
@@ -339,6 +389,15 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
                     handlePatientClick={handleOpenPatientDetails}
                     visitors={visitors}
                 />
+            )}
+
+            {isCleaning && (
+                <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl shadow-2xl px-8 py-6 flex flex-col items-center gap-4 min-w-[280px]">
+                        <div className="animate-spin rounded-full h-10 w-10 border-2 border-slate-200 border-t-blue-600" />
+                        <p className="text-sm font-semibold text-slate-700 text-center">{cleanupMessage || 'Cleaning…'}</p>
+                    </div>
+                </div>
             )}
 
             <CancelInteractionModal

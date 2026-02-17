@@ -11,6 +11,7 @@ import UserDashboard from './pages/UserDashboard';
 import NotFoundPage from './pages/NotFoundPage';
 import ErrorBoundary from './components/ErrorBoundary';
 import { UserDashboardNavProvider, useUserDashboardNav } from './contexts/UserDashboardNavContext';
+import { ToastProvider } from './contexts/ToastContext';
 import UserDashboardNavContent from './components/UserDashboardNavContent';
 import { jwtDecode } from 'jwt-decode';
 import { entityService } from './services/entityService';
@@ -255,6 +256,7 @@ function App() {
     <ErrorBoundary>
       <Router>
         <UserDashboardNavProvider>
+          <ToastProvider>
           <div className="w-full min-h-screen flex flex-col overflow-x-hidden">
             <NavBar />
 
@@ -293,6 +295,7 @@ function App() {
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
         </div>
+          </ToastProvider>
         </UserDashboardNavProvider>
       </Router>
     </ErrorBoundary>

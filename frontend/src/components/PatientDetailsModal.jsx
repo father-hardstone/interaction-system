@@ -3,7 +3,7 @@ import ReportUpload from './ReportUpload';
 import ReportDetailsModal from './ReportDetailsModal';
 import { renderInteractionTags } from '../utils/interactionTags';
 import supabaseStorageService from '../services/supabaseService';
-import { formatPhoneDisplay, formatHealthCardDisplay, formatDateMMDDYYYY, getShortInteractionId } from '../utils/formatUtils';
+import { formatPhoneDisplay, formatHealthCardDisplay, formatDateMMDDYYYY, getShortInteractionId, getLastVisitDisplay } from '../utils/formatUtils';
 
 const toTitleCase = (str) => {
     if (!str) return '';
@@ -106,12 +106,37 @@ const PatientDetailsModal = ({
                             <div>
                                 <span className="text-slate-500 font-semibold normal-case tracking-wide">DOB</span>
                                 <span className="ml-1.5 font-semibold text-slate-700">{formatDateMMDDYYYY(selectedPatient.dateOfBirth) || '-'}</span>
+                                {selectedPatient.dateOfBirth && (() => {
+                                    const parts = String(selectedPatient.dateOfBirth).split(/[-/]/);
+                                    if (parts.length >= 3) {
+                                        let month, day, year;
+                                        if (parts[0].length === 4) {
+                                            [year, month, day] = parts;
+                                        } else {
+                                            [month, day, year] = parts;
+                                        }
+                                        month = parseInt(month, 10) - 1;
+                                        day = parseInt(day, 10);
+                                        year = parseInt(year, 10);
+                                        const dob = new Date(year, month, day);
+                                        const today = new Date();
+                                        let years = today.getFullYear() - dob.getFullYear();
+                                        let months = today.getMonth() - dob.getMonth();
+                                        if (today.getDate() < dob.getDate()) months--;
+                                        if (months < 0) { years--; months += 12; }
+                                        if (!isNaN(years) && years >= 0) {
+                                            if (years === 0) return <span className="ml-1.5 text-slate-600 font-semibold">({months} mo)</span>;
+                                            return <span className="ml-1.5 text-slate-600 font-semibold">({months > 0 ? `${years} yr ${months} mo` : `${years} yr`})</span>;
+                                        }
+                                    }
+                                    return null;
+                                })()}
                             </div>
                             {selectedPatient.healthCardNumber && (
                                 <>
                                     <div className="text-slate-300">|</div>
                                     <div>
-                                        <span className="text-slate-500 font-semibold normal-case tracking-wide">Health Card</span>
+                                        <span className="text-slate-500 font-semibold normal-case tracking-wide">HC</span>
                                         <span className="ml-1.5 font-sans font-semibold text-slate-700">{formatHealthCardDisplay(selectedPatient.healthCardNumber)}</span>
                                         {selectedPatient.healthCardVersion && <span className="ml-1 text-slate-600 font-semibold">({selectedPatient.healthCardVersion})</span>}
                                     </div>
@@ -134,11 +159,6 @@ const PatientDetailsModal = ({
                     {/* SECTION 1: Personal Profile (hidden in reportsOnly mode) */}
                     {!reportsOnly && (
                     <div className="space-y-1.5">
-                        <div className="flex items-center gap-2 mb-1">
-                            <div className="w-1 h-3.5 bg-blue-500 rounded-full"></div>
-                            <h4 className="text-base font-semibold text-slate-900 normal-case tracking-wide">Identity Details</h4>
-                        </div>
-
                         <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-1.5">
                             {[
                                 { label: 'Full Name', value: toTitleCase(getVisitorName(selectedPatient.id)) },
@@ -147,23 +167,21 @@ const PatientDetailsModal = ({
                                 { label: 'Phone (B)', value: (() => { const m = selectedPatient.phoneM || selectedPatient.phone || ''; const b = selectedPatient.phoneB || (selectedPatient.phone && selectedPatient.phone !== m ? selectedPatient.phone : ''); return b ? formatPhoneDisplay(b) : '—'; })() },
                                 { label: 'Phone (H)', value: formatPhoneDisplay(selectedPatient.phoneH) },
                                 { label: 'Email Address', value: selectedPatient.email },
-                                { label: 'Last Visit', value: (() => {
-                                    const lastVisit = lastVisits[selectedPatient?.id] || completedInteractionsForPatient
-                                        .sort((a, b) => {
-                                            const dateA = new Date(a.editedAt || a.createdAt);
-                                            const dateB = new Date(b.editedAt || b.createdAt);
-                                            return dateB - dateA;
-                                        })[0];
-                                    return lastVisit ? formatDate(lastVisit.editedAt || lastVisit.createdAt, true) : '-';
-                                })() },
-                                { label: 'Health Card Effectivity', value: formatDateMMDDYYYY(selectedPatient.healthCardEffectivityDate) },
-                                { label: 'Health Card Expiry', value: formatDateMMDDYYYY(selectedPatient.healthCardExpiryDate) },
-                            ].map((item, idx) => (
-                                <div key={idx} className="space-y-0">
-                                    <label className="text-xs font-semibold text-slate-600 normal-case tracking-wide block">{item.label}</label>
-                                    <div className={`text-sm font-semibold text-slate-700 tracking-tight ${item.label === 'Full Name' ? 'font-bold normal-case' : 'normal-case'}`}>{item.value || '-'}</div>
-                                </div>
-                            ))}
+                                { label: 'Last Visit', value: getLastVisitDisplay(selectedPatient, lastVisits, completedInteractionsForPatient) },
+                                { label: 'HC issue date', value: formatDateMMDDYYYY(selectedPatient.healthCardEffectivityDate) },
+                                { label: 'HC expiry date', value: formatDateMMDDYYYY(selectedPatient.healthCardExpiryDate), isExpiryDate: true, rawDate: selectedPatient.healthCardExpiryDate },
+                            ].map((item, idx) => {
+                                const isExpired = item.isExpiryDate && item.rawDate && (() => {
+                                    const exp = new Date(item.rawDate);
+                                    return !isNaN(exp.getTime()) && exp < new Date();
+                                })();
+                                return (
+                                    <div key={idx} className="space-y-0">
+                                        <label className="text-xs font-semibold text-slate-600 normal-case tracking-wide block">{item.label}</label>
+                                        <div className={`text-sm font-semibold tracking-tight normal-case ${item.label === 'Full Name' ? 'font-bold text-slate-700' : isExpired ? 'text-red-600' : 'text-slate-700'}`}>{item.value || '-'}</div>
+                                    </div>
+                                );
+                            })}
                         </div>
 
                         <div className="pt-0.5">
@@ -182,12 +200,8 @@ const PatientDetailsModal = ({
                                     <div className="text-sm font-semibold text-slate-700 normal-case tracking-tight">{selectedPatient.allergies || 'N/A'}</div>
                                 </div>
                                 <div className="space-y-0.5">
-                                    <label className="text-sm font-semibold text-red-900 normal-case tracking-wide block">Drug Reactions</label>
+                                    <label className="text-sm font-semibold text-red-900 normal-case tracking-wide block">Type of Reactions</label>
                                     <div className="text-sm font-semibold text-slate-700 normal-case tracking-tight">{selectedPatient.drugReactions || 'N/A'}</div>
-                                </div>
-                                <div className="space-y-0.5">
-                                    <label className="text-sm font-semibold text-red-900 normal-case tracking-wide block">Ongoing Health Conditions</label>
-                                    <div className="text-sm font-semibold text-slate-700 normal-case tracking-tight">{selectedPatient.ongoingHealthConditions || 'N/A'}</div>
                                 </div>
                                 <div className="space-y-0.5">
                                     <label className="text-sm font-semibold text-red-900 normal-case tracking-wide block">Special Notes</label>

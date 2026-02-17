@@ -1,15 +1,8 @@
 const InteractionService = require('../services/InteractionService');
+const VisitorService = require('../services/VisitorService');
 const jwt = require('jsonwebtoken');
 
 const SECRET_KEY = process.env.JWT_SECRET || 'supersecretkey';
-
-/** Queue day starts at 8 AM server local time. Returns that boundary as ISO string. */
-function getQueueDayStart() {
-    const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 8, 0, 0, 0);
-    if (now < start) start.setDate(start.getDate() - 1);
-    return start.toISOString();
-}
 
 class InteractionController {
     // Get all interactions for a specific entity
@@ -42,6 +35,21 @@ class InteractionController {
             res.json({ interactions: filtered, lastVisits });
         } catch (e) {
             console.error('getInteractionsByEntity error:', e);
+            res.status(500).json({ error: e.message });
+        }
+    }
+
+    // Get a single interaction by id (full document for edit view)
+    async getInteractionById(req, res) {
+        try {
+            const { id } = req.params;
+            const interaction = await InteractionService.findOne({ id });
+            if (!interaction) {
+                return res.status(404).json({ error: 'Interaction not found' });
+            }
+            res.json(interaction);
+        } catch (e) {
+            console.error('getInteractionById error:', e);
             res.status(500).json({ error: e.message });
         }
     }
@@ -83,20 +91,20 @@ class InteractionController {
                 });
             }
 
-            // Allow unassigning by passing empty strings
-            // When assigning to a doctor, set queue number (temporarySerial); when unassigning, clear it
+            // Allow unassigning by passing empty strings. Queue order is by queuedAt (set when assigned); serial is derived at display time.
+            const now = new Date().toISOString();
+            const isAssigning = officerId && String(officerId).trim() !== '';
             const updates = {
                 officerId: officerId || '',
                 officerSerial: officerSerial || '',
-                billed: false  // Ensure billed is false when assigning/unassigning
+                billed: false,  // Ensure billed is false when assigning/unassigning
+                queuedAt: isAssigning ? now : '',
+                interactionStatus: InteractionService.computeInteractionStatus({
+                    ...existing,
+                    officerId: officerId || '',
+                    officerSerial: officerSerial || ''
+                })
             };
-            if (officerId && officerId.trim()) {
-                const queueDayStart = getQueueDayStart();
-                const maxTemp = await InteractionService.getMaxTemporarySerialInQueueDay(existing.entityId, queueDayStart);
-                updates.temporarySerial = maxTemp + 1;
-            } else {
-                updates.temporarySerial = 0;
-            }
 
             const updated = await InteractionService.update(id, updates);
             if (!updated) {
@@ -173,7 +181,8 @@ class InteractionController {
                 deletedAt: '',
                 billed: false,
                 reasonForVisit: reasonForVisit || '',
-                reasonForVisitNotes: (reasonForVisitNotes != null && String(reasonForVisitNotes).trim()) ? String(reasonForVisitNotes).trim() : ''
+                reasonForVisitNotes: (reasonForVisitNotes != null && String(reasonForVisitNotes).trim()) ? String(reasonForVisitNotes).trim() : '',
+                interactionStatus: 'registered'
             };
 
             console.log('createInteraction - Interaction data to save:', interactionData);
@@ -254,6 +263,7 @@ class InteractionController {
                 followupRequired,
                 followup,
                 savedNotes,
+                editCount,
                 started,
                 ongoing,
                 incomplete,
@@ -334,7 +344,8 @@ class InteractionController {
                 updates.ccReason = {
                     text: ccReason.text || '',
                     scratchpad: ccReason.scratchpad || '',
-                    hasScratchpad: ccReason.hasScratchpad || false
+                    hasScratchpad: ccReason.hasScratchpad || false,
+                    addedLaterSheetIndices: Array.isArray(ccReason.addedLaterSheetIndices) ? ccReason.addedLaterSheetIndices : undefined
                 };
             }
 
@@ -342,7 +353,8 @@ class InteractionController {
                 updates.subjective = {
                     text: subjective.text || '',
                     scratchpad: subjective.scratchpad || '',
-                    hasScratchpad: subjective.hasScratchpad || false
+                    hasScratchpad: subjective.hasScratchpad || false,
+                    addedLaterSheetIndices: Array.isArray(subjective.addedLaterSheetIndices) ? subjective.addedLaterSheetIndices : undefined
                 };
             }
 
@@ -350,7 +362,8 @@ class InteractionController {
                 updates.objective = {
                     text: objective.text || '',
                     scratchpad: objective.scratchpad || '',
-                    hasScratchpad: objective.hasScratchpad || false
+                    hasScratchpad: objective.hasScratchpad || false,
+                    addedLaterSheetIndices: Array.isArray(objective.addedLaterSheetIndices) ? objective.addedLaterSheetIndices : undefined
                 };
             }
 
@@ -358,7 +371,8 @@ class InteractionController {
                 updates.assessmentPlan = {
                     text: assessmentPlan.text || '',
                     scratchpad: assessmentPlan.scratchpad || '',
-                    hasScratchpad: assessmentPlan.hasScratchpad || false
+                    hasScratchpad: assessmentPlan.hasScratchpad || false,
+                    addedLaterSheetIndices: Array.isArray(assessmentPlan.addedLaterSheetIndices) ? assessmentPlan.addedLaterSheetIndices : undefined
                 };
             }
 
@@ -378,7 +392,8 @@ class InteractionController {
                     type: referral.type || '',
                     reason: referral.reason || '',
                     to: referral.to || '',
-                    date: referral.date || ''
+                    date: referral.date || '',
+                    addedLater: referral.addedLater === true
                 };
             }
 
@@ -390,7 +405,8 @@ class InteractionController {
                     frequency: med.frequency || '',
                     duration: med.duration || '',
                     refills: parseInt(med.refills) || 0,
-                    instructions: med.instructions || ''
+                    instructions: med.instructions || '',
+                    addedLater: med.addedLater === true
                 }));
             }
 
@@ -398,7 +414,10 @@ class InteractionController {
                 updates.followupRequired = {
                     required: followupRequired.required || false,
                     date: followupRequired.date || '',
-                    followupInteractionId: followupRequired.followupInteractionId || ''
+                    followupInteractionId: followupRequired.followupInteractionId || '',
+                    addedLater: followupRequired.addedLater === true,
+                    intervalWeeks: followupRequired.intervalWeeks != null ? followupRequired.intervalWeeks : null,
+                    intervalMonths: followupRequired.intervalMonths != null ? followupRequired.intervalMonths : null
                 };
             }
 
@@ -415,10 +434,43 @@ class InteractionController {
                     timestamp: note.timestamp || ''
                 }));
             }
+            if (editCount !== undefined) {
+                updates.editCount = Math.max(0, parseInt(editCount, 10) || 0);
+            }
+
+            // When all key SOAP blocks are provided, derive completed/incomplete from whether key fields are filled (so removing CC/S/O/AP moves back to incomplete).
+            // Skip this when returning to queue (started: false) so we do not overwrite explicit incomplete: false.
+            if (ccReason !== undefined && subjective !== undefined && objective !== undefined && assessmentPlan !== undefined && started !== false) {
+                const effectiveCc = updates.ccReason !== undefined ? updates.ccReason : existing.ccReason;
+                const effectiveS = updates.subjective !== undefined ? updates.subjective : existing.subjective;
+                const effectiveO = updates.objective !== undefined ? updates.objective : existing.objective;
+                const effectiveAp = updates.assessmentPlan !== undefined ? updates.assessmentPlan : existing.assessmentPlan;
+                const hasKeyFields = [effectiveCc, effectiveS, effectiveO, effectiveAp].every(
+                    block => block && ((block.text && String(block.text).trim()) || block.hasScratchpad)
+                );
+                updates.completed = hasKeyFields;
+                updates.incomplete = !hasKeyFields;
+            }
+
+            // Merge updates into existing to compute new interactionStatus
+            const merged = { ...existing, ...updates };
+            updates.interactionStatus = InteractionService.computeInteractionStatus(merged);
 
             const updated = await InteractionService.update(id, updates);
             if (!updated) {
                 return res.status(404).json({ error: 'Interaction not found' });
+            }
+
+            // Keep visitor.lastVisitAt in sync when this interaction is completed
+            if (updated.completed && updated.visitorId) {
+                const lastVisitAt = updated.completedAt || updated.editedAt;
+                if (lastVisitAt) {
+                    try {
+                        await VisitorService.updateLastVisitAt(updated.visitorId, lastVisitAt);
+                    } catch (err) {
+                        console.warn('saveInteractionDetails - could not update visitor lastVisitAt:', err.message);
+                    }
+                }
             }
 
             console.log('saveInteractionDetails - Updated interaction:', {

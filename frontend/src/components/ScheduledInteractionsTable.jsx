@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { getRegistrationDisplayId, getReasonForVisitLabel, formatTimeOnly } from '../utils/formatUtils';
+import { getReasonForVisitLabel, formatTimeOnly, getAgeYearsMonthsDisplay } from '../utils/formatUtils';
 
-/** Wait time from registration (createdAt) to now, in whole minutes. Updates when tick changes. */
+/** Wait time from registration (createdAt) to now, in whole minutes. */
 const getWaitMinutesAgo = (createdAt, now) => {
     if (!createdAt) return null;
     const start = new Date(createdAt).getTime();
@@ -10,18 +10,12 @@ const getWaitMinutesAgo = (createdAt, now) => {
     return Math.floor(diffMs / 60000);
 };
 
-const formatWaitTime = (createdAt, now) => {
-    const mins = getWaitMinutesAgo(createdAt, now);
-    if (mins === null) return '—';
-    return mins === 0 ? '0 min ago' : `${mins} min ago`;
-};
-
-/** Very light background class for Reason of visit cell only. */
+/** Background class for Reason of visit cell (slightly tinted). */
 const getReasonCellBg = (reason) => {
     const r = (reason || '').trim();
-    if (r === 'followup') return 'bg-green-50/80';
-    if (r === 'refill_medicine') return 'bg-amber-50/80';
-    return 'bg-blue-50/80'; // new_visit or default
+    if (r === 'followup') return 'bg-green-100';
+    if (r === 'refill_medicine') return 'bg-amber-100';
+    return 'bg-blue-100'; // new_visit or default
 };
 
 const ScheduledInteractionsTable = ({
@@ -34,7 +28,8 @@ const ScheduledInteractionsTable = ({
     ongoingInteractions,
     onInteractionClick,
     interactions = [],
-    lastVisits = {}
+    lastVisits = {},
+    visitors = []
 }) => {
     const [tick, setTick] = useState(() => Date.now());
 
@@ -59,30 +54,24 @@ const ScheduledInteractionsTable = ({
         return formatDate(last.editedAt || last.createdAt, false);
     };
 
-    /** Duration in minutes from startedAt to completedAt of the last visit. */
-    const getLastVisitDuration = (interaction) => {
+    /** All diagnostic codes from last visit, comma-separated, uppercase (e.g. A002, A003). */
+    const getLastVisitDiagCodes = (interaction) => {
         const last = getLastVisitInteraction(interaction);
-        if (!last?.startedAt || !last?.completedAt) return '—';
-        const start = new Date(last.startedAt).getTime();
-        const end = new Date(last.completedAt).getTime();
-        if (isNaN(start) || isNaN(end) || end < start) return '—';
-        const mins = Math.round((end - start) / 60000);
-        return mins <= 0 ? '—' : `${mins} min`;
+        const lines = last?.serviceLines;
+        if (!Array.isArray(lines) || lines.length === 0) return '—';
+        const codes = lines.map(l => (l.diagnostic && String(l.diagnostic).trim()) || null).filter(Boolean);
+        if (codes.length === 0) return '—';
+        return codes.map(c => c.toUpperCase()).join(', ');
     };
 
-    const getLastVisitDiagCode = (interaction) => {
+    /** All billing/service codes from last visit, comma-separated, uppercase. */
+    const getLastVisitBillingCodes = (interaction) => {
         const last = getLastVisitInteraction(interaction);
-        const code = last?.serviceLines?.[0]?.diagnostic;
-        return (code && String(code).trim()) ? String(code).trim() : '—';
-    };
-
-    /** Billing code from last visit (service code only; accounting number is never shown). */
-    const getLastVisitBillingCode = (interaction) => {
-        const last = getLastVisitInteraction(interaction);
-        const line = last?.serviceLines?.[0];
-        if (!line) return '—';
-        const serviceCode = (line.service || line.billingCode || '').trim();
-        return serviceCode || '—';
+        const lines = last?.serviceLines;
+        if (!Array.isArray(lines) || lines.length === 0) return '—';
+        const codes = lines.map(l => (l.service || l.billingCode || '').trim()).filter(Boolean);
+        if (codes.length === 0) return '—';
+        return codes.map(c => c.toUpperCase()).join(', ');
     };
 
     return (
@@ -98,22 +87,21 @@ const ScheduledInteractionsTable = ({
                 <table className="w-full border-collapse min-w-[800px]">
                     <thead>
                         <tr className="border-b border-slate-200 sticky top-0 z-10">
-                            <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-700 bg-slate-50">Registration</th>
-                            <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-700 bg-slate-50 border-l border-slate-100">Patient</th>
-                            <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-700 bg-slate-50 border-l border-slate-100">Registration time</th>
-                            <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-700 bg-slate-50 border-l border-slate-100">Wait time</th>
+                            <th className="w-9 px-1 py-3 text-center text-xs sm:text-sm font-semibold text-slate-700 bg-slate-50">#</th>
+                            <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-700 bg-slate-50 border-l border-slate-100">Name</th>
+                            <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-700 bg-slate-50 border-l border-slate-100">Registration</th>
+                            <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-700 bg-slate-50 border-l border-slate-100">Age</th>
                             <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-700 bg-slate-50 border-l border-slate-100">Reason of visit</th>
                             <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-700 bg-slate-50 border-l border-slate-100">Last visit</th>
-                            <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-700 bg-slate-50 border-l border-slate-100">Duration</th>
                             <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-700 bg-slate-50 border-l border-slate-100">Diag code</th>
-                            <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-700 bg-slate-50 border-l border-slate-100">Billing code</th>
+                            <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-700 bg-slate-50 border-l border-slate-100">Billing</th>
                             <th className="px-3 sm:px-4 py-3 text-right text-xs sm:text-sm font-semibold text-slate-700 bg-slate-50">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         {isLoading ? (
                             <tr>
-                                <td colSpan={10} className="px-4 sm:px-6 py-16 text-center">
+                                <td colSpan={9} className="px-4 sm:px-6 py-16 text-center">
                                     <div className="flex flex-col items-center justify-center gap-3">
                                         <svg className="animate-spin h-10 w-10 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -125,27 +113,32 @@ const ScheduledInteractionsTable = ({
                             </tr>
                         ) : scheduledInteractions.length === 0 ? (
                             <tr>
-                                <td colSpan={10} className="px-4 sm:px-6 py-12 text-center text-slate-400 text-sm">
+                                <td colSpan={9} className="px-4 sm:px-6 py-12 text-center text-slate-400 text-sm">
                                     No scheduled interactions
                                 </td>
                             </tr>
                         ) : (
-                            scheduledInteractions.map((interaction) => (
+                            scheduledInteractions.map((interaction, queueIndex) => {
+                                const waitMins = getWaitMinutesAgo(interaction.createdAt, tick);
+                                const visitor = visitors.find(v => v.id === interaction.visitorId);
+                                return (
                                 <tr
                                     key={interaction.id}
                                     className="border-b border-slate-100 hover:bg-slate-50/30 transition-all cursor-pointer"
                                     onClick={() => onInteractionClick(interaction)}
                                 >
-                                    <td className="px-3 sm:px-4 py-3 align-middle bg-slate-50/50">
-                                        <span className="text-sm font-semibold text-blue-600">{getRegistrationDisplayId(interaction)}</span>
+                                    <td className="w-9 px-1 py-3 align-middle text-center bg-slate-50/50">
+                                        <span className="text-sm font-semibold text-blue-600">{queueIndex + 1}</span>
                                     </td>
                                     <td className="px-3 sm:px-4 py-3 align-middle border-l border-slate-100" onClick={(e) => e.stopPropagation()}>
                                         <button type="button" onClick={() => handleOpenPatientDetails(interaction.visitorId)} className="text-left hover:text-blue-700 transition-colors">
                                             <div className="font-medium text-sm text-slate-900">{getVisitorName(interaction.visitorId)}</div>
                                         </button>
                                     </td>
-                                    <td className="px-3 sm:px-4 py-3 align-middle text-sm text-slate-700 border-l border-slate-100">{formatTimeOnly(interaction.createdAt)}</td>
-                                    <td className="px-3 sm:px-4 py-3 align-middle text-sm font-medium text-slate-700 border-l border-slate-100">{formatWaitTime(interaction.createdAt, tick)}</td>
+                                    <td className="px-3 sm:px-4 py-3 align-middle text-sm text-slate-700 border-l border-slate-100">
+                                        {formatTimeOnly(interaction.createdAt)}{waitMins !== null ? ` (${waitMins})` : ''}
+                                    </td>
+                                    <td className="px-3 sm:px-4 py-3 align-middle text-sm text-slate-700 border-l border-slate-100">{getAgeYearsMonthsDisplay(visitor)}</td>
                                     <td className={`px-3 sm:px-4 py-3 align-middle text-sm text-slate-700 border-l border-slate-100 ${getReasonCellBg(interaction.reasonForVisit)}`}>
                                         <div>{getReasonForVisitLabel(interaction.reasonForVisit)}</div>
                                         {(interaction.reasonForVisitNotes || '').trim() && (
@@ -153,9 +146,8 @@ const ScheduledInteractionsTable = ({
                                         )}
                                     </td>
                                     <td className="px-3 sm:px-4 py-3 align-middle text-sm text-slate-700 border-l border-slate-100">{getLastVisitDate(interaction)}</td>
-                                    <td className="px-3 sm:px-4 py-3 align-middle text-sm text-slate-700 border-l border-slate-100">{getLastVisitDuration(interaction)}</td>
-                                    <td className="px-3 sm:px-4 py-3 align-middle text-sm text-slate-700 border-l border-slate-100">{getLastVisitDiagCode(interaction)}</td>
-                                    <td className="px-3 sm:px-4 py-3 align-middle text-sm text-slate-700 border-l border-slate-100">{getLastVisitBillingCode(interaction)}</td>
+                                    <td className="px-3 sm:px-4 py-3 align-middle text-sm text-slate-700 border-l border-slate-100">{getLastVisitDiagCodes(interaction)}</td>
+                                    <td className="px-3 sm:px-4 py-3 align-middle text-sm text-slate-700 border-l border-slate-100">{getLastVisitBillingCodes(interaction)}</td>
                                     <td className="px-3 sm:px-4 py-3 align-middle text-right bg-slate-50/50" onClick={(e) => e.stopPropagation()}>
                                         <button
                                             type="button"
@@ -170,7 +162,7 @@ const ScheduledInteractionsTable = ({
                                         </button>
                                     </td>
                                 </tr>
-                            ))
+                            ); })
                         )}
                     </tbody>
                 </table>

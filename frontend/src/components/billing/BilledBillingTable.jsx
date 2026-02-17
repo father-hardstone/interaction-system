@@ -1,5 +1,6 @@
 import React from 'react';
 import { getVisitorName, getVisitorSerialDisplay, getOfficerName, formatDate, formatDateMMDDYYYY, formatPhoneDisplay, formatHealthCardDisplay, getRegistrationDisplayId } from './utils';
+import { getAgeYearsMonthsDisplay } from '../../utils/formatUtils';
 
 const BilledBillingTable = ({
     billedInteractions,
@@ -49,7 +50,14 @@ const BilledBillingTable = ({
                                     className="border-b border-slate-100 hover:bg-slate-50 transition-all cursor-pointer"
                                     onClick={() => onInteractionClick?.(interaction)}
                                 >
-                                        <td className="px-4 sm:px-6 py-4 text-slate-700 hidden md:table-cell text-sm">{visitor ? formatDateMMDDYYYY(visitor.dateOfBirth) || '-' : '-'}</td>
+                                        <td className="px-4 sm:px-6 py-4 text-slate-700 hidden md:table-cell text-sm">
+                                        {visitor ? (
+                                            <>
+                                                {formatDateMMDDYYYY(visitor.dateOfBirth) || '-'}
+                                                {visitor.dateOfBirth && <span className="text-slate-500 ml-1">({getAgeYearsMonthsDisplay(visitor)})</span>}
+                                            </>
+                                        ) : '-'}
+                                    </td>
                                         <td className="px-4 sm:px-6 py-4 text-slate-700" onClick={(e) => e.stopPropagation()}>
                                             <button
                                                 type="button"

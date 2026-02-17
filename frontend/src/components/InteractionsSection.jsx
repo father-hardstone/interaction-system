@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { renderInteractionTags } from '../utils/interactionTags';
-import { stripEntityPrefix, getVisitorSerialDisplay, getReasonForVisitLabel, formatPhoneDisplay, getRegistrationDisplayId, formatTimeOnly } from '../utils/formatUtils';
+import { stripEntityPrefix, getVisitorSerialDisplay, getReasonForVisitLabel, formatPhoneDisplay, getRegistrationDisplayId, formatTimeOnly, getInteractionStatus } from '../utils/formatUtils';
 import RegisterInteractionModal from './RegisterInteractionModal';
 
 /** Registration status for queue cards: Ongoing | Followup | New | Refill (from reasonForVisit / ongoing). */
@@ -97,12 +97,13 @@ const InteractionsSection = ({
         return () => clearInterval(interval);
     }, []);
 
-    const officerQueueSortedByCreated = useMemo(
+    /** Queue order: oldest first (ascending by queuedAt/createdAt). Serial 1 = oldest in queue. */
+    const officerQueueSortedByQueuedAt = useMemo(
         () =>
             selectedOfficer
                 ? interactions
-                    .filter(i => !i.cancelled && i.officerId === selectedOfficer.id && !(i.id in pendingAssignments) && !i.completed && !i.closed && !i.started)
-                    .sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0))
+                    .filter(i => getInteractionStatus(i) === 'queued' && i.officerId === selectedOfficer.id && !(i.id in pendingAssignments))
+                    .sort((a, b) => new Date(a.queuedAt || a.createdAt || 0) - new Date(b.queuedAt || b.createdAt || 0))
                 : [],
         [interactions, selectedOfficer, pendingAssignments]
     );
@@ -115,7 +116,7 @@ const InteractionsSection = ({
     }, [interactions]);
 
     const getExpectedTurnTime = (interactionId) => {
-        const pos = officerQueueSortedByCreated.findIndex(i => i.id === interactionId);
+        const pos = officerQueueSortedByQueuedAt.findIndex(i => i.id === interactionId);
         if (pos < 0) return '—';
         return formatTimeOnly(tick + pos * avgConsultationMs);
     };
@@ -184,7 +185,7 @@ const InteractionsSection = ({
                             setDraggedOverUnassigned(false);
                             handleDrop(e, null);
                         }}
-                        className={`grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-2 p-3 rounded-xl transition-colors flex-1 min-h-0 overflow-y-auto scrollbar-hide ${draggedOverUnassigned ? 'bg-blue-50 border-2 border-blue-300 border-dashed' : 'bg-slate-50'
+                        className={`grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-2 p-3 rounded-xl transition-colors flex-1 min-h-0 overflow-y-auto scrollbar-hide ${draggedOverUnassigned ? 'bg-blue-50 border-2 border-blue-300 border-dashed' : 'bg-slate-50'
                             }`}
                     >
                         {/* Show existing interactions + optimistic unassigned (being moved from doctor) */}
@@ -231,10 +232,9 @@ const InteractionsSection = ({
                                             handleDragEnd(e);
                                             setDraggedOverDelete(false);
                                         }}
-                                        onClick={() => onInteractionClick(interaction)}
-                                        className={`group/card relative bg-white border border-slate-200 rounded-lg p-2.5 transition-all duration-300 hover:shadow-md hover:shadow-blue-500/5 hover:-translate-y-0.5 active:scale-[0.98] flex flex-col justify-between h-fit overflow-hidden max-w-[220px] ${isBeingDeleted ? 'ring-2 ring-red-500 bg-red-50' : isFailed ? 'ring-2 ring-red-500 bg-red-100 border-red-300 shadow-lg shadow-red-200/50' : 'hover:border-blue-400'}`}
+                                        className={`group/card relative bg-white border border-slate-200 rounded-lg p-2.5 transition-all duration-300 hover:shadow-md hover:shadow-blue-500/5 hover:-translate-y-0.5 hover:border-blue-400 flex flex-col justify-between h-fit overflow-visible min-w-0 cursor-default ${isBeingDeleted ? 'ring-2 ring-red-500 bg-red-50' : isFailed ? 'ring-2 ring-red-500 bg-red-100 border-red-300 shadow-lg shadow-red-200/50' : ''}`}
                                     >
-                                        <div className="relative flex flex-col h-full gap-1 min-w-0">
+                                        <div className="relative flex flex-col h-full gap-1 min-w-0 overflow-visible">
                                             {isBeingUnassigned && (
                                                 <div className={`absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-lg transition-colors duration-200 ${isFailed ? 'bg-red-100/95' : 'bg-white/90 backdrop-blur-sm'}`}>
                                                     {isFailed ? (
@@ -252,14 +252,14 @@ const InteractionsSection = ({
                                                     )}
                                                 </div>
                                             )}
-                                            <div className="flex justify-between items-start gap-1 min-w-0">
+                                            <div className="flex justify-between items-start gap-1 min-w-0 flex-nowrap">
                                                 <span className="inline-flex items-center justify-center min-w-[2rem] text-xs font-semibold text-blue-600 bg-blue-50/80 px-1.5 py-0.5 rounded border border-blue-100 normal-case tracking-wide shrink-0">
                                                     {getRegistrationDisplayId(interaction)}
                                                 </span>
-                                                <span className={`shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded border normal-case ${status.label === 'Ongoing' ? 'bg-blue-50 text-blue-600 border-blue-100' : status.label === 'Followup' ? 'bg-teal-50 text-teal-600 border-teal-100' : status.label === 'Refill' ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-slate-100 text-slate-700 border-slate-200'}`}>
+                                                <span className={`shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded border normal-case whitespace-nowrap ${status.label === 'Ongoing' ? 'bg-blue-50 text-blue-600 border-blue-100' : status.label === 'Followup' ? 'bg-teal-50 text-teal-600 border-teal-100' : status.label === 'Refill' ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-slate-100 text-slate-700 border-slate-200'}`}>
                                                     {status.label}
                                                 </span>
-                                                <div className="flex items-center gap-1 shrink-0">
+                                                <div className="flex items-center gap-0.5 shrink-0 min-w-[4.5rem] justify-end" aria-label="Card actions">
                                                     {canDrag && onOpenQueueModal && (
                                                         <button type="button" onClick={(e) => { e.stopPropagation(); onOpenQueueModal(interaction); }} className="p-1 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 opacity-70 hover:opacity-100 sm:opacity-0 sm:group-hover/card:opacity-100" title="Queue (assign to doctor)">
                                                             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h10M4 18h16m4-6l4 4 4-4" /></svg>
@@ -288,7 +288,7 @@ const InteractionsSection = ({
                                                 <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0 truncate">
                                                     <span className="text-slate-500 shrink-0">Phone</span><span className="font-medium truncate">{formatPhoneDisplay(visitor?.phoneM || visitor?.phone) || '—'}</span>
                                                     <span className="text-slate-400 shrink-0">·</span>
-                                                    <span className="text-slate-500 shrink-0">Turn</span><span className="font-medium">—</span>
+                                                    <span className="text-slate-500 shrink-0">Estimated turn</span><span className="font-medium">—</span>
                                                     <span className="text-slate-400 shrink-0">·</span>
                                                     <span className="text-slate-500 shrink-0">Date</span><span className="font-medium truncate">{formatDate(interaction.createdAt, true)}</span>
                                                 </div>
@@ -360,7 +360,7 @@ const InteractionsSection = ({
                         <h3 className="text-sm font-semibold text-slate-700">Doctors</h3>
                     </div>
                     <p className="text-xs text-slate-500 mb-3">
-                        {selectedOfficer ? interactions.filter(i => !i.cancelled && i.officerId === selectedOfficer.id && !(i.id in pendingAssignments) && !i.completed && !i.closed && !i.started).length + (Object.values(pendingAssignments).filter(id => id === selectedOfficer?.id).length || 0) : 0} in scheduled registrations
+                        {selectedOfficer ? interactions.filter(i => getInteractionStatus(i) === 'queued' && i.officerId === selectedOfficer.id && !(i.id in pendingAssignments)).length + (Object.values(pendingAssignments).filter(id => id === selectedOfficer?.id).length || 0) : 0} in scheduled registrations
                     </p>
                     <div className="flex flex-col flex-1 min-h-0">
                         {selectedOfficer ? (
@@ -405,9 +405,9 @@ const InteractionsSection = ({
                                                 );
                                             })}
                                         {interactions
-                                            .filter(i => !i.cancelled && i.officerId === selectedOfficer.id && !(i.id in pendingAssignments) && !i.completed && !i.closed && !i.started)
-                                            .sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0))
-                                            .map((interaction) => {
+                                            .filter(i => getInteractionStatus(i) === 'queued' && i.officerId === selectedOfficer.id && !(i.id in pendingAssignments))
+                                            .sort((a, b) => new Date(a.queuedAt || a.createdAt || 0) - new Date(b.queuedAt || b.createdAt || 0))
+                                            .map((interaction, queueIndex) => {
                                                 const canDrag = (userData?.role === 'receptionist' || userData?.role === 'officer') && !interaction.started && !interaction.completed && !interaction.closed;
                                                 const visitor = visitors.find(v => v.id === interaction.visitorId);
                                                 const status = getRegistrationStatus(interaction);
@@ -424,17 +424,17 @@ const InteractionsSection = ({
                                                     })();
                                                 const diagCode = getLastVisitDiagCode(interaction, interactions, lastVisits);
                                                 const minsWaiting = getMinutesWaiting(interaction.createdAt, tick);
+                                                const queuePosition = queueIndex + 1;
                                                 return (
                                                     <div
                                                         key={interaction.id}
                                                         draggable={canDrag}
                                                         onDragStart={(e) => canDrag ? handleDragStart(e, interaction) : e.preventDefault()}
-                                                        onClick={() => onInteractionClick(interaction)}
-                                                        className={`group/item relative bg-white border border-slate-100 rounded-lg p-2.5 shadow-sm transition-all hover:border-blue-300 hover:shadow-md cursor-pointer active:scale-[0.98] flex flex-col min-w-0 ${canDrag ? 'cursor-move' : ''}`}
+                                                        className={`group/item relative bg-white border border-slate-100 rounded-lg p-2.5 shadow-sm transition-all hover:border-blue-300 hover:shadow-md flex flex-col min-w-0 ${canDrag ? 'cursor-move' : 'cursor-default'}`}
                                                     >
                                                         <div className="flex justify-between items-start gap-1 min-w-0">
                                                             <span className="inline-flex items-center justify-center min-w-[2rem] text-[10px] font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 normal-case shrink-0">
-                                                                {getRegistrationDisplayId(interaction)}
+                                                                {queuePosition}
                                                             </span>
                                                             <span className={`shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded border normal-case ${status.label === 'Ongoing' ? 'bg-blue-50 text-blue-600 border-blue-100' : status.label === 'Followup' ? 'bg-teal-50 text-teal-600 border-teal-100' : status.label === 'Refill' ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-slate-100 text-slate-700 border-slate-200'}`}>
                                                                 {status.label}
@@ -460,7 +460,7 @@ const InteractionsSection = ({
                                                             <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0 truncate">
                                                                 <span className="text-slate-500 shrink-0">Phone</span><span className="font-medium truncate">{formatPhoneDisplay(visitor?.phoneM || visitor?.phone) || '—'}</span>
                                                                 <span className="text-slate-400 shrink-0">·</span>
-                                                                <span className="text-slate-500 shrink-0">Turn</span><span className="font-medium">{getExpectedTurnTime(interaction.id)}</span>
+                                                                <span className="text-slate-500 shrink-0">Estimated turn</span><span className="font-medium">{getExpectedTurnTime(interaction.id)}</span>
                                                                 <span className="text-slate-400 shrink-0">·</span>
                                                                 <span className="text-slate-500 shrink-0">Date</span><span className="font-medium truncate">{formatDate(interaction.createdAt, true)}</span>
                                                             </div>
@@ -475,7 +475,7 @@ const InteractionsSection = ({
                                                     </div>
                                                 );
                                             })}
-                                        {interactions.filter(i => !i.cancelled && i.officerId === selectedOfficer.id && !(i.id in pendingAssignments) && !i.completed && !i.closed && !i.started).length === 0 && !Object.values(pendingAssignments).some(id => id === selectedOfficer.id) && (
+                                        {interactions.filter(i => getInteractionStatus(i) === 'queued' && i.officerId === selectedOfficer.id && !(i.id in pendingAssignments)).length === 0 && !Object.values(pendingAssignments).some(id => id === selectedOfficer.id) && (
                                             <div className="text-xs text-slate-400 italic text-center py-4 border-2 border-dashed border-slate-200 rounded-lg">
                                                 Drop registrations here
                                             </div>

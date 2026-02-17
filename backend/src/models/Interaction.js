@@ -50,22 +50,26 @@ const interactionSchema = new mongoose.Schema({
     ccReason: {
         text: { type: String, default: '' },
         scratchpad: { type: String, default: '' },
-        hasScratchpad: { type: Boolean, default: false }
+        hasScratchpad: { type: Boolean, default: false },
+        addedLaterSheetIndices: { type: [Number], default: undefined }
     },
     subjective: {
         text: { type: String, default: '' },
         scratchpad: { type: String, default: '' },
-        hasScratchpad: { type: Boolean, default: false }
+        hasScratchpad: { type: Boolean, default: false },
+        addedLaterSheetIndices: { type: [Number], default: undefined }
     },
     objective: {
         text: { type: String, default: '' },
         scratchpad: { type: String, default: '' },
-        hasScratchpad: { type: Boolean, default: false }
+        hasScratchpad: { type: Boolean, default: false },
+        addedLaterSheetIndices: { type: [Number], default: undefined }
     },
     assessmentPlan: {
         text: { type: String, default: '' },
         scratchpad: { type: String, default: '' },
-        hasScratchpad: { type: Boolean, default: false }
+        hasScratchpad: { type: Boolean, default: false },
+        addedLaterSheetIndices: { type: [Number], default: undefined }
     },
     // Service lines array
     serviceLines: [{
@@ -80,7 +84,8 @@ const interactionSchema = new mongoose.Schema({
         type: { type: String, default: '' },
         reason: { type: String, default: '' },
         to: { type: String, default: '' },
-        date: { type: String, default: '' }
+        date: { type: String, default: '' },
+        addedLater: { type: Boolean, default: false }
     },
     medications: [{
         name: { type: String, default: '' },
@@ -89,13 +94,17 @@ const interactionSchema = new mongoose.Schema({
         frequency: { type: String, default: '' },
         duration: { type: String, default: '' },
         refills: { type: Number, default: 0 },
-        instructions: { type: String, default: '' }
+        instructions: { type: String, default: '' },
+        addedLater: { type: Boolean, default: false }
     }],
     // Parent interaction: "does this require followup?" + link to child when registered
     followupRequired: {
         required: { type: Boolean, default: false },
         date: { type: String, default: '' },
-        followupInteractionId: { type: String, default: '' }
+        followupInteractionId: { type: String, default: '' },
+        addedLater: { type: Boolean, default: false },
+        intervalWeeks: { type: Number, default: null },
+        intervalMonths: { type: Number, default: null }
     },
     // Child (followup) interaction: "this is a followup" + link to parent
     followup: {
@@ -106,6 +115,11 @@ const interactionSchema = new mongoose.Schema({
         text: { type: String, default: '' },
         timestamp: { type: String, default: '' }
     }],
+    /** Number of times this completed interaction was edited (for Notes "Edit (n)" heading). */
+    editCount: {
+        type: Number,
+        default: 0
+    },
     // Status flags and their timestamps (set when flag becomes true)
     started: {
         type: Boolean,
@@ -147,10 +161,20 @@ const interactionSchema = new mongoose.Schema({
         type: String,
         default: ''
     },
-    /** Queue number for the day (resets at 8 AM). Shown in queues instead of interaction serial. */
+    /** Queue number for the day (resets at 8 AM). Deprecated: serial is now derived from queue order at display time. */
     temporarySerial: {
         type: Number,
         default: 0
+    },
+    /** When this registration was assigned to an officer (queued). Used for queue order. */
+    queuedAt: {
+        type: String,
+        default: ''
+    },
+    /** Current status: registered | queued | ongoing | incomplete | complete | closed | billed | cancelled. Kept in sync with flags for easy filtering. */
+    interactionStatus: {
+        type: String,
+        default: 'registered'
     },
     reasonForVisit: {
         type: String,

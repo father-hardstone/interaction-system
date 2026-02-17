@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
-import { formatHealthCardDisplay, parseHealthCardToDigits, formatDateMMDDYYYY, formatPhoneDisplay, getVisitorSerialDisplay } from '../utils/formatUtils';
+import { formatHealthCardDisplay, parseHealthCardToDigits, formatDateMMDDYYYY, formatPhoneDisplay, getVisitorSerialDisplay, parsePhoneToDigits, getAgeYearsMonthsDisplay, getLastVisitDisplay } from '../utils/formatUtils';
+import PatientSearchFilters from './PatientSearchFilters';
 import ReportUpload from './ReportUpload';
 
 const ReportsSection = ({
@@ -20,16 +21,23 @@ const ReportsSection = ({
     const [searchSerial, setSearchSerial] = useState('');
     const [searchHealthCard, setSearchHealthCard] = useState('');
     const [searchDob, setSearchDob] = useState('');
+    const [searchContact, setSearchContact] = useState('');
     const [dobSearchFocused, setDobSearchFocused] = useState(false);
 
+    const searchContactDigits = parsePhoneToDigits(searchContact || '');
     const filteredVisitors = useMemo(() => {
         return visitors.filter((v) => {
             const firstName = (v.firstName || '').toLowerCase();
             const middleName = (v.middleName || '').toLowerCase();
             const lastName = (v.lastName || '').toLowerCase();
             const serialDisplay = `${v.entitySerial ? v.entitySerial + '-' : ''}${v.serial || ''}`.toLowerCase();
-            const healthCardStr = (v.healthCardNumber || '').toLowerCase();
+            const healthCardStr = parseHealthCardToDigits(v.healthCardNumber || '');
             const dobStr = (v.dateOfBirth || '').toLowerCase();
+            const toDigits = (p) => parsePhoneToDigits(p || '');
+            const phoneM = toDigits(v.phoneM || v.phone);
+            const phoneB = toDigits(v.phoneB);
+            const phoneH = toDigits(v.phoneH);
+            const anyPhoneContains = !searchContactDigits || [phoneM, phoneB, phoneH].some(d => d && d.includes(searchContactDigits));
 
             const matchesFirstName = !searchFirstName || firstName.includes(searchFirstName.toLowerCase());
             const matchesMiddleName = !searchMiddleName || middleName.includes(searchMiddleName.toLowerCase());
@@ -45,9 +53,9 @@ const ReportsSection = ({
                 return dobStr.includes(formattedSearch);
             })();
 
-            return matchesFirstName && matchesMiddleName && matchesLastName && matchesSerial && matchesHealthCard && matchesDob;
+            return matchesFirstName && matchesMiddleName && matchesLastName && matchesSerial && matchesHealthCard && matchesDob && anyPhoneContains;
         });
-    }, [visitors, searchFirstName, searchMiddleName, searchLastName, searchSerial, searchHealthCard, searchDob]);
+    }, [visitors, searchFirstName, searchMiddleName, searchLastName, searchSerial, searchHealthCard, searchDob, searchContactDigits]);
 
     return (
         <div className="flex flex-col flex-1 min-h-0">
@@ -57,60 +65,22 @@ const ReportsSection = ({
                     <p className="text-sm text-slate-500 mt-1">Manage patient medical reports</p>
                 </div>
 
-                <div className="px-4 sm:p-6 py-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 border-b border-slate-200 bg-slate-50">
-                    <input
-                        type="text"
-                        placeholder="Search by last name"
-                        value={searchLastName}
-                        onChange={(e) => setSearchLastName(e.target.value.replace(/[^a-zA-Z\s]/g, ''))}
-                        className="w-full py-3 px-4 border border-slate-200 rounded-xl text-sm bg-white focus:outline-none focus:border-primary focus:ring-4 focus:ring-blue-100"
-                    />
-                    <input
-                        type="text"
-                        placeholder="Search by first name"
-                        value={searchFirstName}
-                        onChange={(e) => setSearchFirstName(e.target.value.replace(/[^a-zA-Z\s]/g, ''))}
-                        className="w-full py-3 px-4 border border-slate-200 rounded-xl text-sm bg-white focus:outline-none focus:border-primary focus:ring-4 focus:ring-blue-100"
-                    />
-                    <div className="relative flex items-center">
-                        <input
-                            type={dobSearchFocused || searchDob ? "date" : "text"}
-                            placeholder={!dobSearchFocused && !searchDob ? "Search by DOB" : ""}
-                            value={searchDob}
-                            onFocus={() => setDobSearchFocused(true)}
-                            onBlur={() => setDobSearchFocused(false)}
-                            onChange={(e) => setSearchDob(e.target.value)}
-                            className="w-full py-3 px-4 border border-slate-200 rounded-xl text-sm bg-white focus:outline-none focus:border-primary focus:ring-4 focus:ring-blue-100 placeholder-slate-400"
-                        />
-                        {searchDob && (
-                            <button
-                                onClick={() => setSearchDob('')}
-                                className="absolute right-9 text-slate-400 hover:text-slate-600 transition-colors bg-white px-1"
-                                title="Clear date"
-                            >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                            </button>
-                        )}
-                    </div>
-                    <input
-                        type="text"
-                        placeholder="Search by health card (XXXX-XXX-XXX)"
-                        value={searchHealthCard}
-                        onChange={(e) => setSearchHealthCard(formatHealthCardDisplay(parseHealthCardToDigits(e.target.value)))}
-                        maxLength={12}
-                        className="w-full py-3 px-4 border border-slate-200 rounded-xl text-sm bg-white focus:outline-none focus:border-primary focus:ring-4 focus:ring-blue-100"
-                    />
-                    <input
-                        type="text"
-                        placeholder="Search by ID"
-                        value={searchSerial}
-                        onChange={(e) => setSearchSerial(e.target.value.replace(/\D/g, '').substring(0, 6))}
-                        maxLength={6}
-                        className="w-full py-3 px-4 border border-slate-200 rounded-xl text-sm bg-white focus:outline-none focus:border-primary focus:ring-4 focus:ring-blue-100"
-                    />
-                </div>
+                <PatientSearchFilters
+                    searchLastName={searchLastName}
+                    setSearchLastName={setSearchLastName}
+                    searchFirstName={searchFirstName}
+                    setSearchFirstName={setSearchFirstName}
+                    searchDob={searchDob}
+                    setSearchDob={setSearchDob}
+                    searchHealthCard={searchHealthCard}
+                    setSearchHealthCard={setSearchHealthCard}
+                    searchSerial={searchSerial}
+                    setSearchSerial={setSearchSerial}
+                    searchContact={searchContact}
+                    setSearchContact={setSearchContact}
+                    dobSearchFocused={dobSearchFocused}
+                    setDobSearchFocused={setDobSearchFocused}
+                />
 
                 <div className="flex-1 min-h-0 overflow-auto">
                     <table className="w-full border-collapse min-w-[800px]">
@@ -146,18 +116,18 @@ const ReportsSection = ({
                                     </td>
                                 </tr>
                             ) : (
-                                filteredVisitors.map((visitor) => {
-                                    const lastVisit = lastVisits[visitor.id] || interactions
-                                        .filter(i => i.visitorId === visitor.id && i.completed)
-                                        .sort((a, b) => new Date(b.editedAt || b.createdAt) - new Date(a.editedAt || a.createdAt))[0];
-
-                                    return (
+                                filteredVisitors.map((visitor) => (
                                         <tr
                                             key={visitor.id}
                                             className="border-b border-slate-100 hover:bg-slate-50 transition-all cursor-pointer"
                                             onClick={() => onPatientClick?.(visitor)}
                                         >
-                                            <td className="px-4 sm:px-6 py-4 text-slate-700 hidden md:table-cell text-sm">{formatDateMMDDYYYY(visitor.dateOfBirth) || '-'}</td>
+                                            <td className="px-4 sm:px-6 py-4 text-slate-700 hidden md:table-cell text-sm">
+                                                {formatDateMMDDYYYY(visitor.dateOfBirth) || '-'}
+                                                {visitor.dateOfBirth && (
+                                                    <span className="text-slate-500 ml-1">({getAgeYearsMonthsDisplay(visitor)})</span>
+                                                )}
+                                            </td>
                                             <td className="px-4 sm:px-6 py-4 text-slate-700">
                                                 <div className="font-medium text-sm">
                                                     {visitor.firstName || '-'} {(visitor.middleName ? visitor.middleName + ' ' : '') + (visitor.lastName || '-')}
@@ -168,7 +138,7 @@ const ReportsSection = ({
                                             <td className="px-4 sm:px-6 py-4 text-slate-700 hidden xl:table-cell text-sm">{formatHealthCardDisplay(visitor.healthCardNumber || '') || '-'}</td>
                                             <td className="px-4 sm:px-6 py-4 text-slate-700 hidden xl:table-cell text-sm">{visitor.healthCardVersion || '-'}</td>
                                             <td className="px-4 sm:px-6 py-4 text-slate-700 hidden xl:table-cell text-sm">
-                                                {lastVisit ? formatDate(lastVisit.editedAt || lastVisit.createdAt, true) : '-'}
+                                                {getLastVisitDisplay(visitor, lastVisits, interactions)}
                                             </td>
                                             <td className="px-4 sm:px-6 py-4" onClick={(e) => e.stopPropagation()}>
                                                 <ReportUpload
@@ -182,8 +152,7 @@ const ReportsSection = ({
                                                 />
                                             </td>
                                         </tr>
-                                    );
-                                })
+                                ))
                             )}
                         </tbody>
                     </table>
