@@ -8,6 +8,8 @@ import EntitySettings from './pages/EntitySettings';
 import InternalLogin from './pages/InternalLogin';
 import UserProtectedRoute from './components/UserProtectedRoute';
 import UserDashboard from './pages/UserDashboard';
+import UserDashboardLayout from './pages/UserDashboardLayout';
+import UserSettings from './pages/UserSettings';
 import NotFoundPage from './pages/NotFoundPage';
 import ErrorBoundary from './components/ErrorBoundary';
 import { UserDashboardNavProvider, useUserDashboardNav } from './contexts/UserDashboardNavContext';
@@ -288,7 +290,10 @@ function App() {
 
           {/* Internal User (Officer) Protected Routes */}
           <Route element={<UserProtectedRoute />}>
-            <Route path="/:serial/user/dashboard" element={<UserDashboard />} />
+            <Route path="/:serial/user/dashboard" element={<UserDashboardLayout />}>
+              <Route index element={<UserDashboard />} />
+              <Route path="settings" element={<UserSettings />} />
+            </Route>
           </Route>
 
           {/* 404 - Catch-all for unknown routes */}

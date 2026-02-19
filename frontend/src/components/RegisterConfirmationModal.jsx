@@ -6,11 +6,18 @@ const REASON_FOR_VISIT_OPTIONS = [
     { value: 'refill_medicine', label: 'Refill medicine' }
 ];
 
+const VISIT_MODE_OPTIONS = [
+    { value: 'physical', label: 'Physical' },
+    { value: 'on_phone', label: 'Phone consult' }
+];
+
 const RegisterConfirmationModal = ({
     open,
     pendingRegisterVisitor,
     reasonForVisit,
     setReasonForVisit,
+    visitMode,
+    setVisitMode,
     parentInteractionId,
     setParentInteractionId,
     newVisitNotes,
@@ -41,6 +48,24 @@ const RegisterConfirmationModal = ({
                     </p>
 
                     <div className="space-y-4 mb-6">
+                        <div>
+                            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Visit mode</label>
+                            <div className="flex gap-4">
+                                {VISIT_MODE_OPTIONS.map((opt) => (
+                                    <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+                                        <input
+                                            type="radio"
+                                            name="visitMode"
+                                            value={opt.value}
+                                            checked={(visitMode || 'physical') === opt.value}
+                                            onChange={() => setVisitMode?.(opt.value)}
+                                            className="w-4 h-4 text-primary border-slate-300 focus:ring-primary"
+                                        />
+                                        <span className="text-sm font-medium text-slate-700">{opt.label}</span>
+                                    </label>
+                                ))}
+                            </div>
+                        </div>
                         <div>
                             <label className="block text-xs font-semibold text-slate-600 mb-1.5">Reason for visit</label>
                             <select

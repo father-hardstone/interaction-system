@@ -92,21 +92,21 @@ const MedicationBlock = ({ visitor, medications, addMedication, updateMedication
                         {medications.map((med, index) => (
                             <tr key={index} className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50/50 transition-colors group/row">
                                 <td className="px-3 py-2 align-middle">
-                                    {med.addedLater && (
-                                        <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">+Later</span>
-                                    )}
-                                    {!med.addedLater && (
-                                        <span className="flex items-center justify-center w-6 h-6 rounded-full bg-slate-100 text-xs font-semibold text-slate-600">{index + 1}</span>
-                                    )}
+                                    <span className="flex items-center justify-center w-6 h-6 rounded-full bg-slate-100 text-xs font-semibold text-slate-600">{index + 1}</span>
                                 </td>
                                 <td className="px-3 py-2 align-middle">
-                                    <input
-                                        type="text"
-                                        className="w-full min-w-[120px] px-2 py-2 text-sm border border-slate-200 rounded-lg bg-white focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 placeholder:text-slate-300"
-                                        placeholder="e.g. Amoxicillin"
-                                        value={med.name ?? ''}
-                                        onChange={(e) => updateMedication(index, 'name', e.target.value)}
-                                    />
+                                    <div className="relative w-full min-w-[120px]">
+                                        <input
+                                            type="text"
+                                            className={`w-full px-2 py-2 text-sm border border-slate-200 rounded-lg bg-white focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 placeholder:text-slate-300 ${med.addedLater ? 'pr-24' : ''}`}
+                                            placeholder="e.g. Amoxicillin"
+                                            value={med.name ?? ''}
+                                            onChange={(e) => updateMedication(index, 'name', e.target.value)}
+                                        />
+                                        {med.addedLater && (
+                                            <span className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-[10px] font-semibold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded border border-amber-200 whitespace-nowrap">Added later</span>
+                                        )}
+                                    </div>
                                 </td>
                                 <td className="px-3 py-2 align-middle">
                                     <input

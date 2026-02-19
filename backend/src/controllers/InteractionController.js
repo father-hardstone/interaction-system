@@ -127,7 +127,7 @@ class InteractionController {
     // Create a new interaction
     async createInteraction(req, res) {
         try {
-            const { entityId, entitySerial, visitorId, visitorSerial, reasonForVisit, reasonForVisitNotes } = req.body;
+            const { entityId, entitySerial, visitorId, visitorSerial, reasonForVisit, reasonForVisitNotes, visitMode } = req.body;
 
             console.log('createInteraction - Received data:', {
                 entityId,
@@ -182,6 +182,7 @@ class InteractionController {
                 billed: false,
                 reasonForVisit: reasonForVisit || '',
                 reasonForVisitNotes: (reasonForVisitNotes != null && String(reasonForVisitNotes).trim()) ? String(reasonForVisitNotes).trim() : '',
+                visitMode: (visitMode === 'on_phone' || visitMode === 'physical') ? visitMode : 'physical',
                 interactionStatus: 'registered'
             };
 

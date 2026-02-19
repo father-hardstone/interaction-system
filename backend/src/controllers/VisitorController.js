@@ -162,7 +162,7 @@ class VisitorController {
                 province: region.trim(),
                 postalCode: postalCode ? postalCode.trim() : '',
                 gender: gender.trim(),
-                phone: mobile,
+                phone: '', // legacy; only phoneM, phoneB, phoneH are used
                 phoneM: mobile,
                 phoneB: (phoneB != null && String(phoneB).trim()) ? String(phoneB).trim() : '',
                 phoneH: (phoneH != null && String(phoneH).trim()) ? String(phoneH).trim() : '',
@@ -173,15 +173,16 @@ class VisitorController {
                 healthCardExpiryDate: healthCardExpiryDate || '',
                 notes: notes || '',
                 memo: memo || '',
-                allergies: (allergies && allergies.trim() && allergies.trim().toUpperCase() !== 'N/A') ? allergies.trim() : '',
-                drugReactions: (drugReactions && drugReactions.trim() && drugReactions.trim().toUpperCase() !== 'N/A') ? drugReactions.trim() : '',
-                ongoingHealthConditions: (ongoingHealthConditions && ongoingHealthConditions.trim() && ongoingHealthConditions.trim().toUpperCase() !== 'N/A') ? ongoingHealthConditions.trim() : '',
-                specialNotes: (specialNotes && specialNotes.trim()) ? specialNotes.trim() : '',
-                highBloodPressure: (highBloodPressure === 'yes' || highBloodPressure === 'no') ? highBloodPressure : '',
-                heartDisease: (heartDisease === 'yes' || heartDisease === 'no') ? heartDisease : '',
-                diabetes: (diabetes === 'yes' || diabetes === 'no') ? diabetes : '',
-                cholesterol: (cholesterol === 'yes' || cholesterol === 'no') ? cholesterol : '',
-                smoke: (smoke === 'yes' || smoke === 'no') ? smoke : '',
+                // Clinical and past-medical: use req.body so they are never dropped
+                allergies: (() => { const v = req.body.allergies != null ? String(req.body.allergies).trim() : ''; return v && v.toUpperCase() !== 'N/A' ? v : ''; })(),
+                drugReactions: (() => { const v = req.body.drugReactions != null ? String(req.body.drugReactions).trim() : ''; return v && v.toUpperCase() !== 'N/A' ? v : ''; })(),
+                ongoingHealthConditions: (() => { const v = req.body.ongoingHealthConditions != null ? String(req.body.ongoingHealthConditions).trim() : ''; return v && v.toUpperCase() !== 'N/A' ? v : ''; })(),
+                specialNotes: (req.body.specialNotes != null && String(req.body.specialNotes).trim()) ? String(req.body.specialNotes).trim() : '',
+                highBloodPressure: (req.body.highBloodPressure === 'yes' || req.body.highBloodPressure === 'no') ? req.body.highBloodPressure : '',
+                heartDisease: (req.body.heartDisease === 'yes' || req.body.heartDisease === 'no') ? req.body.heartDisease : '',
+                diabetes: (req.body.diabetes === 'yes' || req.body.diabetes === 'no') ? req.body.diabetes : '',
+                cholesterol: (req.body.cholesterol === 'yes' || req.body.cholesterol === 'no') ? req.body.cholesterol : '',
+                smoke: (req.body.smoke === 'yes' || req.body.smoke === 'no') ? req.body.smoke : '',
                 guardianName: guardianNameFinal,
                 guardianId: guardianId || '',
                 guardianPhone: guardianPhoneFinal,
@@ -200,7 +201,7 @@ class VisitorController {
                 name: `${firstName} ${lastName}`
             });
 
-            await VisitorService.create(newVisitor);
+            const saved = await VisitorService.create(newVisitor);
 
             // push patient id into entity.patientIds
             try {
@@ -213,7 +214,7 @@ class VisitorController {
                 console.warn('Failed to update entity patientIds', err.message);
             }
 
-            res.status(201).json(newVisitor);
+            res.status(201).json(saved);
         } catch (e) {
             console.error('createVisitor error:', e);
             res.status(500).json({ error: e.message });
@@ -287,13 +288,13 @@ class VisitorController {
             if (req.body.cholesterol !== undefined) updates.cholesterol = pmh(req.body.cholesterol);
             if (req.body.smoke !== undefined) updates.smoke = pmh(req.body.smoke);
 
-            // Three distinct phones: M (mobile, required), B (business), H (home). Legacy phone = phoneM.
+            // Three distinct phones: M (mobile), B (business), H (home). Do not use legacy phone.
             const opt = (v) => (v !== undefined && v !== null ? String(v).trim() : undefined);
             if (req.body.phoneM !== undefined) {
                 const m = opt(req.body.phoneM) || '';
                 if (!m) return res.status(400).json({ error: "Phone (M) is required" });
                 updates.phoneM = m;
-                updates.phone = m;
+                updates.phone = '';
             }
             if (req.body.phoneB !== undefined) updates.phoneB = opt(req.body.phoneB) || '';
             if (req.body.phoneH !== undefined) updates.phoneH = opt(req.body.phoneH) || '';

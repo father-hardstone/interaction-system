@@ -78,6 +78,7 @@ const VisitorsSection = ({
     const [showRegisterConfirmModal, setShowRegisterConfirmModal] = useState(false);
     const [pendingRegisterVisitor, setPendingRegisterVisitor] = useState(null);
     const [reasonForVisit, setReasonForVisit] = useState('new_visit');
+    const [visitMode, setVisitMode] = useState('physical');
     const [parentInteractionId, setParentInteractionId] = useState('');
     const [newVisitNotes, setNewVisitNotes] = useState('');
     const [dobSearchFocused, setDobSearchFocused] = useState(false);
@@ -86,6 +87,7 @@ const VisitorsSection = ({
         if (!pendingRegisterVisitor || !handleRegisterPatient) return;
         const success = await handleRegisterPatient(pendingRegisterVisitor, {
             reasonForVisit: reasonForVisit || 'new_visit',
+            visitMode: visitMode || 'physical',
             parentInteractionId: (reasonForVisit === 'followup' || reasonForVisit === 'refill_medicine') ? (parentInteractionId || '') : '',
             reasonForVisitNotes: reasonForVisit === 'new_visit' ? newVisitNotes : ''
         });
@@ -93,6 +95,7 @@ const VisitorsSection = ({
             setShowRegisterConfirmModal(false);
             setPendingRegisterVisitor(null);
             setReasonForVisit('new_visit');
+            setVisitMode('physical');
             setParentInteractionId('');
             setNewVisitNotes('');
         }
@@ -101,6 +104,7 @@ const VisitorsSection = ({
     const initiateRegistration = (visitor) => {
         setPendingRegisterVisitor(visitor);
         setReasonForVisit('new_visit');
+        setVisitMode('physical');
         setParentInteractionId('');
         setNewVisitNotes('');
         setShowRegisterConfirmModal(true);
@@ -111,6 +115,7 @@ const VisitorsSection = ({
         setShowRegisterConfirmModal(false);
         setPendingRegisterVisitor(null);
         setReasonForVisit('new_visit');
+        setVisitMode('physical');
         setParentInteractionId('');
         setNewVisitNotes('');
     };
@@ -202,6 +207,7 @@ const searchContactDigits = parsePhoneToDigits(searchContact || '');
                                 <th className="px-4 sm:px-6 py-4 text-left text-xs sm:text-sm font-semibold text-slate-700 hidden md:table-cell">Date of Birth</th>
                                 <th className="px-4 sm:px-6 py-4 text-left text-xs sm:text-sm font-semibold text-slate-700">Name</th>
                                 <th className="px-4 sm:px-6 py-4 text-left text-xs sm:text-sm font-semibold text-slate-700">ID</th>
+                                <th className="px-4 sm:px-6 py-4 text-left text-xs sm:text-sm font-semibold text-slate-700">Special notes</th>
                                 <th className="px-4 sm:px-6 py-4 text-left text-xs sm:text-sm font-semibold text-slate-700 hidden lg:table-cell">Phone</th>
                                 <th className="px-4 sm:px-6 py-4 text-left text-xs sm:text-sm font-semibold text-slate-700 hidden xl:table-cell">Health Card</th>
                                 <th className="px-4 sm:px-6 py-4 text-left text-xs sm:text-sm font-semibold text-slate-700 hidden xl:table-cell">Version</th>
@@ -212,7 +218,7 @@ const searchContactDigits = parsePhoneToDigits(searchContact || '');
                         <tbody>
                             {isLoadingVisitors ? (
                                 <tr>
-                                    <td colSpan="9" className="px-6 py-16 text-center">
+                                    <td colSpan="10" className="px-6 py-16 text-center">
                                         <div className="flex flex-col items-center justify-center gap-4">
                                             <svg className="animate-spin h-10 w-10 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -224,7 +230,7 @@ const searchContactDigits = parsePhoneToDigits(searchContact || '');
                                 </tr>
                             ) : filteredVisitors.length === 0 ? (
                                 <tr>
-                                    <td colSpan="9" className="px-6 py-8 text-center text-slate-400">
+                                    <td colSpan="10" className="px-6 py-8 text-center text-slate-400">
                                         No patients found. Click "Add a patient" to get started.
                                     </td>
                                 </tr>
@@ -347,12 +353,22 @@ const searchContactDigits = parsePhoneToDigits(searchContact || '');
                                                 <div className="md:hidden mt-2 space-y-1 text-xs text-slate-500">
                                                     <div>DOB: {formatDateMMDDYYYY(visitor.dateOfBirth) || '-'}{visitor.dateOfBirth ? ` (${getAgeYearsMonthsDisplay(visitor)})` : ''}</div>
                                                     <div>ID: {getVisitorSerialDisplay(visitor)}</div>
+                                                    {(visitor.specialNotes && String(visitor.specialNotes).trim()) && (
+                                                        <div className="text-red-600 font-medium">Special notes: {String(visitor.specialNotes).trim()}</div>
+                                                    )}
                                                     <div>Phone: {formatPhoneDisplay(visitor.phoneM || visitor.phone) || '-'}</div>
                                                     <div>Health Card: {formatHealthCardDisplay(visitor.healthCardNumber || '') || '-'}</div>
                                                     <div>Last Visit: {getLastVisitDisplay(visitor, lastVisits, interactions)}</div>
                                                 </div>
                                             </td>
                                             <td className="px-4 sm:px-6 py-4 font-medium text-slate-900 text-xs sm:text-sm">{getVisitorSerialDisplay(visitor)}</td>
+                                            <td className="px-4 sm:px-6 py-4 text-sm">
+                                                {(visitor.specialNotes && String(visitor.specialNotes).trim()) ? (
+                                                    <span className="text-red-600 font-medium" title={visitor.specialNotes}>{String(visitor.specialNotes).trim()}</span>
+                                                ) : (
+                                                    <span className="text-slate-400">—</span>
+                                                )}
+                                            </td>
                                             <td className="px-4 sm:px-6 py-4 text-slate-700 hidden lg:table-cell text-sm">{formatPhoneDisplay(visitor.phoneM || visitor.phone) || '-'}</td>
                                             <td className="px-4 sm:px-6 py-4 text-slate-700 hidden xl:table-cell text-sm">{formatHealthCardDisplay(visitor.healthCardNumber || '') || '-'}</td>
                                             <td className="px-4 sm:px-6 py-4 text-slate-700 hidden xl:table-cell text-sm">{visitor.healthCardVersion || '-'}</td>
@@ -482,6 +498,8 @@ const searchContactDigits = parsePhoneToDigits(searchContact || '');
                 pendingRegisterVisitor={pendingRegisterVisitor}
                 reasonForVisit={reasonForVisit}
                 setReasonForVisit={setReasonForVisit}
+                visitMode={visitMode}
+                setVisitMode={setVisitMode}
                 parentInteractionId={parentInteractionId}
                 setParentInteractionId={setParentInteractionId}
                 newVisitNotes={newVisitNotes}

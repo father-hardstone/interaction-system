@@ -184,6 +184,11 @@ const interactionSchema = new mongoose.Schema({
         type: String,
         default: ''
     },
+    /** Visit mode: 'physical' (in person) or 'on_phone'. */
+    visitMode: {
+        type: String,
+        default: 'physical'
+    },
     cancelled: {
         type: Boolean,
         default: false

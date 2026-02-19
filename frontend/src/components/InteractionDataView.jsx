@@ -20,7 +20,8 @@ const InteractionDataView = ({
     getImageUrl,
     setViewingMedia,
     patientReports = [],
-    isExpanded = true
+    isExpanded = true,
+    onOpenReport
 }) => {
     const [imageLoadingStates, setImageLoadingStates] = useState({});
     const [supabaseUrls, setSupabaseUrls] = useState({});
@@ -335,18 +336,17 @@ const InteractionDataView = ({
             {/* ROW 7: Follow-up */}
             {((interaction.followupRequired?.required) || (interaction.followup?.required)) && (
                 <div className="group">
-                    <label className="text-xs font-semibold text-slate-400 normal-case tracking-wide block mb-2 transition-colors group-hover:text-orange-600 flex items-center flex-wrap gap-1">Required follow-up{isFollowupEdited ? editedBadgeEl : null}</label>
-                    <div className="bg-orange-50/50 border border-orange-100 rounded-2xl p-4 flex items-center justify-between shadow-sm transition-all hover:shadow-md hover:bg-white">
-                        <div className="flex items-center gap-3">
-                            <div className="bg-orange-100 p-2 rounded-xl">
-                                <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                </svg>
-                            </div>
-                            <span className="font-semibold text-orange-900 normal-case text-xs tracking-tighter">Next appointment recommended</span>
-                        </div>
-                        <span className="font-semibold text-slate-700 bg-white px-3 py-1.5 rounded-xl border border-orange-200 shadow-sm">{formatSimpleDate((interaction.followupRequired || interaction.followup)?.date)}</span>
-                    </div>
+                    {(() => {
+                        const fr = interaction.followupRequired || interaction.followup || {};
+                        const dateStr = fr.date ? formatSimpleDate(fr.date) : '';
+                        const intervalStr = fr.intervalWeeks != null && fr.intervalWeeks !== '' ? `${fr.intervalWeeks} ${fr.intervalWeeks === 1 ? 'week' : 'weeks'}` : (fr.intervalMonths != null && fr.intervalMonths !== '' ? `${fr.intervalMonths} ${fr.intervalMonths === 1 ? 'month' : 'months'}` : '');
+                        const detailStr = [dateStr, intervalStr].filter(Boolean).join(', ');
+                        return (
+                            <label className="text-xs font-semibold text-slate-400 normal-case tracking-wide block transition-colors group-hover:text-orange-600 flex items-center flex-wrap gap-1.5">
+                                Followup details{detailStr ? ` — ${detailStr}` : ''}{isFollowupEdited ? editedBadgeEl : null}
+                            </label>
+                        );
+                    })()}
                 </div>
             )}
 
@@ -420,7 +420,7 @@ const InteractionDataView = ({
             {/* ROW 8: Medical Files (SIMPLER VERSION) */}
             <div className="pt-6 border-t border-slate-100">
                 <div className="flex items-center justify-between mb-4">
-                    <label className="text-xs font-semibold text-slate-400 normal-case tracking-wide block">Medical Reports Vault</label>
+                    <label className="text-xs font-semibold text-slate-400 normal-case tracking-wide block">Attached reports</label>
                     <span className="bg-slate-100 text-slate-500 font-semibold text-xs px-2 py-0.5 rounded-md normal-case">{reports.length} Files</span>
                 </div>
 
@@ -433,7 +433,9 @@ const InteractionDataView = ({
                             <div
                                 key={report.id}
                                 onClick={() => {
-                                    if (fileUrl) {
+                                    if (fileUrl && onOpenReport) {
+                                        onOpenReport(report, fileUrl);
+                                    } else if (fileUrl) {
                                         setViewingMedia({
                                             type: isPdf ? 'pdf' : 'image',
                                             url: fileUrl,
