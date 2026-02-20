@@ -40,7 +40,7 @@ const Register = () => {
     return (
         <div className="flex-1 flex items-center justify-center p-8 w-full">
             <div className="bg-white w-full max-w-[440px] p-12 rounded-3xl shadow-lg animate-[slideUp_0.4s_ease-out] mx-auto">
-                <h2 className="m-0 mb-8 text-3xl font-bold text-center text-slate-900 tracking-tight">New Admin Registration</h2>
+                <h2 className="m-0 mb-8 text-3xl font-semibold text-center text-slate-900 tracking-tight">New Admin Registration</h2>
                 {error && <p className="bg-red-50 border border-red-200 text-error py-3 px-4 rounded-xl text-sm text-center mb-4">{error}</p>}
                 <form onSubmit={handleSubmit} className="flex flex-col gap-5">
                     <div className="flex flex-col gap-2">

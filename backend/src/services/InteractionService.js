@@ -1,5 +1,22 @@
 const Interaction = require('../models/Interaction');
 
+/** Derive interactionStatus from flags. One of: registered | queued | ongoing | incomplete | complete | closed | billed | cancelled. */
+function computeInteractionStatus(interaction) {
+    if (!interaction) return 'registered';
+    if (interaction.cancelled) return 'cancelled';
+    if (interaction.billed) return 'billed';
+    if (interaction.closed) return 'closed';
+    if (interaction.completed) return 'complete';
+    if (interaction.started) {
+        if (interaction.incomplete) return 'incomplete';
+        if (interaction.ongoing) return 'ongoing';
+        return 'ongoing';
+    }
+    const hasOfficer = interaction.officerId && String(interaction.officerId).trim() !== '';
+    if (hasOfficer) return 'queued';
+    return 'registered';
+}
+
 class InteractionService {
     async getAll() {
         const interactions = await Interaction.find({ deletedAt: '' });
@@ -48,23 +65,54 @@ class InteractionService {
         return interaction ? interaction.toObject() : null;
     }
 
+    async cancel(id) {
+        const now = new Date().toISOString();
+        const interaction = await Interaction.findOneAndUpdate(
+            { id, deletedAt: '' },
+            { cancelled: true, cancelledAt: now, editedAt: now, interactionStatus: 'cancelled' },
+            { new: true }
+        );
+        return interaction ? interaction.toObject() : null;
+    }
+
+    /** Derive interactionStatus from flags. Exposed on the exported instance so controller can call it. */
+    computeInteractionStatus(interaction) {
+        return computeInteractionStatus(interaction);
+    }
+
     async getByEntity(entityId) {
         const interactions = await Interaction.find({ entityId, deletedAt: '' });
         return interactions.map(i => i.toObject());
     }
 
-    async assignOfficer(interactionId, officerId, officerSerial) {
-        const interaction = await Interaction.findOneAndUpdate(
-            { id: interactionId, deletedAt: '' },
-            {
-                officerId: officerId || '',
-                officerSerial: officerSerial || '',
-                editedAt: new Date().toISOString(),
-                billed: false  // Ensure billed is false when assigning/unassigning
-            },
-            { new: true }
-        );
-        return interaction ? interaction.toObject() : null;
+    /**
+     * Get the last completed interaction per visitor for the given entity.
+     * Used for "last visit" display regardless of time filter. Does not apply any date filter.
+     * @param {string} entityId
+     * @param {string[]} [visitorIds] - If provided, only return last visit for these visitors; otherwise all visitors with completed interactions.
+     * @returns {Promise<Object>} Map of visitorId -> last completed interaction (plain object).
+     */
+    async getLastCompletedByVisitor(entityId, visitorIds = null) {
+        const match = {
+            entityId,
+            deletedAt: '',
+            completed: true
+        };
+        if (Array.isArray(visitorIds) && visitorIds.length > 0) {
+            match.visitorId = { $in: visitorIds };
+        }
+        const pipeline = [
+            { $match: match },
+            { $sort: { completedAt: -1, editedAt: -1 } },
+            { $group: { _id: '$visitorId', doc: { $first: '$$ROOT' } } },
+            { $replaceRoot: { newRoot: '$doc' } }
+        ];
+        const docs = await Interaction.aggregate(pipeline);
+        const result = {};
+        docs.forEach(doc => {
+            result[doc.visitorId] = doc;
+        });
+        return result;
     }
 
     // Get next serial for a specific entity (composite format: E1-V1-I1, E1-V1-I2, etc.)

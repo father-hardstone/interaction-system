@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import PhoneInput from '../components/PhoneInput';
 import PasswordInput from '../components/PasswordInput';
 import { officerService } from '../services/officerService';
 import { entityService } from '../services/entityService';
@@ -16,22 +15,21 @@ const encryptPassword = (password) => {
     return CryptoJS.AES.encrypt(password, ENCRYPTION_KEY).toString();
 };
 
+const DEFAULT_ENTITY_KEY = 'E2';
+
 const InternalLogin = () => {
-    const [phoneData, setPhoneData] = useState({ fullNumber: '', valid: false });
     const [email, setEmail] = useState('');
     const [emailError, setEmailError] = useState('');
     const [password, setPassword] = useState('');
-    const [entityKey, setEntityKey] = useState('');
+    const [entityKey, setEntityKey] = useState(DEFAULT_ENTITY_KEY);
     const [error, setError] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const navigate = useNavigate();
 
-    // Load entity key from localStorage on mount
+    // Load entity key from localStorage on mount, default to E2
     useEffect(() => {
         const savedEntityKey = localStorage.getItem('entityKey');
-        if (savedEntityKey) {
-            setEntityKey(savedEntityKey);
-        }
+        setEntityKey(savedEntityKey || DEFAULT_ENTITY_KEY);
     }, []);
 
     const isEmailValid = () => {
@@ -39,13 +37,6 @@ const InternalLogin = () => {
         const validation = validateEmail(email);
         return validation.valid;
     };
-
-    const isPhoneValid = () => phoneData.valid;
-
-    const hasValidIdentifier = () => isEmailValid() || isPhoneValid();
-
-    const isEmailRequired = () => !isPhoneValid();
-    const isPhoneRequired = () => !isEmailValid();
 
     const handleEmailChange = (e) => {
         const value = e.target.value;
@@ -64,21 +55,14 @@ const InternalLogin = () => {
         setEmailError('');
         if (isSubmitting) return;
 
-        if (!hasValidIdentifier()) {
-            setError('Please enter either a valid email address or phone number');
+        if (!email || email.trim().length === 0) {
+            setError('Please enter your email address');
             return;
         }
 
-        if (email.trim().length > 0) {
-            const emailValidation = validateEmail(email);
-            if (!emailValidation.valid) {
-                setEmailError(emailValidation.error);
-                return;
-            }
-        }
-
-        if (phoneData.fullNumber && !phoneData.valid) {
-            setError('Please enter a valid phone number');
+        const emailValidation = validateEmail(email);
+        if (!emailValidation.valid) {
+            setEmailError(emailValidation.error);
             return;
         }
 
@@ -99,14 +83,9 @@ const InternalLogin = () => {
 
             const payload = {
                 password: encryptedPassword,
-                entityKey: entityKey.trim()
+                entityKey: entityKey.trim(),
+                email: email.trim()
             };
-
-            if (isEmailValid()) {
-                payload.email = email.trim();
-            } else if (isPhoneValid()) {
-                payload.phone = phoneData.fullNumber;
-            }
 
             const res = await officerService.login(payload);
             localStorage.setItem('token', res.token);
@@ -158,7 +137,7 @@ const InternalLogin = () => {
     return (
         <div className="flex-1 flex items-center justify-center p-8 w-full">
             <div className="bg-white w-full max-w-[520px] p-12 rounded-3xl shadow-lg animate-[slideUp_0.4s_ease-out] mx-auto">
-                <h2 className="m-0 mb-8 text-3xl font-bold text-center text-slate-900 tracking-tight">
+                <h2 className="m-0 mb-8 text-3xl font-semibold text-center text-slate-900 tracking-tight">
                     User Portal
                 </h2>
                 {error && <p className="bg-red-50 border border-red-200 text-error py-3 px-4 rounded-xl text-sm text-center mb-4">{error}</p>}
@@ -166,28 +145,17 @@ const InternalLogin = () => {
                 <form onSubmit={handleSubmit} className="flex flex-col gap-5">
                     <div className="flex flex-col gap-2">
                         <label className="text-sm font-semibold text-slate-900">
-                            Email Address {isEmailRequired() && <span className="text-error">*</span>}
+                            Email Address <span className="text-error">*</span>
                         </label>
                         <input
                             type="email"
                             placeholder="Enter your email address"
                             value={email}
                             onChange={handleEmailChange}
-                            required={isEmailRequired()}
+                            required
                             className={`w-full py-3.5 px-4 border rounded-xl font-inherit text-base transition-all text-slate-900 ${emailError ? 'border-error bg-red-50 focus:border-error focus:bg-white focus:outline-none focus:ring-4 focus:ring-red-100' : 'border-slate-200 bg-slate-50 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100'}`}
                         />
                         {emailError && <span className="text-error text-sm">{emailError}</span>}
-                    </div>
-
-                    <div className="flex flex-col gap-2">
-                        <label className="text-sm font-semibold text-slate-900">
-                            Phone Number {isPhoneRequired() && <span className="text-error">*</span>}
-                            {!isPhoneRequired() && <span className="text-slate-500 text-sm font-normal"> (Optional if email is provided)</span>}
-                        </label>
-                        <PhoneInput
-                            onChange={setPhoneData}
-                            required={isPhoneRequired()}
-                        />
                     </div>
 
                     <div className="flex flex-col gap-2">
@@ -204,7 +172,7 @@ const InternalLogin = () => {
                         <label className="text-sm font-semibold text-slate-900">Entity Key <span className="text-error">*</span></label>
                         <input
                             type="text"
-                            placeholder="Enter your entity key (e.g., E1)"
+                            placeholder="e.g., E1, E2"
                             value={entityKey}
                             onChange={(e) => setEntityKey(e.target.value)}
                             required

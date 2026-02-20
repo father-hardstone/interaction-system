@@ -1,33 +1,55 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 const MediaViewerModal = ({ viewingMedia, setViewingMedia }) => {
     const [isLoading, setIsLoading] = useState(true);
     const [hasError, setHasError] = useState(false);
+    const loadTimeoutRef = useRef(null);
 
     useEffect(() => {
         if (viewingMedia) {
             setIsLoading(true);
             setHasError(false);
+            loadTimeoutRef.current = setTimeout(() => {
+                setIsLoading(false);
+                setHasError(true);
+            }, 12000);
         }
+        return () => {
+            if (loadTimeoutRef.current) {
+                clearTimeout(loadTimeoutRef.current);
+                loadTimeoutRef.current = null;
+            }
+        };
     }, [viewingMedia]);
 
     if (!viewingMedia) return null;
 
+    const clearLoadTimeout = () => {
+        if (loadTimeoutRef.current) {
+            clearTimeout(loadTimeoutRef.current);
+            loadTimeoutRef.current = null;
+        }
+    };
+
     const handleImageLoad = () => {
+        clearLoadTimeout();
         setIsLoading(false);
+        setHasError(false);
     };
 
     const handleImageError = () => {
+        clearLoadTimeout();
         setIsLoading(false);
         setHasError(true);
     };
 
     const handleIframeLoad = () => {
+        clearLoadTimeout();
         setIsLoading(false);
     };
 
     return (
-        <div className="fixed inset-0 z-[3000] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[3000] flex items-center justify-center px-4 pb-4 pt-0 !mt-0">
             <div
                 className="absolute inset-0 bg-slate-900/90 backdrop-blur-sm"
                 onClick={() => setViewingMedia(null)}
@@ -35,15 +57,20 @@ const MediaViewerModal = ({ viewingMedia, setViewingMedia }) => {
             <div className="relative bg-white rounded-2xl shadow-2xl w-full h-full max-w-5xl flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200">
                 {/* Modal Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-white">
-                    <h3 className="text-base font-bold text-slate-900 truncate pr-8">
-                        {viewingMedia.title || 'Preview'}
-                    </h3>
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <h3 className="text-base font-semibold text-slate-900 truncate">
+                            {viewingMedia.title || 'Preview'}
+                        </h3>
+                        {viewingMedia.fileType && (
+                            <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded shrink-0">{viewingMedia.fileType}</span>
+                        )}
+                    </div>
                     <button
                         onClick={() => setViewingMedia(null)}
-                        className="p-2 rounded-full hover:bg-slate-100 text-slate-500 hover:text-slate-900 transition-colors"
+                        className="w-10 h-10 rounded-full border-2 border-slate-200 flex items-center justify-center text-slate-500 hover:text-slate-900 hover:border-slate-300 hover:bg-slate-50 transition-colors shrink-0"
                     >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
                         </svg>
                     </button>
                 </div>
@@ -87,15 +114,6 @@ const MediaViewerModal = ({ viewingMedia, setViewingMedia }) => {
                     )}
                 </div>
 
-                {/* Modal Footer */}
-                <div className="px-6 py-4 border-t border-slate-100 bg-white flex justify-end">
-                    <button
-                        onClick={() => setViewingMedia(null)}
-                        className="px-5 py-2 rounded-xl bg-slate-900 text-white text-sm font-bold hover:bg-slate-800 transition-colors"
-                    >
-                        Close
-                    </button>
-                </div>
             </div>
         </div>
     );

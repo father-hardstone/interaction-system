@@ -1,4 +1,5 @@
 import React from 'react';
+import { getRegistrationDisplayId } from '../utils/formatUtils';
 
 const NotClosedInteractionsTable = ({
     notClosedInteractions,
@@ -9,9 +10,15 @@ const NotClosedInteractionsTable = ({
     showOfficer = false,
     getOfficerName = () => 'N/A',
     onInteractionClick,
-    interactions = []
+    interactions = [],
+    lastVisits = {},
+    emptyMessage = 'No not-closed interactions found.'
 }) => {
     const getLastVisit = (interaction) => {
+        const fromBackend = lastVisits[interaction.visitorId];
+        if (fromBackend && fromBackend.id !== interaction.id) {
+            return formatDate(fromBackend.editedAt || fromBackend.createdAt, true);
+        }
         const patientHistory = interactions
             .filter(past => past.visitorId === interaction.visitorId && past.completed && past.id !== interaction.id)
             .sort((a, b) => new Date(b.editedAt || b.createdAt) - new Date(a.editedAt || a.createdAt));
@@ -29,24 +36,24 @@ const NotClosedInteractionsTable = ({
                     <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
                         <tr>
                             <th className="px-4 py-3 text-left">
-                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Registration</span>
+                                <span className="text-xs font-semibold text-slate-400 normal-case tracking-[0.2em]">Registration</span>
                             </th>
                             <th className="px-4 py-3 text-left">
-                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Patient Details</span>
+                                <span className="text-xs font-semibold text-slate-400 normal-case tracking-[0.2em]">Patient Details</span>
                             </th>
                             {showOfficer && (
                                 <th className="px-4 py-3 text-left">
-                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Assigned Doctor</span>
+                                    <span className="text-xs font-semibold text-slate-400 normal-case tracking-[0.2em]">Assigned Doctor</span>
                                 </th>
                             )}
                             <th className="px-4 py-3 text-left">
-                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Last Visit</span>
+                                <span className="text-xs font-semibold text-slate-400 normal-case tracking-[0.2em]">Last Visit</span>
                             </th>
                             <th className="px-4 py-3 text-left">
-                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Last Edited</span>
+                                <span className="text-xs font-semibold text-slate-400 normal-case tracking-[0.2em]">Last Edited</span>
                             </th>
                             <th className="px-4 py-3 text-right">
-                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Actions</span>
+                                <span className="text-xs font-semibold text-slate-400 normal-case tracking-[0.2em]">Actions</span>
                             </th>
                         </tr>
                     </thead>
@@ -57,48 +64,52 @@ const NotClosedInteractionsTable = ({
                                     colSpan={showOfficer ? 6 : 5}
                                     className="px-4 py-12 text-center text-xs text-slate-400"
                                 >
-                                    No not-closed interactions found.
+                                    {emptyMessage}
                                 </td>
                             </tr>
                         ) : (
                             notClosedInteractions.map((interaction) => (
-                                <tr key={interaction.id} className="hover:bg-slate-50">
-                                    <td className="px-4 py-4 align-middle">
+                                <tr
+                                    key={interaction.id}
+                                    className="hover:bg-slate-50 cursor-pointer"
+                                    onClick={() => onInteractionClick(interaction)}
+                                >
+                                    <td className="px-4 py-4 align-middle" onClick={(e) => e.stopPropagation()}>
                                         <button
                                             onClick={() => onInteractionClick(interaction)}
-                                            className="text-xs font-black text-blue-600 hover:text-blue-800 transition-colors uppercase tracking-tight"
+                                            className="text-xs font-semibold text-blue-600 hover:text-blue-800 transition-colors normal-case tracking-tight"
                                         >
-                                            {interaction.interactionSerial || 'REG-PENDING'}
+                                            {getRegistrationDisplayId(interaction)}
                                         </button>
                                     </td>
-                                    <td className="px-4 py-4 align-middle">
+                                    <td className="px-4 py-4 align-middle" onClick={(e) => e.stopPropagation()}>
                                         <button
                                             type="button"
                                             onClick={() =>
                                                 handleOpenPatientDetails(interaction.visitorId)
                                             }
-                                            className="text-sm font-black text-slate-900 hover:text-blue-700 transition-colors uppercase text-left"
+                                            className="text-sm font-semibold text-slate-900 hover:text-blue-700 transition-colors normal-case text-left"
                                         >
                                             {getVisitorName(interaction.visitorId)}
                                         </button>
-                                        <div className="text-[10px] font-bold text-slate-400 mt-0.5 tracking-wider">
+                                        <div className="text-xs font-medium text-slate-400 mt-0.5 tracking-wider">
                                             {getVisitorSerial(interaction.visitorId)}
                                         </div>
                                     </td>
                                     {showOfficer && (
                                         <td className="px-4 py-4 align-middle">
-                                            <div className="text-xs font-black text-slate-700 uppercase tracking-tight">
+                                            <div className="text-xs font-semibold text-slate-700 normal-case tracking-tight">
                                                 {getOfficerName(interaction.officerId)}
                                             </div>
-                                            <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
+                                            <div className="text-xs font-medium text-slate-400 normal-case tracking-widest mt-0.5">
                                                 ID: {interaction.officerSerial || '-'}
                                             </div>
                                         </td>
                                     )}
-                                    <td className="px-4 py-4 align-middle text-xs font-bold text-slate-500 italic">
+                                    <td className="px-4 py-4 align-middle text-xs font-semibold text-slate-500 italic">
                                         {getLastVisit(interaction)}
                                     </td>
-                                    <td className="px-4 py-4 align-middle text-xs font-bold text-slate-500 italic">
+                                    <td className="px-4 py-4 align-middle text-xs font-semibold text-slate-500 italic">
                                         {formatDate(interaction.editedAt || interaction.createdAt)}
                                     </td>
                                     <td className="px-4 py-4 align-middle text-right">

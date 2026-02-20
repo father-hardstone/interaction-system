@@ -1,7 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { formatHealthCardDisplay } from '../utils/formatUtils';
+import { reportService } from '../services/reportService';
 import VisitorsSection from './VisitorsSection';
 import InteractionsSection from './InteractionsSection';
-import RecordsSection from './RecordsSection';
+import ReportsSection from './ReportsSection';
+import PatientDetailsModal from './PatientDetailsModal';
 import NotClosedInteractionsTable from './NotClosedInteractionsTable';
 import IncompleteInteractionsTable from './IncompleteInteractionsTable';
 import UnbilledInteractionsTable from './UnbilledInteractionsTable';
@@ -15,7 +18,7 @@ const PlaceholderSection = ({ title, description }) => (
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
             </svg>
         </div>
-        <h3 className="text-lg font-bold text-slate-900 mb-1">{title}</h3>
+        <h3 className="text-lg font-semibold text-slate-900 mb-1">{title}</h3>
         <p className="text-slate-500">{description}</p>
     </div>
 );
@@ -31,8 +34,8 @@ const ReceptionTab = ({
     setSearchLastName,
     searchSerial,
     setSearchSerial,
-    searchPhone,
-    setSearchPhone,
+    searchContact,
+    setSearchContact,
     searchHealthCard,
     setSearchHealthCard,
     searchDob,
@@ -46,6 +49,8 @@ const ReceptionTab = ({
     setPhoneData,
     phoneHData,
     setPhoneHData,
+    phoneMData,
+    setPhoneMData,
     guardianPhoneData,
     setGuardianPhoneData,
     healthCardNumber,
@@ -58,13 +63,14 @@ const ReceptionTab = ({
     setHealthCardExpiryDate,
     handleCreateVisitor,
     handleHealthCardChange,
-
+    handleHealthCardVersionChange,
     error,
     setError,
     fieldErrors,
     setFieldErrors,
     editingVisitorId,
-    handleEditVisitor,
+    setEditingVisitorId,
+    onEditVisitor,
     handlePatientClick,
     selectedPatient,
     showPatientDetailModal,
@@ -73,6 +79,7 @@ const ReceptionTab = ({
     handlePatientDrop,
     warningMessage,
     interactions,
+    lastVisits = {},
     officers,
     userData,
     draggedOverOfficer,
@@ -82,12 +89,20 @@ const ReceptionTab = ({
     handleDragOver,
     handleDragLeave,
     handleDrop,
+    handleAssignToOfficer,
+    onOpenQueueModal,
     handleRegistrationDropOnBin,
     onRequestDelete,
+    onRequestCancel,
     showDeleteRegistrationModal,
     setShowDeleteRegistrationModal,
     registrationToDelete,
     handleDeleteRegistration,
+    showCancelRegistrationModal,
+    setShowCancelRegistrationModal,
+    registrationToCancel,
+    handleCancelRegistration,
+    isCancellingRegistration,
     getVisitorName,
     getVisitorSerial,
     formatDate,
@@ -104,6 +119,7 @@ const ReceptionTab = ({
     draggedInteraction,
     interactionFilter,
     setInteractionFilter,
+    onReceptionSubTabChange,
     handleRegisterPatient,
     nextVisitorSerial,
     onInteractionClick,
@@ -113,22 +129,55 @@ const ReceptionTab = ({
     registeringFollowupForId
 }) => {
     const [activeSubTab, setActiveSubTab] = useState('patients');
-    const [activeRegistrationSubTab, setActiveRegistrationSubTab] = useState(null); // null = main registrations view, 'incomplete', 'followup', 'unbilled'
+    const handleSubTabChange = (tab) => {
+        setActiveSubTab(tab);
+        onReceptionSubTabChange?.(tab);
+    };
+    const [activeInteractionSubTab, setActiveInteractionSubTab] = useState('ongoing'); // for Interactions tab: ongoing, not_closed, incomplete, followup, unbilled
     const [billingModalInteraction, setBillingModalInteraction] = useState(null);
+    const [reports, setReports] = useState([]);
+    const [loadingReports, setLoadingReports] = useState(false);
+
+    // Load reports when patient detail modal opens (works from any sub-tab: Patients, Reports, Billings)
+    useEffect(() => {
+        if (showPatientDetailModal && selectedPatient) {
+            const loadReports = async () => {
+                setLoadingReports(true);
+                try {
+                    const data = await reportService.getByPatient(selectedPatient.id);
+                    setReports(data || []);
+                } catch (error) {
+                    console.error('Failed to load reports:', error);
+                    setReports([]);
+                } finally {
+                    setLoadingReports(false);
+                }
+            };
+            loadReports();
+        } else {
+            setReports([]);
+        }
+    }, [showPatientDetailModal, selectedPatient]);
+
+    const handleReportUploadSuccess = () => {
+        if (!selectedPatient) return;
+        reportService.getByPatient(selectedPatient.id).then((data) => setReports(data || [])).catch(() => setReports([]));
+    };
 
     const getVisitorHealthCard = (visitorId) => {
         const visitor = visitors.find(v => v.id === visitorId);
-        return visitor?.healthCardNumber || 'N/A';
+        return visitor?.healthCardNumber ? formatHealthCardDisplay(visitor.healthCardNumber) : 'N/A';
     };
 
     return (
         <div className="flex flex-col flex-1 min-h-0 overflow-x-hidden">
-            {/* Subtab Navigation - shrink-0 so tabs stay visible when content scrolls */}
-            <div className="flex shrink-0 overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 sm:pb-0 scrollbar-hide mb-4">
+            {/* Subtab Navigation + Time filter - same line */}
+            <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 sm:pb-0 mb-4">
+                <div className="flex overflow-x-auto scrollbar-hide">
                 <div className="flex bg-slate-100 p-1.5 rounded-2xl w-fit">
                     <button
-                        onClick={() => setActiveSubTab('patients')}
-                        className={`flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-xl text-sm font-bold transition-all duration-300 whitespace-nowrap ${activeSubTab === 'patients'
+                        onClick={() => handleSubTabChange('patients')}
+                        className={`flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 whitespace-nowrap ${activeSubTab === 'patients'
                             ? 'bg-white text-primary shadow-sm scale-105'
                             : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
                             }`}
@@ -139,11 +188,8 @@ const ReceptionTab = ({
                         Patients
                     </button>
                     <button
-                        onClick={() => {
-                            setActiveSubTab('registrations');
-                            setActiveRegistrationSubTab(null);
-                        }}
-                        className={`flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-xl text-sm font-bold transition-all duration-300 whitespace-nowrap ${activeSubTab === 'registrations'
+                        onClick={() => handleSubTabChange('registrations')}
+                        className={`flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 whitespace-nowrap ${activeSubTab === 'registrations'
                             ? 'bg-white text-primary shadow-sm scale-105'
                             : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
                             }`}
@@ -154,100 +200,68 @@ const ReceptionTab = ({
                         Registrations
                     </button>
                     <button
-                        onClick={() => setActiveSubTab('records')}
-                        className={`flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-xl text-sm font-bold transition-all duration-300 whitespace-nowrap ${activeSubTab === 'records'
+                        onClick={() => handleSubTabChange('interactions')}
+                        className={`flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 whitespace-nowrap ${activeSubTab === 'interactions'
                             ? 'bg-white text-primary shadow-sm scale-105'
                             : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
                             }`}
                     >
-                        <span>Records</span>
+                        <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                        </svg>
+                        Interactions
                     </button>
                     <button
-                        onClick={() => setActiveSubTab('billings')}
-                        className={`flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-xl text-sm font-bold transition-all duration-300 whitespace-nowrap ${activeSubTab === 'billings'
+                        onClick={() => handleSubTabChange('reports')}
+                        className={`flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 whitespace-nowrap ${activeSubTab === 'reports'
                             ? 'bg-white text-primary shadow-sm scale-105'
                             : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
                             }`}
                     >
-                        <span>Billings</span>
+                        <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        Reports
+                    </button>
+                    <button
+                        onClick={() => handleSubTabChange('billings')}
+                        className={`flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 whitespace-nowrap ${activeSubTab === 'billings'
+                            ? 'bg-white text-primary shadow-sm scale-105'
+                            : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+                            }`}
+                    >
+                        <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2h-2m-4-1V7a2 2 0 012-2h2a2 2 0 012 2v1m-4 1v6" />
+                        </svg>
+                        Billings
                     </button>
                 </div>
-            </div>
-
-            {/* Registration Sub-tabs + Filter - Only show when Registrations is active */}
-            {activeSubTab === 'registrations' && (
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 sm:pb-0 scrollbar-hide">
-                    {/* Sub-tabs (left) */}
-                    <div className="flex bg-slate-50 p-1 rounded-xl w-fit border border-slate-200">
-                        <button
-                            onClick={() => setActiveRegistrationSubTab(null)}
-                            className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${activeRegistrationSubTab === null
-                                ? 'bg-white text-primary shadow-sm'
-                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                                }`}
-                        >
-                            All Registrations
-                        </button>
-                        <button
-                            onClick={() => setActiveRegistrationSubTab('not_closed')}
-                            className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${activeRegistrationSubTab === 'not_closed'
-                                ? 'bg-white text-primary shadow-sm'
-                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                                }`}
-                        >
-                            Not closed
-                        </button>
-                        <button
-                            onClick={() => setActiveRegistrationSubTab('incomplete')}
-                            className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${activeRegistrationSubTab === 'incomplete'
-                                ? 'bg-white text-primary shadow-sm'
-                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                                }`}
-                        >
-                            Incomplete
-                        </button>
-                        <button
-                            onClick={() => setActiveRegistrationSubTab('followup')}
-                            className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${activeRegistrationSubTab === 'followup'
-                                ? 'bg-white text-primary shadow-sm'
-                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                                }`}
-                        >
-                            Followup
-                        </button>
-                        <button
-                            onClick={() => setActiveRegistrationSubTab('unbilled')}
-                            className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${activeRegistrationSubTab === 'unbilled'
-                                ? 'bg-white text-primary shadow-sm'
-                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                                }`}
-                        >
-                            Unbilled
-                        </button>
-                    </div>
-                    {/* Filter (right) - covers all registrations subtabs */}
-                    <div className="flex items-center gap-2 shrink-0">
-                        <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Filter</span>
-                        <div className="flex bg-slate-200/50 p-1 rounded-xl flex-wrap gap-1">
-                            {['today', 'this_week', 'this_month', 'last_three_months', 'all'].map((f) => (
-                                <button
-                                    key={f}
-                                    onClick={() => setInteractionFilter(f)}
-                                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${interactionFilter === f ? 'bg-white text-primary shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
-                                >
-                                    {f === 'this_week' ? 'This week' : f === 'this_month' ? 'This month' : f === 'last_three_months' ? 'Last 3 months' : f.charAt(0).toUpperCase() + f.slice(1)}
-                                </button>
-                            ))}
-                        </div>
+                </div>
+                {activeSubTab !== 'patients' && (
+                <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-xs font-semibold normal-case tracking-wide text-slate-500">Time filter</span>
+                    <div className="flex bg-slate-200/50 p-1 rounded-xl flex-wrap gap-1">
+                        {['today', 'this_week', 'this_month', 'last_three_months', 'all'].map((f) => (
+                            <button
+                                key={f}
+                                onClick={() => setInteractionFilter(f)}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${interactionFilter === f ? 'bg-white text-primary shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                            >
+                                {f === 'this_week' ? 'This week' : f === 'this_month' ? 'This month' : f === 'last_three_months' ? 'Last 3 months' : f.charAt(0).toUpperCase() + f.slice(1)}
+                            </button>
+                        ))}
                     </div>
                 </div>
-            )}
+                )}
+            </div>
 
             {activeSubTab === 'patients' && (
+                <div className="flex-1 flex flex-col min-h-0">
                 <VisitorsSection
                     visitors={visitors}
                     isLoadingVisitors={isLoadingVisitors}
                     interactions={interactions}
+                    lastVisits={lastVisits}
                     officers={officers}
                     searchFirstName={searchFirstName}
                     setSearchFirstName={setSearchFirstName}
@@ -257,8 +271,8 @@ const ReceptionTab = ({
                     setSearchLastName={setSearchLastName}
                     searchSerial={searchSerial}
                     setSearchSerial={setSearchSerial}
-                    searchPhone={searchPhone}
-                    setSearchPhone={setSearchPhone}
+                    searchContact={searchContact}
+                    setSearchContact={setSearchContact}
                     searchHealthCard={searchHealthCard}
                     setSearchHealthCard={setSearchHealthCard}
                     searchDob={searchDob}
@@ -272,6 +286,8 @@ const ReceptionTab = ({
                     setPhoneData={setPhoneData}
                     phoneHData={phoneHData}
                     setPhoneHData={setPhoneHData}
+                    phoneMData={phoneMData}
+                    setPhoneMData={setPhoneMData}
                     guardianPhoneData={guardianPhoneData}
                     setGuardianPhoneData={setGuardianPhoneData}
                     healthCardNumber={healthCardNumber}
@@ -284,16 +300,16 @@ const ReceptionTab = ({
                     setHealthCardExpiryDate={setHealthCardExpiryDate}
                     handleCreateVisitor={handleCreateVisitor}
                     handleHealthCardChange={handleHealthCardChange}
+                    handleHealthCardVersionChange={handleHealthCardVersionChange}
                     error={error}
                     setError={setError}
                     fieldErrors={fieldErrors}
                     setFieldErrors={setFieldErrors}
                     editingVisitorId={editingVisitorId}
-                    onEditVisitor={handleEditVisitor}
+                    setEditingVisitorId={setEditingVisitorId}
+                    onEditVisitor={onEditVisitor}
                     handlePatientClick={handlePatientClick}
-                    selectedPatient={selectedPatient}
-                    showPatientDetailModal={showPatientDetailModal}
-                    setShowPatientDetailModal={setShowPatientDetailModal}
+                    onInteractionClick={onInteractionClick}
                     handlePatientDragStart={handlePatientDragStart}
                     handlePatientDrop={handlePatientDrop}
                     isCreatingVisitor={isCreatingVisitor}
@@ -308,57 +324,129 @@ const ReceptionTab = ({
                     handleRegisterPatient={handleRegisterPatient}
                     nextVisitorSerial={nextVisitorSerial}
                 />
+                </div>
             )}
 
             {activeSubTab === 'registrations' && (
-                <div className="flex-1 flex flex-col min-h-0 overflow-x-hidden">
-                    {activeRegistrationSubTab === null && (
-                        <div className="flex-1 flex flex-col min-h-0">
-                        <InteractionsSection
-                            visitors={visitors}
-                            interactions={interactions}
-                            officers={officers}
-                            userData={userData}
-                            draggedOverOfficer={draggedOverOfficer}
-                            draggedOverUnassigned={draggedOverUnassigned}
-                            setDraggedOverUnassigned={setDraggedOverUnassigned}
-                            handleDragStart={handleDragStart}
-                            handleDragOver={handleDragOver}
-                            handleDragLeave={handleDragLeave}
-                            handleDrop={handleDrop}
-                            handlePatientDrop={handlePatientDrop}
-                            handleRegistrationDropOnBin={handleRegistrationDropOnBin}
-                            onRequestDelete={onRequestDelete}
-                            showDeleteRegistrationModal={showDeleteRegistrationModal}
-                            setShowDeleteRegistrationModal={setShowDeleteRegistrationModal}
-                            registrationToDelete={registrationToDelete}
-                            handleDeleteRegistration={handleDeleteRegistration}
-                            getVisitorName={getVisitorName}
-                            getVisitorSerial={getVisitorSerial}
-                            getVisitorHealthCard={getVisitorHealthCard}
-                            formatDate={formatDate}
-                            isDeletingRegistration={isDeletingRegistration}
-                            isCreatingInteraction={isCreatingInteraction}
-                            isAssigningInteraction={isAssigningInteraction}
-                            pendingInteractions={pendingInteractions}
-                            pendingAssignments={pendingAssignments}
-                            assignmentFailed={assignmentFailed}
-                            handleDragEnd={handleDragEnd}
-                            draggedInteraction={draggedInteraction}
-                            onInteractionClick={onInteractionClick}
-                            handleRegisterPatient={handleRegisterPatient}
-                        />
-                        </div>
-                    )}
+                <div className="flex-1 flex flex-col min-h-0">
+                    <InteractionsSection
+                        visitors={visitors}
+                        interactions={interactions}
+                        lastVisits={lastVisits}
+                        officers={officers}
+                        userData={userData}
+                        draggedOverOfficer={draggedOverOfficer}
+                        draggedOverUnassigned={draggedOverUnassigned}
+                        setDraggedOverUnassigned={setDraggedOverUnassigned}
+                        handleDragStart={handleDragStart}
+                        handleDragOver={handleDragOver}
+                        handleDragLeave={handleDragLeave}
+                        handleDrop={handleDrop}
+                        handleAssignToOfficer={handleAssignToOfficer}
+                        onOpenQueueModal={onOpenQueueModal}
+                        handlePatientDrop={handlePatientDrop}
+                        handleRegistrationDropOnBin={handleRegistrationDropOnBin}
+                        onRequestDelete={onRequestDelete}
+                        onRequestCancel={onRequestCancel}
+                        showDeleteRegistrationModal={showDeleteRegistrationModal}
+                        setShowDeleteRegistrationModal={setShowDeleteRegistrationModal}
+                        registrationToDelete={registrationToDelete}
+                        handleDeleteRegistration={handleDeleteRegistration}
+                        showCancelRegistrationModal={showCancelRegistrationModal}
+                        setShowCancelRegistrationModal={setShowCancelRegistrationModal}
+                        registrationToCancel={registrationToCancel}
+                        handleCancelRegistration={handleCancelRegistration}
+                        isCancellingRegistration={isCancellingRegistration}
+                        getVisitorName={getVisitorName}
+                        getVisitorSerial={getVisitorSerial}
+                        getVisitorHealthCard={getVisitorHealthCard}
+                        formatDate={formatDate}
+                        isDeletingRegistration={isDeletingRegistration}
+                        isCreatingInteraction={isCreatingInteraction}
+                        isAssigningInteraction={isAssigningInteraction}
+                        pendingInteractions={pendingInteractions}
+                        pendingAssignments={pendingAssignments}
+                        assignmentFailed={assignmentFailed}
+                        handleDragEnd={handleDragEnd}
+                        draggedInteraction={draggedInteraction}
+                        onInteractionClick={onInteractionClick}
+                        handleRegisterPatient={handleRegisterPatient}
+                        onPatientClick={handlePatientClick}
+                    />
+                </div>
+            )}
 
-                    {activeRegistrationSubTab === 'not_closed' && (
+            {activeSubTab === 'interactions' && (
+                <div className="flex-1 flex flex-col min-h-0 overflow-x-hidden">
+                    <div className="flex bg-slate-50 p-1 rounded-xl w-fit border border-slate-200 mb-4 shrink-0">
+                        <button
+                            onClick={() => setActiveInteractionSubTab('ongoing')}
+                            className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${activeInteractionSubTab === 'ongoing'
+                                ? 'bg-white text-primary shadow-sm'
+                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                                }`}
+                        >
+                            Ongoing
+                        </button>
+                        <button
+                            onClick={() => setActiveInteractionSubTab('incomplete')}
+                            className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${activeInteractionSubTab === 'incomplete'
+                                ? 'bg-white text-primary shadow-sm'
+                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                                }`}
+                        >
+                            Incomplete
+                        </button>
+                        {/* Not ready for billing – commented out
+                        <button
+                            onClick={() => setActiveInteractionSubTab('not_closed')}
+                            className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${activeInteractionSubTab === 'not_closed'
+                                ? 'bg-white text-primary shadow-sm'
+                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                                }`}
+                        >
+                            Not ready for billing
+                        </button>
+                        */}
+                        {/* Unbilled – commented out
+                        <button
+                            onClick={() => setActiveInteractionSubTab('unbilled')}
+                            className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${activeInteractionSubTab === 'unbilled'
+                                ? 'bg-white text-primary shadow-sm'
+                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                                }`}
+                        >
+                            Unbilled
+                        </button>
+                        */}
+                        <button
+                            onClick={() => setActiveInteractionSubTab('followup')}
+                            className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${activeInteractionSubTab === 'followup'
+                                ? 'bg-white text-primary shadow-sm'
+                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                                }`}
+                        >
+                            Followup
+                        </button>
+                        <button
+                            onClick={() => setActiveInteractionSubTab('cancelled')}
+                            className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${activeInteractionSubTab === 'cancelled'
+                                ? 'bg-white text-primary shadow-sm'
+                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                                }`}
+                        >
+                            Cancelled
+                        </button>
+                    </div>
+
+                    {activeInteractionSubTab === 'ongoing' && (
                         <div className="animate-[fadeIn_0.3s_ease-out] flex flex-col flex-1 min-h-0 p-4">
                             <div className="mb-4 shrink-0">
-                                <h2 className="text-xl font-bold text-slate-900">Not Closed</h2>
-                                <p className="text-sm text-slate-500 mt-1">Interactions that have not been administratively closed.</p>
+                                <h2 className="text-xl font-semibold text-slate-900">Ongoing</h2>
+                                <p className="text-sm text-slate-500 mt-1">Visits currently in progress (started but not yet completed).</p>
                             </div>
                             <NotClosedInteractionsTable
-                                notClosedInteractions={interactions.filter(i => !i.closed)}
+                                notClosedInteractions={interactions.filter(i => i.ongoing && !i.completed)}
                                 handleOpenPatientDetails={handlePatientClick}
                                 getVisitorName={getVisitorName}
                                 getVisitorSerial={getVisitorSerial}
@@ -367,35 +455,66 @@ const ReceptionTab = ({
                                 showOfficer={true}
                                 onInteractionClick={onInteractionClick}
                                 interactions={interactions}
+                                lastVisits={lastVisits}
+                                emptyMessage="No ongoing interactions."
                             />
                         </div>
                     )}
 
-                    {activeRegistrationSubTab === 'incomplete' && (
+                    {/* Not ready for billing – commented out
+                    {activeInteractionSubTab === 'not_closed' && (
                         <div className="animate-[fadeIn_0.3s_ease-out] flex flex-col flex-1 min-h-0 p-4">
                             <div className="mb-4 shrink-0">
-                                <h2 className="text-xl font-bold text-slate-900">Incomplete Registrations</h2>
-                                <p className="text-sm text-slate-500 mt-1">Manage patients whose visits were started but not yet completed.</p>
+                                <h2 className="text-xl font-semibold text-slate-900">Not ready for billing</h2>
+                                <p className="text-sm text-slate-500 mt-1">Completed visits where diagnosis and billing codes are not yet entered.</p>
+                            </div>
+                            <NotClosedInteractionsTable
+                                notClosedInteractions={interactions.filter(i => i.started && i.completed && !i.closed)}
+                                handleOpenPatientDetails={handlePatientClick}
+                                getVisitorName={getVisitorName}
+                                getVisitorSerial={getVisitorSerial}
+                                getOfficerName={getOfficerName}
+                                formatDate={formatDate}
+                                showOfficer={true}
+                                onInteractionClick={onInteractionClick}
+                                interactions={interactions}
+                                lastVisits={lastVisits}
+                            />
+                        </div>
+                    )}
+                    */}
+
+                    {activeInteractionSubTab === 'incomplete' && (
+                        <div className="animate-[fadeIn_0.3s_ease-out] flex flex-col flex-1 min-h-0 p-4">
+                            <div className="mb-4 shrink-0">
+                                <h2 className="text-xl font-semibold text-slate-900">Incomplete</h2>
+                                <p className="text-sm text-slate-500 mt-1">Visits started but CC, Subjective, or Objective are missing.</p>
                             </div>
                             <IncompleteInteractionsTable
-                                incompleteInteractions={interactions.filter(i => i.incomplete && !i.completed)}
+                                incompleteInteractions={interactions.filter(i => {
+                                    if (!i.started || i.completed) return false;
+                                    const hasCC = i.ccReason && (i.ccReason.text?.trim() || (i.ccReason.hasScratchpad && i.ccReason.scratchpad));
+                                    const hasS = i.subjective && (i.subjective.text?.trim() || (i.subjective.hasScratchpad && i.subjective.scratchpad));
+                                    const hasO = i.objective && (i.objective.text?.trim() || (i.objective.hasScratchpad && i.objective.scratchpad));
+                                    return !hasCC || !hasS || !hasO;
+                                })}
                                 handleOpenPatientDetails={handlePatientClick}
                                 getVisitorName={getVisitorName}
                                 getVisitorSerial={getVisitorSerial}
                                 getOfficerName={getOfficerName}
                                 formatDate={formatDate}
                                 showOfficer={true}
-                                handleStartInteraction={null} // Read-only for receptionist
+                                handleStartInteraction={null}
                                 onInteractionClick={onInteractionClick}
                                 interactions={interactions}
                             />
                         </div>
                     )}
 
-                    {activeRegistrationSubTab === 'followup' && (
+                    {activeInteractionSubTab === 'followup' && (
                         <div className="animate-[fadeIn_0.3s_ease-out] flex flex-col flex-1 min-h-0 p-4">
                             <div className="mb-4 shrink-0">
-                                <h2 className="text-xl font-bold text-slate-900">Followup To Interactions</h2>
+                                <h2 className="text-xl font-semibold text-slate-900">Followup To Interactions</h2>
                                 <p className="text-sm text-slate-500 mt-1">Track patients who need follow-up appointments or checks.</p>
                             </div>
                             <FollowupInteractionsTable
@@ -408,30 +527,22 @@ const ReceptionTab = ({
                                 showOfficer={true}
                                 onInteractionClick={onInteractionClick}
                                 interactions={interactions}
+                                lastVisits={lastVisits}
                                 handleRegisterFollowup={handleRegisterFollowup}
                                 registeringFollowupForId={registeringFollowupForId}
                             />
                         </div>
                     )}
 
-                    {activeRegistrationSubTab === 'unbilled' && (
+                    {/* Unbilled – commented out
+                    {activeInteractionSubTab === 'unbilled' && (
                         <div className="animate-[fadeIn_0.3s_ease-out] flex flex-col flex-1 min-h-0 p-4">
                             <div className="mb-4 shrink-0">
-                                <h2 className="text-xl font-bold text-slate-900">Unbilled Interactions</h2>
-                                <p className="text-sm text-slate-500 mt-1">Interactions that have been completed but not yet billed.</p>
+                                <h2 className="text-xl font-semibold text-slate-900">Unbilled</h2>
+                                <p className="text-sm text-slate-500 mt-1">Completed visits with diagnosis and billing codes entered, ready for billing.</p>
                             </div>
                             <UnbilledInteractionsTable
-                                unbilledInteractions={interactions.filter(i => {
-                                    // Completed interactions that don't have billing
-                                    if (!i.completed) return false;
-                                    if (i.billed === true) return false;
-                                    if (!i.serviceLines || i.serviceLines.length === 0) return true;
-                                    // Check if any service line has billing info
-                                    const hasBilling = i.serviceLines.some(line => 
-                                        (line.totalFee && line.totalFee > 0) || line.accountingNumber
-                                    );
-                                    return !hasBilling;
-                                })}
+                                unbilledInteractions={interactions.filter(i => i.completed && i.closed && i.billed !== true)}
                                 handleOpenPatientDetails={handlePatientClick}
                                 getVisitorName={getVisitorName}
                                 getVisitorSerial={getVisitorSerial}
@@ -440,27 +551,55 @@ const ReceptionTab = ({
                                 showOfficer={true}
                                 onInteractionClick={onInteractionClick}
                                 interactions={interactions}
+                                lastVisits={lastVisits}
                                 onBillNow={(interaction) => {
                                     setBillingModalInteraction(interaction);
-                                    setActiveSubTab('billings');
+                                    handleSubTabChange('billings');
                                 }}
+                            />
+                        </div>
+                    )}
+                    */}
+
+                    {activeInteractionSubTab === 'cancelled' && (
+                        <div className="animate-[fadeIn_0.3s_ease-out] flex flex-col flex-1 min-h-0 p-4">
+                            <div className="mb-4 shrink-0">
+                                <h2 className="text-xl font-semibold text-slate-900">Cancelled registrations</h2>
+                                <p className="text-sm text-slate-500 mt-1">Registrations that were cancelled before the visit started.</p>
+                            </div>
+                            <NotClosedInteractionsTable
+                                notClosedInteractions={interactions.filter(i => i.cancelled)}
+                                handleOpenPatientDetails={handlePatientClick}
+                                getVisitorName={getVisitorName}
+                                getVisitorSerial={getVisitorSerial}
+                                getOfficerName={getOfficerName}
+                                formatDate={formatDate}
+                                showOfficer={true}
+                                onInteractionClick={onInteractionClick}
+                                interactions={interactions}
+                                lastVisits={lastVisits}
+                                emptyMessage="No cancelled registrations."
                             />
                         </div>
                     )}
                 </div>
             )}
 
-            {activeSubTab === 'records' && (
-                <RecordsSection
+            {activeSubTab === 'reports' && (
+                <div className="flex-1 flex flex-col min-h-0">
+                <ReportsSection
                     visitors={visitors}
                     isLoadingVisitors={isLoadingVisitors}
                     interactions={interactions}
+                    lastVisits={lastVisits}
                     officers={officers}
                     userData={userData}
                     getVisitorName={getVisitorName}
                     getVisitorSerial={getVisitorSerial}
                     formatDate={formatDate}
+                    onPatientClick={handlePatientClick}
                 />
+                </div>
             )}
 
             {activeSubTab === 'billings' && (
@@ -473,6 +612,32 @@ const ReceptionTab = ({
                     billingModalInteraction={billingModalInteraction}
                     onOpenBillNow={setBillingModalInteraction}
                     onCloseBillNow={() => setBillingModalInteraction(null)}
+                />
+            )}
+
+            {/* Patient Details Modal - rendered at ReceptionTab level so it's available from Patients, Reports, Billings tabs */}
+            {showPatientDetailModal && selectedPatient && (
+                <PatientDetailsModal
+                    selectedPatient={selectedPatient}
+                    setShowPatientDetailModal={setShowPatientDetailModal}
+                    reportsOnly={activeSubTab === 'reports'}
+                    getVisitorName={getVisitorName}
+                    getVisitorSerial={getVisitorSerial}
+                    completedInteractionsForPatient={interactions.filter(i => i.visitorId === selectedPatient?.id && i.completed)}
+                    lastVisits={lastVisits}
+                    formatDate={formatDate}
+                    onInteractionClick={onInteractionClick}
+                    getImageUrl={getImageUrl}
+                    setViewingMedia={setViewingMedia}
+                    isLoadingReports={loadingReports}
+                    patientReports={reports}
+                    entityId={userData?.entityId}
+                    entitySerial={userData?.entitySerial}
+                    interactions={interactions}
+                    officers={officers}
+                    onUploadSuccess={handleReportUploadSuccess}
+                    handlePatientClick={handlePatientClick}
+                    visitors={visitors}
                 />
             )}
         </div>

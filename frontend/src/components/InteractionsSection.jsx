@@ -1,9 +1,42 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { renderInteractionTags } from '../utils/interactionTags';
+import { stripEntityPrefix, getVisitorSerialDisplay, getReasonForVisitLabel, formatPhoneDisplay, getRegistrationDisplayId, formatTimeOnly, getInteractionStatus } from '../utils/formatUtils';
 import RegisterInteractionModal from './RegisterInteractionModal';
+
+/** Registration status for queue cards: Ongoing | Followup | New | Refill (from reasonForVisit / ongoing). */
+const getRegistrationStatus = (interaction) => {
+    if (interaction.ongoing || interaction.started) return { label: 'Ongoing', isNewVisit: false };
+    const r = (interaction.reasonForVisit || '').trim();
+    if (r === 'followup') return { label: 'Followup', isNewVisit: false };
+    if (r === 'refill_medicine') return { label: 'Refill', isNewVisit: false };
+    return { label: 'New', isNewVisit: true };
+};
+
+/** Last completed visit's first diagnostic code for this visitor. */
+const getLastVisitDiagCode = (interaction, interactions, lastVisits) => {
+    const fromBackend = lastVisits[interaction?.visitorId];
+    if (fromBackend?.serviceLines?.[0]?.diagnostic) {
+        const code = String(fromBackend.serviceLines[0].diagnostic).trim();
+        if (code) return code;
+    }
+    const past = interactions
+        .filter(i => i.visitorId === interaction.visitorId && i.completed && i.id !== interaction.id)
+        .sort((a, b) => new Date(b.editedAt || b.createdAt) - new Date(a.editedAt || a.createdAt))[0];
+    const code = past?.serviceLines?.[0]?.diagnostic;
+    return (code && String(code).trim()) ? String(code).trim() : '—';
+};
+
+/** Minutes waiting since registration (createdAt). */
+const getMinutesWaiting = (createdAt, now) => {
+    if (!createdAt) return '—';
+    const ms = now - new Date(createdAt).getTime();
+    if (ms < 0) return '0';
+    return String(Math.floor(ms / 60000));
+};
 
 const InteractionsSection = ({
     interactions,
+    lastVisits = {},
     officers,
     userData,
     draggedOverOfficer,
@@ -13,13 +46,21 @@ const InteractionsSection = ({
     handleDragOver,
     handleDragLeave,
     handleDrop,
+    handleAssignToOfficer,
+    onOpenQueueModal,
     handlePatientDrop,
     handleRegistrationDropOnBin,
     onRequestDelete,
+    onRequestCancel,
     showDeleteRegistrationModal,
     setShowDeleteRegistrationModal,
     registrationToDelete,
     handleDeleteRegistration,
+    showCancelRegistrationModal,
+    setShowCancelRegistrationModal,
+    registrationToCancel,
+    handleCancelRegistration,
+    isCancellingRegistration,
     getVisitorName,
     getVisitorSerial,
     getVisitorHealthCard,
@@ -34,7 +75,8 @@ const InteractionsSection = ({
     draggedInteraction,
     onInteractionClick,
     visitors = [],
-    handleRegisterPatient
+    handleRegisterPatient,
+    onPatientClick
 }) => {
     const [draggedOverDelete, setDraggedOverDelete] = useState(false);
     const [showRegisterModal, setShowRegisterModal] = useState(false);
@@ -48,6 +90,36 @@ const InteractionsSection = ({
             setSelectedOfficerId(activeOfficers[0].id);
         }
     }, [activeOfficers, selectedOfficerId]);
+
+    const [tick, setTick] = useState(() => Date.now());
+    useEffect(() => {
+        const interval = setInterval(() => setTick(Date.now()), 60000);
+        return () => clearInterval(interval);
+    }, []);
+
+    /** Queue order: oldest first (ascending by queuedAt/createdAt). Serial 1 = oldest in queue. */
+    const officerQueueSortedByQueuedAt = useMemo(
+        () =>
+            selectedOfficer
+                ? interactions
+                    .filter(i => getInteractionStatus(i) === 'queued' && i.officerId === selectedOfficer.id && !(i.id in pendingAssignments))
+                    .sort((a, b) => new Date(a.queuedAt || a.createdAt || 0) - new Date(b.queuedAt || b.createdAt || 0))
+                : [],
+        [interactions, selectedOfficer, pendingAssignments]
+    );
+
+    const avgConsultationMs = useMemo(() => {
+        const completed = interactions.filter(i => i.completed && i.startedAt && i.completedAt);
+        if (completed.length === 0) return 15 * 60 * 1000;
+        const total = completed.reduce((sum, i) => sum + (new Date(i.completedAt).getTime() - new Date(i.startedAt).getTime()), 0);
+        return total / completed.length;
+    }, [interactions]);
+
+    const getExpectedTurnTime = (interactionId) => {
+        const pos = officerQueueSortedByQueuedAt.findIndex(i => i.id === interactionId);
+        if (pos < 0) return '—';
+        return formatTimeOnly(tick + pos * avgConsultationMs);
+    };
 
 
 
@@ -64,7 +136,7 @@ const InteractionsSection = ({
                     onClick={() => setShowRegisterModal(true)}
                     className="px-4 py-2 bg-primary text-white rounded-xl font-semibold text-sm hover:bg-primary-dark transition-colors w-full sm:w-auto"
                 >
-                    Register Interaction
+                    Register Patient
                 </button>
             </div>
 
@@ -72,7 +144,7 @@ const InteractionsSection = ({
             <div className="flex-1 flex flex-col lg:flex-row gap-6 min-h-0 p-4 sm:p-6">
                 {/* Left Side - Unassigned Interactions */}
                 <div className="flex-[3] flex flex-col min-w-0">
-                    <div className="flex justify-between items-center mb-4">
+                    <div className="flex justify-between items-center mb-1">
                         <h3 className="text-sm font-semibold text-slate-700">Unassigned Registrations</h3>
                         <div
                             onDragOver={(e) => {
@@ -89,13 +161,16 @@ const InteractionsSection = ({
                                 ? 'bg-red-100 border-2 border-red-500 bg-opacity-90 shadow-lg scale-110'
                                 : 'bg-red-50 hover:bg-red-100 border-2 border-red-200'
                                 }`}
-                            title="Drop registration here to delete"
+                            title="Drop registration here to unregister"
                         >
                             <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                             </svg>
                         </div>
                     </div>
+                    <p className="text-xs text-slate-500 mb-3">
+                        {interactions.filter(i => !i.cancelled && (!i.officerId || i.officerId === '') && !pendingInteractions.find(p => p.id === i.id && p.isPending) && !(i.id in pendingAssignments)).length} in operations
+                    </p>
                     <div
                         onDragOver={(e) => {
                             e.preventDefault();
@@ -110,12 +185,13 @@ const InteractionsSection = ({
                             setDraggedOverUnassigned(false);
                             handleDrop(e, null);
                         }}
-                        className={`grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 p-4 rounded-xl transition-colors flex-1 min-h-0 overflow-y-auto scrollbar-hide ${draggedOverUnassigned ? 'bg-blue-50 border-2 border-blue-300 border-dashed' : 'bg-slate-50'
+                        className={`grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-2 p-3 rounded-xl transition-colors flex-1 min-h-0 overflow-y-auto scrollbar-hide ${draggedOverUnassigned ? 'bg-blue-50 border-2 border-blue-300 border-dashed' : 'bg-slate-50'
                             }`}
                     >
                         {/* Show existing interactions + optimistic unassigned (being moved from doctor) */}
                         {interactions
                             .filter(i => {
+                                if (i.cancelled) return false;
                                 if (pendingInteractions.find(p => p.id === i.id && p.isPending)) return false;
                                 // Being moved to an officer – show in officer column only
                                 if (i.id in pendingAssignments && pendingAssignments[i.id] !== '' && pendingAssignments[i.id] != null) return false;
@@ -129,14 +205,23 @@ const InteractionsSection = ({
                                 const isBeingUnassigned = (pendingAssignments[interaction.id] === '' || pendingAssignments[interaction.id] === null);
                                 const isFailed = assignmentFailed[interaction.id];
 
-                                // Calculate Last Visit
-                                const patientHistory = interactions
-                                    .filter(past => past.visitorId === interaction.visitorId && past.completed && past.id !== interaction.id)
-                                    .sort((a, b) => new Date(b.editedAt || b.createdAt) - new Date(a.editedAt || a.createdAt));
+                                // Calculate Last Visit (prefer backend lastVisits so it's correct regardless of time filter)
+                                const fromBackend = lastVisits[interaction.visitorId];
+                                const lastVisitDisplay = fromBackend
+                                    ? formatDate(fromBackend.editedAt || fromBackend.createdAt, true)
+                                    : (() => {
+                                        const patientHistory = interactions
+                                            .filter(past => past.visitorId === interaction.visitorId && past.completed && past.id !== interaction.id)
+                                            .sort((a, b) => new Date(b.editedAt || b.createdAt) - new Date(a.editedAt || a.createdAt));
+                                        return patientHistory.length > 0
+                                            ? formatDate(patientHistory[0].editedAt || patientHistory[0].createdAt, true)
+                                            : 'New Patient';
+                                    })();
 
-                                const lastVisitDate = patientHistory.length > 0
-                                    ? formatDate(patientHistory[0].editedAt || patientHistory[0].createdAt, false)
-                                    : 'New Patient';
+                                const status = getRegistrationStatus(interaction);
+                                const visitor = visitors.find(v => v.id === interaction.visitorId);
+                                const diagCode = getLastVisitDiagCode(interaction, interactions, lastVisits);
+                                const minsWaiting = getMinutesWaiting(interaction.createdAt, tick);
 
                                 return (
                                     <div
@@ -147,20 +232,17 @@ const InteractionsSection = ({
                                             handleDragEnd(e);
                                             setDraggedOverDelete(false);
                                         }}
-                                        onClick={() => onInteractionClick(interaction)}
-                                        className={`group/card relative bg-white border border-slate-200 rounded-2xl p-5 transition-all duration-300 hover:shadow-xl hover:shadow-blue-500/5 hover:-translate-y-1 active:scale-[0.98] flex flex-col justify-between h-fit overflow-hidden ${isBeingDeleted ? 'ring-2 ring-red-500 bg-red-50' : isFailed ? 'ring-2 ring-red-500 bg-red-100 border-red-300 shadow-lg shadow-red-200/50' : 'hover:border-blue-400'}`}
+                                        className={`group/card relative bg-white border border-slate-200 rounded-lg p-2.5 transition-all duration-300 hover:shadow-md hover:shadow-blue-500/5 hover:-translate-y-0.5 hover:border-blue-400 flex flex-col justify-between h-fit overflow-visible min-w-0 cursor-default ${isBeingDeleted ? 'ring-2 ring-red-500 bg-red-50' : isFailed ? 'ring-2 ring-red-500 bg-red-100 border-red-300 shadow-lg shadow-red-200/50' : ''}`}
                                     >
-                                        <div className="absolute top-0 right-0 w-32 h-32 bg-blue-50/20 rounded-full -mr-12 -mt-12 transition-transform group-hover/card:scale-110"></div>
-
-                                        <div className="relative flex flex-col h-full gap-3">
+                                        <div className="relative flex flex-col h-full gap-1 min-w-0 overflow-visible">
                                             {isBeingUnassigned && (
-                                                <div className={`absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-2xl transition-colors duration-200 ${isFailed ? 'bg-red-100/95' : 'bg-white/90 backdrop-blur-sm'}`}>
+                                                <div className={`absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-lg transition-colors duration-200 ${isFailed ? 'bg-red-100/95' : 'bg-white/90 backdrop-blur-sm'}`}>
                                                     {isFailed ? (
                                                         <>
                                                             <svg className="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                                                             </svg>
-                                                            <span className="text-sm font-bold text-red-700">Failed – reverting</span>
+                                                            <span className="text-sm font-semibold text-red-700">Failed – reverting</span>
                                                         </>
                                                     ) : (
                                                         <svg className="animate-spin h-8 w-8 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -170,57 +252,57 @@ const InteractionsSection = ({
                                                     )}
                                                 </div>
                                             )}
-                                            <div className="flex justify-between items-start">
-                                                <span className="text-xs font-black text-blue-600 bg-blue-50/80 px-2.5 py-1 rounded-lg border border-blue-100 uppercase tracking-widest">
-                                                    {interaction.interactionSerial || 'REG-PENDING'}
+                                            <div className="flex justify-between items-start gap-1 min-w-0 flex-nowrap">
+                                                <div className="flex flex-col gap-0.5 shrink-0">
+                                                    <span className="inline-flex items-center justify-center min-w-[2rem] text-xs font-semibold text-blue-600 bg-blue-50/80 px-1.5 py-0.5 rounded border border-blue-100 normal-case tracking-wide w-fit">
+                                                        {getRegistrationDisplayId(interaction)}
+                                                    </span>
+                                                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border normal-case w-fit ${interaction.visitMode === 'on_phone' ? 'bg-violet-50 text-violet-700 border-violet-100' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>
+                                                        {interaction.visitMode === 'on_phone' ? 'Phone consult' : 'Physical'}
+                                                    </span>
+                                                </div>
+                                                <span className={`shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded border normal-case whitespace-nowrap ${status.label === 'Ongoing' ? 'bg-blue-50 text-blue-600 border-blue-100' : status.label === 'Followup' ? 'bg-teal-50 text-teal-600 border-teal-100' : status.label === 'Refill' ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-slate-100 text-slate-700 border-slate-200'}`}>
+                                                    {status.label}
                                                 </span>
-                                                <div className="flex items-center gap-1.5">
-                                                    {canDrag && (
-                                                        <button
-                                                            type="button"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                onRequestDelete?.(interaction);
-                                                            }}
-                                                            className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors opacity-70 hover:opacity-100 sm:opacity-0 sm:group-hover/card:opacity-100"
-                                                            title="Delete registration"
-                                                        >
-                                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                                            </svg>
+                                                <div className="flex items-center gap-0.5 shrink-0 min-w-[4.5rem] justify-end" aria-label="Card actions">
+                                                    {canDrag && onOpenQueueModal && (
+                                                        <button type="button" onClick={(e) => { e.stopPropagation(); onOpenQueueModal(interaction); }} className="p-1 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 opacity-70 hover:opacity-100 sm:opacity-0 sm:group-hover/card:opacity-100" title="Queue (assign to doctor)">
+                                                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h10M4 18h16m4-6l4 4 4-4" /></svg>
+                                                        </button>
+                                                    )}
+                                                    {canDrag && onRequestCancel && (
+                                                        <button type="button" onClick={(e) => { e.stopPropagation(); onRequestCancel(interaction); }} className="p-1 rounded text-slate-400 hover:text-amber-600 hover:bg-amber-50 opacity-70 hover:opacity-100 sm:opacity-0 sm:group-hover/card:opacity-100" title="Cancel registration">
+                                                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                                                         </button>
                                                     )}
                                                     {canDrag && (
-                                                        <div className="opacity-0 group-hover/card:opacity-100 transition-opacity">
-                                                            <svg className="w-4 h-4 text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M4 6h16M4 12h16M4 18h16" />
-                                                            </svg>
-                                                        </div>
+                                                        <button type="button" onClick={(e) => { e.stopPropagation(); onRequestDelete?.(interaction); }} className="p-1 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 opacity-70 hover:opacity-100 sm:opacity-0 sm:group-hover/card:opacity-100" title="Unregister">
+                                                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                                        </button>
                                                     )}
+                                                    {canDrag && <div className="opacity-0 group-hover/card:opacity-100"><svg className="w-3.5 h-3.5 text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M4 6h16M4 12h16M4 18h16" /></svg></div>}
                                                 </div>
                                             </div>
-
-                                            <div className="space-y-2 flex-1">
-                                                <div className="text-lg font-black text-slate-900 group-hover/card:text-blue-700 transition-colors truncate uppercase tracking-tighter">
-                                                    {getVisitorName(interaction.visitorId)}
-                                                </div>
-                                                <div className="text-sm font-black text-slate-600 font-mono tracking-wider">
-                                                    {getVisitorHealthCard(interaction.visitorId)}
-                                                </div>
-                                                <div className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-                                                    {formatDate(interaction.createdAt, false)}
-                                                </div>
+                                            {status.isNewVisit && (interaction.reasonForVisitNotes || '').trim() && (
+                                                <p className="text-[10px] text-slate-600 leading-tight line-clamp-2 pr-1">{interaction.reasonForVisitNotes.trim()}</p>
+                                            )}
+                                            <div className="text-sm font-bold text-slate-900 truncate normal-case leading-tight">
+                                                {getVisitorName(interaction.visitorId)}
                                             </div>
-
-                                            <div className="pt-3 border-t border-slate-50 space-y-2">
-                                                <div className="flex gap-1 flex-wrap">
-                                                    {renderInteractionTags(interaction, { size: 'text-[7px]' })}
+                                            <div className="flex flex-col gap-0.5 text-[10px] text-slate-900">
+                                                <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0 truncate">
+                                                    <span className="text-slate-500 shrink-0">Phone</span><span className="font-medium truncate">{formatPhoneDisplay(visitor?.phoneM || visitor?.phone) || '—'}</span>
+                                                    <span className="text-slate-400 shrink-0">·</span>
+                                                    <span className="text-slate-500 shrink-0">Estimated turn</span><span className="font-medium">—</span>
+                                                    <span className="text-slate-400 shrink-0">·</span>
+                                                    <span className="text-slate-500 shrink-0">Date</span><span className="font-medium truncate">{formatDate(interaction.createdAt, true)}</span>
                                                 </div>
-                                                <div className="flex flex-col">
-                                                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Last Visit</span>
-                                                    <span className={`text-sm font-black uppercase tracking-widest ${lastVisitDate === 'New Patient' ? 'text-emerald-500' : 'text-blue-600'}`}>
-                                                        {lastVisitDate}
-                                                    </span>
+                                                <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0 truncate">
+                                                    <span className="text-slate-500 shrink-0">Wait</span><span className="font-medium">{minsWaiting === '—' ? '—' : `${minsWaiting} min`}</span>
+                                                    <span className="text-slate-400 shrink-0">·</span>
+                                                    <span className="text-slate-500 shrink-0">Last</span><span className={`font-medium truncate ${lastVisitDisplay === 'New Patient' ? 'text-emerald-600' : ''}`}>{lastVisitDisplay}</span>
+                                                    <span className="text-slate-400 shrink-0">·</span>
+                                                    <span className="text-slate-500 shrink-0">Diag</span><span className="font-medium truncate">{diagCode}</span>
                                                 </div>
                                             </div>
                                         </div>
@@ -247,7 +329,7 @@ const InteractionsSection = ({
                                                     {visitor.firstName} {visitor.middleName ? visitor.middleName + ' ' : ''}{visitor.lastName}
                                                 </div>
                                                 <div className="text-xs text-slate-600 mb-2 text-center">
-                                                    {visitor.entitySerial ? `${visitor.entitySerial}-${visitor.serial}` : visitor.serial}
+                                                    {getVisitorSerialDisplay(visitor)}
                                                 </div>
                                             </>
                                         )}
@@ -255,7 +337,7 @@ const InteractionsSection = ({
                                     </div>
                                 );
                             })}
-                        {interactions.filter(i => !i.officerId || i.officerId === '').length === 0 && pendingInteractions.filter(i => i.isPending).length === 0 && (
+                        {interactions.filter(i => !i.cancelled && (!i.officerId || i.officerId === '')).length === 0 && pendingInteractions.filter(i => i.isPending).length === 0 && (
                             <div className="col-span-1 sm:col-span-2 lg:col-span-3 xl:col-span-4 text-center py-8 text-slate-400 text-sm">
                                 No unassigned registrations
                             </div>
@@ -268,20 +350,26 @@ const InteractionsSection = ({
 
                 {/* Right Side - Officers (Columns) */}
                 <div className="flex-[1] flex flex-col min-w-0 min-h-0 lg:max-w-[400px]">
-                    <div className="flex items-center gap-3 mb-4 shrink-0">
-                        {activeOfficers.length > 1 && (
-                            <select
-                                value={selectedOfficerId || ''}
-                                onChange={(e) => setSelectedOfficerId(e.target.value || null)}
-                                className="px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
-                            >
-                                {activeOfficers.map((o) => (
-                                    <option key={o.id} value={o.id}>{o.name}</option>
-                                ))}
-                            </select>
-                        )}
+                    <div className="flex items-center justify-between gap-2 mb-1 shrink-0">
                         <h3 className="text-sm font-semibold text-slate-700">Doctors</h3>
+                        {activeOfficers.length > 0 && (
+                            <div className="flex gap-0.5 p-0.5 rounded-lg bg-slate-100 border border-slate-200">
+                                {activeOfficers.map((o) => (
+                                    <button
+                                        key={o.id}
+                                        type="button"
+                                        onClick={() => setSelectedOfficerId(o.id)}
+                                        className={`min-w-0 px-2 py-1 rounded text-xs font-medium transition-all ${selectedOfficerId === o.id ? 'bg-blue-600 text-white' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}`}
+                                    >
+                                        {o.name}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                     </div>
+                    <p className="text-xs text-slate-500 mb-3 shrink-0">
+                        {selectedOfficer ? interactions.filter(i => getInteractionStatus(i) === 'queued' && i.officerId === selectedOfficer.id && !(i.id in pendingAssignments)).length + (Object.values(pendingAssignments).filter(id => id === selectedOfficer?.id).length || 0) : 0} in scheduled registrations
+                    </p>
                     <div className="flex flex-col flex-1 min-h-0">
                         {selectedOfficer ? (
                                 <div
@@ -325,46 +413,82 @@ const InteractionsSection = ({
                                                 );
                                             })}
                                         {interactions
-                                            .filter(i => i.officerId === selectedOfficer.id && !(i.id in pendingAssignments))
-                                            .sort((a, b) => new Date(b.editedAt || b.createdAt).getTime() - new Date(a.editedAt || a.createdAt).getTime())
-                                            .map((interaction) => {
+                                            .filter(i => getInteractionStatus(i) === 'queued' && i.officerId === selectedOfficer.id && !(i.id in pendingAssignments))
+                                            .sort((a, b) => new Date(a.queuedAt || a.createdAt || 0) - new Date(b.queuedAt || b.createdAt || 0))
+                                            .map((interaction, queueIndex) => {
                                                 const canDrag = (userData?.role === 'receptionist' || userData?.role === 'officer') && !interaction.started && !interaction.completed && !interaction.closed;
+                                                const visitor = visitors.find(v => v.id === interaction.visitorId);
+                                                const status = getRegistrationStatus(interaction);
+                                                const fromBackend = lastVisits[interaction.visitorId];
+                                                const lastVisitDisplay = fromBackend
+                                                    ? formatDate(fromBackend.editedAt || fromBackend.createdAt, true)
+                                                    : (() => {
+                                                        const patientHistory = interactions
+                                                            .filter(past => past.visitorId === interaction.visitorId && past.completed && past.id !== interaction.id)
+                                                            .sort((a, b) => new Date(b.editedAt || b.createdAt) - new Date(a.editedAt || a.createdAt));
+                                                        return patientHistory.length > 0
+                                                            ? formatDate(patientHistory[0].editedAt || patientHistory[0].createdAt, true)
+                                                            : 'New Patient';
+                                                    })();
+                                                const diagCode = getLastVisitDiagCode(interaction, interactions, lastVisits);
+                                                const minsWaiting = getMinutesWaiting(interaction.createdAt, tick);
+                                                const queuePosition = queueIndex + 1;
                                                 return (
                                                     <div
                                                         key={interaction.id}
                                                         draggable={canDrag}
                                                         onDragStart={(e) => canDrag ? handleDragStart(e, interaction) : e.preventDefault()}
-                                                        onClick={() => onInteractionClick(interaction)}
-                                                        className={`group/item relative bg-white border border-slate-100 rounded-xl p-3 shadow-sm transition-all hover:border-blue-300 hover:shadow-lg hover:shadow-blue-500/5 cursor-pointer active:scale-95 ${canDrag ? 'cursor-move' : ''}`}
+                                                        className={`group/item relative bg-white border border-slate-100 rounded-lg p-2.5 shadow-sm transition-all hover:border-blue-300 hover:shadow-md flex flex-col min-w-0 ${canDrag ? 'cursor-move' : 'cursor-default'}`}
                                                     >
-                                                        <div className="flex justify-between items-start mb-2">
-                                                            <span className="text-[8px] font-black text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 uppercase tracking-tighter">
-                                                                {interaction.interactionSerial || 'REG-PENDING'}
+                                                        <div className="flex justify-between items-start gap-1 min-w-0">
+                                                            <div className="flex flex-col gap-0.5 shrink-0">
+                                                                <span className="inline-flex items-center justify-center min-w-[2rem] text-[10px] font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 normal-case w-fit">
+                                                                    {queuePosition}
+                                                                </span>
+                                                                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border normal-case w-fit ${interaction.visitMode === 'on_phone' ? 'bg-violet-50 text-violet-700 border-violet-100' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>
+                                                                    {interaction.visitMode === 'on_phone' ? 'Phone consult' : 'Physical'}
+                                                                </span>
+                                                            </div>
+                                                            <span className={`shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded border normal-case ${status.label === 'Ongoing' ? 'bg-blue-50 text-blue-600 border-blue-100' : status.label === 'Followup' ? 'bg-teal-50 text-teal-600 border-teal-100' : status.label === 'Refill' ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-slate-100 text-slate-700 border-slate-200'}`}>
+                                                                {status.label}
                                                             </span>
-                                                            <div className="flex gap-1 flex-wrap justify-end">
-                                                                {renderInteractionTags(interaction, { size: 'text-[7px]' })}
+                                                            <div className="flex items-center gap-0.5 shrink-0">
+                                                                {canDrag && onRequestCancel && (
+                                                                    <button type="button" onClick={(e) => { e.stopPropagation(); onRequestCancel(interaction); }} className="p-1 rounded text-slate-400 hover:text-amber-600 hover:bg-amber-50" title="Cancel registration">
+                                                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                                                    </button>
+                                                                )}
+                                                                {canDrag && (
+                                                                    <svg className="w-3 h-3 text-blue-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M4 6h16M4 12h16M4 18h16" /></svg>
+                                                                )}
                                                             </div>
                                                         </div>
-
-                                                        <div className="space-y-0.5">
-                                                            <label className="text-[8px] font-bold text-slate-400 uppercase tracking-widest block">Patient</label>
-                                                            <div className="text-xs font-black text-slate-900 truncate uppercase">
-                                                                {getVisitorName(interaction.visitorId)}
-                                                            </div>
+                                                        {status.isNewVisit && (interaction.reasonForVisitNotes || '').trim() && (
+                                                            <p className="text-[10px] text-slate-600 leading-tight line-clamp-2 mt-0.5">{interaction.reasonForVisitNotes.trim()}</p>
+                                                        )}
+                                                        <div className="text-xs font-bold text-slate-900 truncate normal-case leading-tight mt-0.5">
+                                                            {getVisitorName(interaction.visitorId)}
                                                         </div>
-
-                                                        <div className="mt-2 text-[8px] text-slate-400 flex justify-between items-center italic">
-                                                            <span>{formatDate(interaction.createdAt)}</span>
-                                                            {canDrag && (
-                                                                <svg className="w-2.5 h-2.5 text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M4 6h16M4 12h16M4 18h16" />
-                                                                </svg>
-                                                            )}
+                                                        <div className="flex flex-col gap-0.5 text-[10px] text-slate-900 mt-1">
+                                                            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0 truncate">
+                                                                <span className="text-slate-500 shrink-0">Phone</span><span className="font-medium truncate">{formatPhoneDisplay(visitor?.phoneM || visitor?.phone) || '—'}</span>
+                                                                <span className="text-slate-400 shrink-0">·</span>
+                                                                <span className="text-slate-500 shrink-0">Estimated turn</span><span className="font-medium">{getExpectedTurnTime(interaction.id)}</span>
+                                                                <span className="text-slate-400 shrink-0">·</span>
+                                                                <span className="text-slate-500 shrink-0">Date</span><span className="font-medium truncate">{formatDate(interaction.createdAt, true)}</span>
+                                                            </div>
+                                                            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0 truncate">
+                                                                <span className="text-slate-500 shrink-0">Wait</span><span className="font-medium">{minsWaiting === '—' ? '—' : `${minsWaiting} min`}</span>
+                                                                <span className="text-slate-400 shrink-0">·</span>
+                                                                <span className="text-slate-500 shrink-0">Last</span><span className={`font-medium truncate ${lastVisitDisplay === 'New Patient' ? 'text-emerald-600' : ''}`}>{lastVisitDisplay}</span>
+                                                                <span className="text-slate-400 shrink-0">·</span>
+                                                                <span className="text-slate-500 shrink-0">Diag</span><span className="font-medium truncate">{diagCode}</span>
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 );
                                             })}
-                                        {interactions.filter(i => i.officerId === selectedOfficer.id && !(i.id in pendingAssignments)).length === 0 && !Object.values(pendingAssignments).some(id => id === selectedOfficer.id) && (
+                                        {interactions.filter(i => getInteractionStatus(i) === 'queued' && i.officerId === selectedOfficer.id && !(i.id in pendingAssignments)).length === 0 && !Object.values(pendingAssignments).some(id => id === selectedOfficer.id) && (
                                             <div className="text-xs text-slate-400 italic text-center py-4 border-2 border-dashed border-slate-200 rounded-lg">
                                                 Drop registrations here
                                             </div>
@@ -387,21 +511,23 @@ const InteractionsSection = ({
                 onClose={() => setShowRegisterModal(false)}
                 visitors={visitors}
                 interactions={interactions}
+                lastVisits={lastVisits}
                 getVisitorName={getVisitorName}
                 getVisitorSerial={getVisitorSerial}
                 getVisitorHealthCard={getVisitorHealthCard}
                 formatDate={formatDate}
                 handleRegisterPatient={handleRegisterPatient}
                 isCreatingInteraction={isCreatingInteraction}
+                onPatientClick={onPatientClick}
             />
 
-            {/* Delete Registration Confirmation Modal */}
+            {/* Unregister Registration Confirmation Modal */}
             {showDeleteRegistrationModal && registrationToDelete && (
-                <div className="fixed inset-0 bg-black/50 flex justify-center items-center z-[1000]" onClick={() => setShowDeleteRegistrationModal(false)}>
+                <div className="fixed inset-0 bg-black/50 flex justify-center items-center px-4 pb-4 pt-0 !mt-0 z-[1000]" onClick={() => setShowDeleteRegistrationModal(false)}>
                     <div className="bg-white w-full max-w-[400px] p-4 sm:p-8 rounded-3xl shadow-lg animate-[slideUp_0.4s_ease-out]" onClick={(e) => e.stopPropagation()}>
-                        <h2 className="text-xl font-bold text-slate-900 mb-4">Delete Registration</h2>
+                        <h2 className="text-xl font-semibold text-slate-900 mb-4">Unregister</h2>
                         <p className="text-slate-600 mb-6">
-                            Do you want to delete this unassigned registration?
+                            Do you want to unregister this registration? The registration will be removed from the queue.
                         </p>
                         <div className="flex gap-4">
                             <button
@@ -424,10 +550,50 @@ const InteractionsSection = ({
                                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                         </svg>
-                                        Deleting...
+                                        Unregistering...
                                     </>
                                 ) : (
-                                    'Yes'
+                                    'Yes, unregister'
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Cancel Registration Confirmation Modal */}
+            {showCancelRegistrationModal && registrationToCancel && (
+                <div className="fixed inset-0 bg-black/50 flex justify-center items-center px-4 pb-4 pt-0 !mt-0 z-[1000]" onClick={() => setShowCancelRegistrationModal(false)}>
+                    <div className="bg-white w-full max-w-[400px] p-4 sm:p-8 rounded-3xl shadow-lg animate-[slideUp_0.4s_ease-out]" onClick={(e) => e.stopPropagation()}>
+                        <h2 className="text-xl font-semibold text-slate-900 mb-4">Cancel registration</h2>
+                        <p className="text-slate-600 mb-6">
+                            Cancel this registration? It will be marked as cancelled and moved to the Cancelled list. You can still view it under Interactions → Cancelled.
+                        </p>
+                        <div className="flex gap-4">
+                            <button
+                                onClick={() => {
+                                    setShowCancelRegistrationModal(false);
+                                    setRegistrationToCancel(null);
+                                }}
+                                className="flex-1 py-3 px-4 bg-slate-200 text-slate-800 rounded-xl font-semibold hover:bg-slate-300 transition-colors"
+                            >
+                                No
+                            </button>
+                            <button
+                                onClick={handleCancelRegistration}
+                                disabled={isCancellingRegistration}
+                                className="flex-1 py-3 px-4 bg-amber-500 text-white rounded-xl font-semibold hover:bg-amber-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                            >
+                                {isCancellingRegistration ? (
+                                    <>
+                                        <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                        Cancelling...
+                                    </>
+                                ) : (
+                                    'Yes, cancel'
                                 )}
                             </button>
                         </div>

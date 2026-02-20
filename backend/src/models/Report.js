@@ -49,6 +49,18 @@ const reportSchema = new mongoose.Schema({
         type: String,
         default: ''
     },
+    reviewed: {
+        type: Boolean,
+        default: false
+    },
+    action: {
+        type: String,
+        default: ''
+    },
+    signed: {
+        type: Boolean,
+        default: false
+    },
     deletedAt: {
         type: String,
         default: ''

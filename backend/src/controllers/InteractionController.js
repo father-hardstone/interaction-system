@@ -1,4 +1,5 @@
 const InteractionService = require('../services/InteractionService');
+const VisitorService = require('../services/VisitorService');
 const jwt = require('jsonwebtoken');
 
 const SECRET_KEY = process.env.JWT_SECRET || 'supersecretkey';
@@ -27,11 +28,28 @@ class InteractionController {
             }
 
             const filtered = await InteractionService.findMany(query);
-            console.log('getInteractionsByEntity - filtered interactions:', filtered.length);
+            const visitorIds = [...new Set((filtered || []).map(i => i.visitorId).filter(Boolean))];
+            const lastVisits = await InteractionService.getLastCompletedByVisitor(entityId, visitorIds);
+            console.log('getInteractionsByEntity - filtered interactions:', filtered.length, 'lastVisits keys:', Object.keys(lastVisits).length);
 
-            res.json(filtered);
+            res.json({ interactions: filtered, lastVisits });
         } catch (e) {
             console.error('getInteractionsByEntity error:', e);
+            res.status(500).json({ error: e.message });
+        }
+    }
+
+    // Get a single interaction by id (full document for edit view)
+    async getInteractionById(req, res) {
+        try {
+            const { id } = req.params;
+            const interaction = await InteractionService.findOne({ id });
+            if (!interaction) {
+                return res.status(404).json({ error: 'Interaction not found' });
+            }
+            res.json(interaction);
+        } catch (e) {
+            console.error('getInteractionById error:', e);
             res.status(500).json({ error: e.message });
         }
     }
@@ -73,12 +91,19 @@ class InteractionController {
                 });
             }
 
-            // Allow unassigning by passing empty strings
-            // Update interaction
+            // Allow unassigning by passing empty strings. Queue order is by queuedAt (set when assigned); serial is derived at display time.
+            const now = new Date().toISOString();
+            const isAssigning = officerId && String(officerId).trim() !== '';
             const updates = {
                 officerId: officerId || '',
                 officerSerial: officerSerial || '',
-                billed: false  // Ensure billed is false when assigning/unassigning
+                billed: false,  // Ensure billed is false when assigning/unassigning
+                queuedAt: isAssigning ? now : '',
+                interactionStatus: InteractionService.computeInteractionStatus({
+                    ...existing,
+                    officerId: officerId || '',
+                    officerSerial: officerSerial || ''
+                })
             };
 
             const updated = await InteractionService.update(id, updates);
@@ -102,13 +127,14 @@ class InteractionController {
     // Create a new interaction
     async createInteraction(req, res) {
         try {
-            const { entityId, entitySerial, visitorId, visitorSerial } = req.body;
+            const { entityId, entitySerial, visitorId, visitorSerial, reasonForVisit, reasonForVisitNotes, visitMode } = req.body;
 
             console.log('createInteraction - Received data:', {
                 entityId,
                 entitySerial,
                 visitorId,
-                visitorSerial
+                visitorSerial,
+                reasonForVisit
             });
 
             if (!entityId || !entitySerial || !visitorId || !visitorSerial) {
@@ -153,7 +179,11 @@ class InteractionController {
                 createdAt: now,
                 editedAt: now,
                 deletedAt: '',
-                billed: false
+                billed: false,
+                reasonForVisit: reasonForVisit || '',
+                reasonForVisitNotes: (reasonForVisitNotes != null && String(reasonForVisitNotes).trim()) ? String(reasonForVisitNotes).trim() : '',
+                visitMode: (visitMode === 'on_phone' || visitMode === 'physical') ? visitMode : 'physical',
+                interactionStatus: 'registered'
             };
 
             console.log('createInteraction - Interaction data to save:', interactionData);
@@ -195,6 +225,30 @@ class InteractionController {
         }
     }
 
+    // Cancel an interaction (set status cancelled; only before start)
+    async cancelInteraction(req, res) {
+        try {
+            const { id } = req.params;
+            const existing = await InteractionService.findOne({ id });
+            if (!existing) {
+                return res.status(404).json({ error: 'Interaction not found' });
+            }
+            if (existing.started || existing.completed || existing.closed) {
+                return res.status(400).json({
+                    error: 'Cannot cancel interaction that has been started, completed, or closed'
+                });
+            }
+            const updated = await InteractionService.cancel(id);
+            if (!updated) {
+                return res.status(404).json({ error: 'Interaction not found' });
+            }
+            res.json(updated);
+        } catch (e) {
+            console.error('cancelInteraction error:', e);
+            res.status(500).json({ error: e.message });
+        }
+    }
+
     // Save interaction details (notes, service lines, etc.)
     async saveInteractionDetails(req, res) {
         try {
@@ -210,10 +264,12 @@ class InteractionController {
                 followupRequired,
                 followup,
                 savedNotes,
+                editCount,
                 started,
                 ongoing,
                 incomplete,
                 completed,
+                closed,
                 billed
             } = req.body;
 
@@ -227,14 +283,6 @@ class InteractionController {
                 editedAt: new Date().toISOString(),
                 completed: completed === true || (completed === undefined && existing.completed === true)
             };
-
-            // Set billed flag - default to false unless explicitly set to true
-            if (billed !== undefined) {
-                updates.billed = billed === true;
-            } else {
-                // If not explicitly provided, ensure it's false when saving details
-                updates.billed = false;
-            }
 
             // Set started flag if provided (when doctor starts interaction)
             if (started !== undefined) {
@@ -260,12 +308,45 @@ class InteractionController {
                 updates.incomplete = false;
             }
 
+            // Closed = ready for billing: completed and at least one service line has both diagnostic and billing (service code or fee)
+            if (closed !== undefined) {
+                updates.closed = closed === true;
+            } else if (!updates.completed) {
+                updates.closed = false;
+            } else {
+                const serviceLinesToUse = serviceLines !== undefined ? serviceLines : existing.serviceLines;
+                const hasDiagAndBilling = Array.isArray(serviceLinesToUse) && serviceLinesToUse.length > 0 &&
+                    serviceLinesToUse.some(line => {
+                        const hasDiag = line.diagnostic && String(line.diagnostic).trim();
+                        const hasBilling = (line.service && String(line.service).trim()) || (line.totalFee != null && Number(line.totalFee) > 0) || (line.accountingNumber && String(line.accountingNumber).trim());
+                        return hasDiag && hasBilling;
+                    });
+                updates.closed = hasDiagAndBilling;
+            }
+
+            // Billed: when set to true, also set billedAt (only when transitioning to true)
+            if (billed === true) {
+                updates.billed = true;
+                if (!existing.billed) updates.billedAt = new Date().toISOString();
+            } else if (billed !== undefined) {
+                updates.billed = billed === true;
+            } else {
+                updates.billed = false;
+            }
+
+            // Set status timestamps when flag transitions to true (never overwrite)
+            const now = new Date().toISOString();
+            if (updates.started === true && !existing.started) updates.startedAt = now;
+            if (updates.completed === true && !existing.completed) updates.completedAt = now;
+            if (updates.closed === true && !existing.closed) updates.closedAt = now;
+
             // Add notes if provided
             if (ccReason !== undefined) {
                 updates.ccReason = {
                     text: ccReason.text || '',
                     scratchpad: ccReason.scratchpad || '',
-                    hasScratchpad: ccReason.hasScratchpad || false
+                    hasScratchpad: ccReason.hasScratchpad || false,
+                    addedLaterSheetIndices: Array.isArray(ccReason.addedLaterSheetIndices) ? ccReason.addedLaterSheetIndices : undefined
                 };
             }
 
@@ -273,7 +354,8 @@ class InteractionController {
                 updates.subjective = {
                     text: subjective.text || '',
                     scratchpad: subjective.scratchpad || '',
-                    hasScratchpad: subjective.hasScratchpad || false
+                    hasScratchpad: subjective.hasScratchpad || false,
+                    addedLaterSheetIndices: Array.isArray(subjective.addedLaterSheetIndices) ? subjective.addedLaterSheetIndices : undefined
                 };
             }
 
@@ -281,7 +363,8 @@ class InteractionController {
                 updates.objective = {
                     text: objective.text || '',
                     scratchpad: objective.scratchpad || '',
-                    hasScratchpad: objective.hasScratchpad || false
+                    hasScratchpad: objective.hasScratchpad || false,
+                    addedLaterSheetIndices: Array.isArray(objective.addedLaterSheetIndices) ? objective.addedLaterSheetIndices : undefined
                 };
             }
 
@@ -289,7 +372,8 @@ class InteractionController {
                 updates.assessmentPlan = {
                     text: assessmentPlan.text || '',
                     scratchpad: assessmentPlan.scratchpad || '',
-                    hasScratchpad: assessmentPlan.hasScratchpad || false
+                    hasScratchpad: assessmentPlan.hasScratchpad || false,
+                    addedLaterSheetIndices: Array.isArray(assessmentPlan.addedLaterSheetIndices) ? assessmentPlan.addedLaterSheetIndices : undefined
                 };
             }
 
@@ -309,7 +393,8 @@ class InteractionController {
                     type: referral.type || '',
                     reason: referral.reason || '',
                     to: referral.to || '',
-                    date: referral.date || ''
+                    date: referral.date || '',
+                    addedLater: referral.addedLater === true
                 };
             }
 
@@ -321,7 +406,8 @@ class InteractionController {
                     frequency: med.frequency || '',
                     duration: med.duration || '',
                     refills: parseInt(med.refills) || 0,
-                    instructions: med.instructions || ''
+                    instructions: med.instructions || '',
+                    addedLater: med.addedLater === true
                 }));
             }
 
@@ -329,7 +415,10 @@ class InteractionController {
                 updates.followupRequired = {
                     required: followupRequired.required || false,
                     date: followupRequired.date || '',
-                    followupInteractionId: followupRequired.followupInteractionId || ''
+                    followupInteractionId: followupRequired.followupInteractionId || '',
+                    addedLater: followupRequired.addedLater === true,
+                    intervalWeeks: followupRequired.intervalWeeks != null ? followupRequired.intervalWeeks : null,
+                    intervalMonths: followupRequired.intervalMonths != null ? followupRequired.intervalMonths : null
                 };
             }
 
@@ -346,10 +435,43 @@ class InteractionController {
                     timestamp: note.timestamp || ''
                 }));
             }
+            if (editCount !== undefined) {
+                updates.editCount = Math.max(0, parseInt(editCount, 10) || 0);
+            }
+
+            // When all key SOAP blocks are provided, derive completed/incomplete from whether key fields are filled (so removing CC/S/O/AP moves back to incomplete).
+            // Skip this when returning to queue (started: false) so we do not overwrite explicit incomplete: false.
+            if (ccReason !== undefined && subjective !== undefined && objective !== undefined && assessmentPlan !== undefined && started !== false) {
+                const effectiveCc = updates.ccReason !== undefined ? updates.ccReason : existing.ccReason;
+                const effectiveS = updates.subjective !== undefined ? updates.subjective : existing.subjective;
+                const effectiveO = updates.objective !== undefined ? updates.objective : existing.objective;
+                const effectiveAp = updates.assessmentPlan !== undefined ? updates.assessmentPlan : existing.assessmentPlan;
+                const hasKeyFields = [effectiveCc, effectiveS, effectiveO, effectiveAp].every(
+                    block => block && ((block.text && String(block.text).trim()) || block.hasScratchpad)
+                );
+                updates.completed = hasKeyFields;
+                updates.incomplete = !hasKeyFields;
+            }
+
+            // Merge updates into existing to compute new interactionStatus
+            const merged = { ...existing, ...updates };
+            updates.interactionStatus = InteractionService.computeInteractionStatus(merged);
 
             const updated = await InteractionService.update(id, updates);
             if (!updated) {
                 return res.status(404).json({ error: 'Interaction not found' });
+            }
+
+            // Keep visitor.lastVisitAt in sync when this interaction is completed
+            if (updated.completed && updated.visitorId) {
+                const lastVisitAt = updated.completedAt || updated.editedAt;
+                if (lastVisitAt) {
+                    try {
+                        await VisitorService.updateLastVisitAt(updated.visitorId, lastVisitAt);
+                    } catch (err) {
+                        console.warn('saveInteractionDetails - could not update visitor lastVisitAt:', err.message);
+                    }
+                }
             }
 
             console.log('saveInteractionDetails - Updated interaction:', {

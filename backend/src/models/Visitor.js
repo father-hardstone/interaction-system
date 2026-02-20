@@ -50,19 +50,44 @@ const visitorSchema = new mongoose.Schema({
         type: String,
         default: ''
     },
+    allergies: {
+        type: String,
+        default: ''
+    },
+    drugReactions: {
+        type: String,
+        default: ''
+    },
+    ongoingHealthConditions: {
+        type: String,
+        default: ''
+    },
+    specialNotes: {
+        type: String,
+        default: ''
+    },
+    highBloodPressure: { type: String, default: '' },
+    heartDisease: { type: String, default: '' },
+    diabetes: { type: String, default: '' },
+    cholesterol: { type: String, default: '' },
+    smoke: { type: String, default: '' },
     gender: {
         type: String,
         required: true
     },
     phone: {
         type: String,
-        required: true
-    },
-    phoneH: {
-        type: String,
         default: ''
     },
     phoneM: {
+        type: String,
+        default: ''
+    },
+    phoneB: {
+        type: String,
+        default: ''
+    },
+    phoneH: {
         type: String,
         default: ''
     },
@@ -103,6 +128,23 @@ const visitorSchema = new mongoose.Schema({
         default: ''
     },
     guardianPhone: {
+        type: String,
+        default: ''
+    },
+    emergencyName: {
+        type: String,
+        default: ''
+    },
+    emergencyRelation: {
+        type: String,
+        default: ''
+    },
+    emergencyPhone: {
+        type: String,
+        default: ''
+    },
+    /** ISO date of the visitor's most recent completed interaction (updated when an interaction is completed/closed). */
+    lastVisitAt: {
         type: String,
         default: ''
     },

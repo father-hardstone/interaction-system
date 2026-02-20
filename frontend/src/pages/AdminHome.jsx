@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import PhoneInput from '../components/PhoneInput';
 import PasswordInput from '../components/PasswordInput';
 import { hashPassword } from '../utils/crypto';
+import { formatPhoneDisplay } from '../utils/formatUtils';
 
 // NOTE: Admin workflow has moved to admin-panel/frontend.
 // This file is kept to avoid breaking imports during transition, but it is no longer routed in main `frontend/src/App.jsx`.
@@ -77,7 +78,7 @@ const AdminDashboard = () => {
         <div className="max-w-[1200px] mx-auto my-8 px-8 w-full">
             <header className="bg-white p-6 rounded-2xl shadow-md mb-8 flex justify-between items-center flex-wrap gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold mb-2">Admin Dashboard</h1>
+                    <h1 className="text-2xl font-semibold mb-2">Admin Dashboard</h1>
                     <p className="text-slate-500">Manage entities and system controls</p>
                 </div>
                 <div className="flex gap-4">
@@ -116,7 +117,7 @@ const AdminDashboard = () => {
                             <tr key={entity.id} className="border-b border-slate-100">
                                 <td className="p-4 font-medium">{entity.serial}</td>
                                 <td className="p-4">{entity.name}</td>
-                                <td className="p-4">{entity.phone}</td>
+                                <td className="p-4">{formatPhoneDisplay(entity.phone) || '-'}</td>
                                 <td className="p-4">
                                     <span className={`px-3 py-1 rounded-full text-sm ${entity.approved === 'true' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
                                         {entity.approved === 'true' ? 'Active' : 'Pending'}
@@ -147,9 +148,9 @@ const AdminDashboard = () => {
 
             {/* Create Modal */}
             {showCreateModal && (
-                <div className="fixed inset-0 bg-black/50 flex justify-center items-center z-[1000]">
+                <div className="fixed inset-0 bg-black/50 flex justify-center items-center px-4 pb-4 pt-0 !mt-0 z-[1000]">
                     <div className="bg-white w-full max-w-[440px] p-12 rounded-3xl shadow-lg animate-[slideUp_0.4s_ease-out] mx-4">
-                        <h2 className="m-0 mb-8 text-3xl font-bold text-center text-slate-900 tracking-tight">Create Entity</h2>
+                        <h2 className="m-0 mb-8 text-3xl font-semibold text-center text-slate-900 tracking-tight">Create Entity</h2>
                         <form onSubmit={handleCreate} className="flex flex-col gap-5">
                             <div className="flex flex-col gap-2">
                                 <label className="text-sm font-semibold text-slate-900">Name</label>

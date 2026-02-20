@@ -13,6 +13,18 @@ export const reportService = {
         return response.data;
     },
 
+    // Get unreviewed reports for an entity (report reviews tab)
+    getForReview: async (entityId) => {
+        const response = await api.get(`/reports/entity/${entityId}/review`);
+        return response.data;
+    },
+
+    // Update report (e.g. set reviewed: true, action)
+    updateReport: async (id, updates) => {
+        const response = await api.patch(`/reports/${id}`, updates);
+        return response.data;
+    },
+
     // Get all reports for an interaction
     getByInteraction: async (interactionId) => {
         const response = await api.get(`/reports/interaction/${interactionId}`);

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import useOfficerTab from '../hooks/useOfficerTab';
 import ScheduledInteractionsTable from './ScheduledInteractionsTable';
 import IncompleteInteractionsTable from './IncompleteInteractionsTable';
@@ -8,19 +8,32 @@ import PatientDetailsModal from './PatientDetailsModal';
 import CancelInteractionModal from './CancelInteractionModal';
 import MediaViewerModal from './MediaViewerModal';
 import PastInteractionsSidebar from './PastInteractionsSidebar';
+import ReportDetailsModal from './ReportDetailsModal';
+import TakeActionModal from './TakeActionModal';
+import { reportService } from '../services/reportService';
+import supabaseStorageService from '../services/supabaseService';
+import { formatDateMMDDYYYY } from '../utils/formatUtils';
 
-const OfficerTab = ({ userData, interactions, visitors, isLoadingInteractions = false, onRefreshInteractions, onInteractionClick }) => {
+const OFFICER_MAIN_TABS = {
+    INTERACTIONS: 'interactions',
+    PHONE_CONSULTS: 'phone_consults',
+    REPORT_REVIEWS: 'report_reviews'
+};
+
+const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadingInteractions = false, onRefreshInteractions, onInteractionClick, handleRegisterPatient }) => {
+    const [activeMainTab, setActiveMainTab] = useState(OFFICER_MAIN_TABS.INTERACTIONS);
+
     const {
         selectedPatient,
         showPatientDetailModal,
         setShowPatientDetailModal,
-        expandedInteractionIds,
-        setExpandedInteractionIds,
         activeInteractionId,
         activeViewTab,
         setActiveViewTab,
         showCancelModal,
         setShowCancelModal,
+        isCleaning,
+        cleanupMessage,
         patientReports,
         isLoadingReports,
         loadReports,
@@ -43,13 +56,23 @@ const OfficerTab = ({ userData, interactions, visitors, isLoadingInteractions = 
         isSaving,
         activePatientVisitorId,
         scheduledInteractions,
+        phoneConsultInteractions,
         incompleteInteractions,
         completedInteractions,
+        closedInteractions,
         ongoingInteractions,
         completedInteractionsForPatient,
         handleStartInteraction,
         handleSaveInteraction,
         handleSaveDraft,
+        handleEditCompleted,
+        handleCloseEditMode,
+        handleSaveEdit,
+        openBillingTabNext,
+        setOpenBillingTabNext,
+        isEditingCompleted,
+        isLoadingEdit,
+        originalPadSheetCounts,
         confirmCancel,
         moveToIncomplete,
         handleOpenPatientDetails,
@@ -67,6 +90,78 @@ const OfficerTab = ({ userData, interactions, visitors, isLoadingInteractions = 
     } = useOfficerTab(userData, interactions, visitors, onRefreshInteractions);
 
     const [showPatientHistoryOverlay, setShowPatientHistoryOverlay] = useState(false);
+
+    /** When starting from Phone consults tab, switch to Interactions main tab so the ongoing panel is visible. */
+    const handleStartInteractionFromUI = useCallback((interactionId) => {
+        if (activeMainTab === OFFICER_MAIN_TABS.PHONE_CONSULTS) {
+            setActiveMainTab(OFFICER_MAIN_TABS.INTERACTIONS);
+        }
+        handleStartInteraction(interactionId);
+    }, [activeMainTab, handleStartInteraction]);
+
+    // Report reviews tab
+    const [reportsForReview, setReportsForReview] = useState([]);
+    const [isLoadingReportsForReview, setIsLoadingReportsForReview] = useState(false);
+    const [reportReviewUrls, setReportReviewUrls] = useState({});
+    const [viewingReportForReview, setViewingReportForReview] = useState(null);
+    const [isSigningReport, setIsSigningReport] = useState(false);
+    const [showTakeActionModal, setShowTakeActionModal] = useState(false);
+    const [reportForTakeAction, setReportForTakeAction] = useState(null);
+
+    const loadReportsForReview = useCallback(async () => {
+        const entityId = userData?.entityId;
+        if (!entityId) return;
+        setIsLoadingReportsForReview(true);
+        try {
+            const list = await reportService.getForReview(entityId);
+            setReportsForReview(list || []);
+        } catch (err) {
+            console.error('Failed to load reports for review:', err);
+            setReportsForReview([]);
+        } finally {
+            setIsLoadingReportsForReview(false);
+        }
+    }, [userData?.entityId]);
+
+    useEffect(() => {
+        if (activeMainTab === OFFICER_MAIN_TABS.REPORT_REVIEWS && userData?.entityId) {
+            loadReportsForReview();
+        }
+    }, [activeMainTab, userData?.entityId, loadReportsForReview]);
+
+    const [loadingReportUrl, setLoadingReportUrl] = useState(false);
+
+    useEffect(() => {
+        if (!viewingReportForReview?.fileMetadata?.supabasePath) {
+            setLoadingReportUrl(false);
+            return;
+        }
+        const path = viewingReportForReview.fileMetadata.supabasePath;
+        if (reportReviewUrls[path]) {
+            setLoadingReportUrl(false);
+            return;
+        }
+        let cancelled = false;
+        setLoadingReportUrl(true);
+        supabaseStorageService.getFileUrl('CRM testing', path)
+            .then((url) => {
+                if (!cancelled) {
+                    setReportReviewUrls(prev => ({ ...prev, [path]: url }));
+                }
+            })
+            .catch((e) => {
+                if (!cancelled) console.error(`Error fetching URL for report ${viewingReportForReview.id}:`, e);
+            })
+            .finally(() => {
+                if (!cancelled) setLoadingReportUrl(false);
+            });
+        return () => { cancelled = true; };
+    }, [viewingReportForReview?.id, viewingReportForReview?.fileMetadata?.supabasePath]);
+
+    const getReportUrlForReview = (report) => {
+        if (!report?.fileMetadata?.supabasePath) return null;
+        return reportReviewUrls[report.fileMetadata.supabasePath] || null;
+    };
 
     const getImageUrl = (imagePath) => {
         if (!imagePath) return null;
@@ -86,8 +181,11 @@ const OfficerTab = ({ userData, interactions, visitors, isLoadingInteractions = 
     const getVisitorSerial = (visitorId) => {
         const v = visitors.find((v) => v.id === visitorId);
         if (!v) return 'N/A';
-        if (v.serial && v.serial.includes('-')) return v.serial;
-        return v.entitySerial ? `${v.entitySerial}-${v.serial}` : v.serial || 'N/A';
+        const raw = v.serial ?? (v.entitySerial ? `${v.entitySerial}-${v.serial || ''}` : v.serial || '');
+        if (!raw) return 'N/A';
+        const s = String(raw);
+        const num = s.includes('-') ? s.split('-').pop() : s;
+        return num ? String(num).padStart(6, '0') : 'N/A';
     };
 
     const formatDate = (dateString, includeTime = true) => {
@@ -107,31 +205,94 @@ const OfficerTab = ({ userData, interactions, visitors, isLoadingInteractions = 
 
     return (
         <div className="flex flex-col min-h-0 flex-1 space-y-6 overflow-hidden">
-            {/* Tab Navigation */}
-            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl w-fit">
+            {/* Main tab row: Interactions | Phone consults | Report reviews */}
+            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl w-fit overflow-x-auto scrollbar-hide shrink-0">
+                <button
+                    onClick={() => setActiveMainTab(OFFICER_MAIN_TABS.INTERACTIONS)}
+                    className={`flex items-center gap-2 px-4 py-2 sm:px-5 sm:py-2.5 rounded-lg text-sm sm:text-base font-semibold transition-all shrink-0 ${activeMainTab === OFFICER_MAIN_TABS.INTERACTIONS ? 'bg-white text-primary shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                >
+                    <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                    </svg>
+                    Interactions
+                </button>
+                <button
+                    onClick={() => setActiveMainTab(OFFICER_MAIN_TABS.PHONE_CONSULTS)}
+                    className={`flex items-center gap-2 px-4 py-2 sm:px-5 sm:py-2.5 rounded-lg text-sm sm:text-base font-semibold transition-all shrink-0 ${activeMainTab === OFFICER_MAIN_TABS.PHONE_CONSULTS ? 'bg-white text-primary shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                >
+                    <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                    </svg>
+                    Phone consults
+                </button>
+                <button
+                    onClick={() => setActiveMainTab(OFFICER_MAIN_TABS.REPORT_REVIEWS)}
+                    className={`flex items-center gap-2 px-4 py-2 sm:px-5 sm:py-2.5 rounded-lg text-sm sm:text-base font-semibold transition-all shrink-0 ${activeMainTab === OFFICER_MAIN_TABS.REPORT_REVIEWS ? 'bg-white text-primary shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                >
+                    <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    Report reviews
+                </button>
+            </div>
+
+            {/* Interactions tab: existing sub-tabs and content (unchanged) */}
+            {activeMainTab === OFFICER_MAIN_TABS.INTERACTIONS && (
+            <>
+            {/* Tab Navigation – compact like Operations > Interactions (doctor tabs) */}
+            <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-slate-100 border border-slate-200 w-fit overflow-x-auto scrollbar-hide">
                 <button
                     onClick={() => setActiveViewTab('scheduled')}
-                    className={`px-6 py-2 rounded-lg text-sm font-semibold transition-all ${activeViewTab === 'scheduled' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                    className={`flex items-center gap-1.5 min-w-0 px-2 py-1 rounded text-xs font-medium transition-all shrink-0 ${activeViewTab === 'scheduled' ? 'bg-white text-primary shadow-sm' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}`}
                 >
+                    <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
                     Scheduled
                 </button>
                 <button
                     onClick={() => setActiveViewTab('ongoing')}
-                    className={`px-6 py-2 rounded-lg text-sm font-semibold transition-all ${activeViewTab === 'ongoing' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                    className={`flex items-center gap-1.5 min-w-0 px-2 py-1 rounded text-xs font-medium transition-all shrink-0 ${activeViewTab === 'ongoing' ? 'bg-white text-primary shadow-sm' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}`}
                 >
-                    Ongoing
+                    <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    {isEditingCompleted ? 'Editing interaction' : 'Ongoing'}
                 </button>
                 <button
                     onClick={() => setActiveViewTab('incomplete')}
-                    className={`px-6 py-2 rounded-lg text-sm font-semibold transition-all ${activeViewTab === 'incomplete' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                    className={`flex items-center gap-1.5 min-w-0 px-2 py-1 rounded text-xs font-medium transition-all shrink-0 ${activeViewTab === 'incomplete' ? 'bg-white text-primary shadow-sm' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}`}
                 >
+                    <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
                     Incomplete
+                </button>
+                <button
+                    onClick={() => setActiveViewTab('completed')}
+                    className={`flex items-center gap-1.5 min-w-0 px-2 py-1 rounded text-xs font-medium transition-all shrink-0 ${activeViewTab === 'completed' ? 'bg-white text-primary shadow-sm' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}`}
+                >
+                    <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Completed
+                </button>
+                <button
+                    onClick={() => setActiveViewTab('closed')}
+                    className={`flex items-center gap-1.5 min-w-0 px-2 py-1 rounded text-xs font-medium transition-all shrink-0 ${activeViewTab === 'closed' ? 'bg-white text-primary shadow-sm' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}`}
+                >
+                    <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                    </svg>
+                    Closed
                 </button>
             </div>
 
             {/* Scheduled Tab */}
             {activeViewTab === 'scheduled' && (
-                <ScheduledInteractionsTable
+                <div className="flex flex-col flex-1 min-h-0">
+                    <ScheduledInteractionsTable
                     scheduledInteractions={scheduledInteractions}
                     isLoading={isLoadingInteractions}
                     handleOpenPatientDetails={handleOpenPatientDetails}
@@ -140,14 +301,65 @@ const OfficerTab = ({ userData, interactions, visitors, isLoadingInteractions = 
                     formatDate={formatDate}
                     handleStartInteraction={handleStartInteraction}
                     ongoingInteractions={ongoingInteractions}
+                    blockStartNewInteraction={ongoingInteractions.length > 0 || (isEditingCompleted && !!activeInteractionId)}
                     onInteractionClick={onInteractionClick}
                     interactions={interactions}
+                    lastVisits={lastVisits}
+                    visitors={visitors}
                 />
+                </div>
+            )}
+
+            {/* Completed Tab */}
+            {activeViewTab === 'completed' && (
+                <div className="flex flex-col flex-1 min-h-0">
+                    <CompletedInteractionsTable
+                        variant="completed"
+                        completedInteractions={completedInteractions}
+                        isLoading={isLoadingInteractions}
+                        handleOpenPatientDetails={handleOpenPatientDetails}
+                        getVisitorName={getVisitorName}
+                        getVisitorSerial={getVisitorSerial}
+                        formatDate={formatDate}
+                        onInteractionClick={onInteractionClick}
+                        onEditCompleted={handleEditCompleted}
+                        blockEditCompleted={ongoingInteractions.length > 0}
+                        interactions={interactions}
+                        lastVisits={lastVisits}
+                        title="Completed interactions"
+                        emptyMessage="No completed interactions"
+                        loadingMessage="Loading completed interactions…"
+                    />
+                </div>
+            )}
+
+            {/* Closed Tab */}
+            {activeViewTab === 'closed' && (
+                <div className="flex flex-col flex-1 min-h-0">
+                    <CompletedInteractionsTable
+                        variant="closed"
+                        completedInteractions={closedInteractions}
+                        isLoading={isLoadingInteractions}
+                        handleOpenPatientDetails={handleOpenPatientDetails}
+                        getVisitorName={getVisitorName}
+                        getVisitorSerial={getVisitorSerial}
+                        formatDate={formatDate}
+                        onInteractionClick={onInteractionClick}
+                        onEditCompleted={handleEditCompleted}
+                        blockEditCompleted={ongoingInteractions.length > 0}
+                        interactions={interactions}
+                        lastVisits={lastVisits}
+                        title="Closed interactions"
+                        emptyMessage="No closed interactions"
+                        loadingMessage="Loading closed interactions…"
+                    />
+                </div>
             )}
 
             {/* Incomplete Tab */}
             {activeViewTab === 'incomplete' && (
-                <IncompleteInteractionsTable
+                <div className="flex flex-col flex-1 min-h-0">
+                    <IncompleteInteractionsTable
                     incompleteInteractions={incompleteInteractions}
                     isLoading={isLoadingInteractions}
                     handleOpenPatientDetails={handleOpenPatientDetails}
@@ -155,9 +367,11 @@ const OfficerTab = ({ userData, interactions, visitors, isLoadingInteractions = 
                     getVisitorSerial={getVisitorSerial}
                     formatDate={formatDate}
                     handleStartInteraction={handleStartInteraction}
+                    blockResume={ongoingInteractions.length > 0 || (isEditingCompleted && !!activeInteractionId)}
                     onInteractionClick={onInteractionClick}
                     interactions={interactions}
                 />
+                </div>
             )}
 
             {/* Ongoing Tab */}
@@ -181,10 +395,17 @@ const OfficerTab = ({ userData, interactions, visitors, isLoadingInteractions = 
                         )}
                         <OngoingInteractionsView
                             isLoading={isLoadingInteractions}
+                            isLoadingEdit={isLoadingEdit}
+                            originalPadSheetCounts={originalPadSheetCounts}
                             ongoingInteractions={ongoingInteractions}
+                            editingInteraction={isEditingCompleted ? (interactions.find(i => i.id === activeInteractionId) || null) : null}
+                            initialSubTab={openBillingTabNext ? 'billing' : undefined}
+                            onClearInitialSubTab={() => setOpenBillingTabNext(false)}
+                            visitors={visitors}
                             getVisitorName={getVisitorName}
                             getVisitorSerial={getVisitorSerial}
                             setShowCancelModal={setShowCancelModal}
+                            handleOpenPatientDetails={handleOpenPatientDetails}
                             ccReason={ccReason}
                             setCcReason={setCcReason}
                             ccReasonPad={ccReasonPad}
@@ -209,6 +430,9 @@ const OfficerTab = ({ userData, interactions, visitors, isLoadingInteractions = 
                             diagnostics={diagnostics}
                             handleSaveInteraction={handleSaveInteraction}
                             handleSaveDraft={handleSaveDraft}
+                            handleSaveEdit={handleSaveEdit}
+                            handleCloseEditMode={handleCloseEditMode}
+                            isEditingCompleted={isEditingCompleted}
                             patientReports={patientReports}
                             loadReports={loadReports}
                             setViewingMedia={setViewingMedia}
@@ -227,6 +451,7 @@ const OfficerTab = ({ userData, interactions, visitors, isLoadingInteractions = 
                             formatDate={formatDate}
                             onInteractionClick={onInteractionClick}
                             interactions={interactions}
+                            doctorName={userData?.name || ''}
                         />
                     </div>
                     {/* Patient History - sidebar on xl+, overlay on smaller screens */}
@@ -235,19 +460,12 @@ const OfficerTab = ({ userData, interactions, visitors, isLoadingInteractions = 
                             {/* Desktop: sidebar beside ongoing */}
                             <div className="hidden xl:flex xl:max-h-full xl:min-h-0 xl:overflow-hidden shrink-0 flex-col">
                                 <PastInteractionsSidebar
-                                    ongoingInteractions={ongoingInteractions}
                                     activePatientVisitorId={activePatientVisitorId}
-                                    getVisitorName={getVisitorName}
-                                    getVisitorSerial={getVisitorSerial}
+                                    visitor={visitors.find((v) => v.id === activePatientVisitorId)}
                                     interactions={interactions}
                                     activeInteractionId={activeInteractionId}
-                                    expandedInteractionIds={expandedInteractionIds}
-                                    setExpandedInteractionIds={setExpandedInteractionIds}
-                                    diagnostics={diagnostics}
-                                    getImageUrl={getImageUrl}
-                                    setViewingMedia={setViewingMedia}
                                     patientReports={patientReports}
-                                    handleOpenPatientDetails={handleOpenPatientDetails}
+                                    onInteractionClick={onInteractionClick}
                                 />
                             </div>
                             {/* Small screen: side drawer with shaded backdrop */}
@@ -278,19 +496,12 @@ const OfficerTab = ({ userData, interactions, visitors, isLoadingInteractions = 
                                     </div> */}
                                     <PastInteractionsSidebar
                                         isOverlay={true}
-                                        ongoingInteractions={ongoingInteractions}
                                         activePatientVisitorId={activePatientVisitorId}
-                                        getVisitorName={getVisitorName}
-                                        getVisitorSerial={getVisitorSerial}
+                                        visitor={visitors.find((v) => v.id === activePatientVisitorId)}
                                         interactions={interactions}
                                         activeInteractionId={activeInteractionId}
-                                        expandedInteractionIds={expandedInteractionIds}
-                                        setExpandedInteractionIds={setExpandedInteractionIds}
-                                        diagnostics={diagnostics}
-                                        getImageUrl={getImageUrl}
-                                        setViewingMedia={setViewingMedia}
                                         patientReports={patientReports}
-                                        handleOpenPatientDetails={handleOpenPatientDetails}
+                                        onInteractionClick={onInteractionClick}
                                         onCloseOverlay={() => setShowPatientHistoryOverlay(false)}
                                     />
                                 </div>
@@ -299,17 +510,133 @@ const OfficerTab = ({ userData, interactions, visitors, isLoadingInteractions = 
                     )}
                 </div>
             )}
+            </>
+            )}
 
-            {/* Completed interactions footer */}
-            {activeViewTab === 'scheduled' && (
-                <CompletedInteractionsTable
-                    completedInteractions={completedInteractions}
-                    isLoading={isLoadingInteractions}
-                    getVisitorName={getVisitorName}
-                    formatDate={formatDate}
-                    onInteractionClick={onInteractionClick}
-                    interactions={interactions}
-                />
+            {/* Phone consults – same table as scheduled, no waiting time / expected turn */}
+            {activeMainTab === OFFICER_MAIN_TABS.PHONE_CONSULTS && (
+                <div className="flex flex-col flex-1 min-h-0">
+                    <ScheduledInteractionsTable
+                        scheduledInteractions={phoneConsultInteractions}
+                        isLoading={isLoadingInteractions}
+                        handleOpenPatientDetails={handleOpenPatientDetails}
+                        getVisitorName={getVisitorName}
+                        getVisitorSerial={getVisitorSerial}
+                        formatDate={formatDate}
+                        handleStartInteraction={handleStartInteractionFromUI}
+                        ongoingInteractions={ongoingInteractions}
+                        blockStartNewInteraction={ongoingInteractions.length > 0 || (isEditingCompleted && !!activeInteractionId)}
+                        onInteractionClick={onInteractionClick}
+                        interactions={interactions}
+                        lastVisits={lastVisits}
+                        visitors={visitors}
+                        hideWaitingTime={true}
+                        title="Phone consults"
+                        subtitle="Phone consultations assigned to you"
+                        emptyMessage="No phone consults"
+                        loadingMessage="Loading phone consults…"
+                        showPhoneColumn={true}
+                    />
+                </div>
+            )}
+
+            {/* Report reviews */}
+            {activeMainTab === OFFICER_MAIN_TABS.REPORT_REVIEWS && (
+                <div className="flex flex-col flex-1 min-h-0 bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-6">
+                    <div className="mb-4 shrink-0">
+                        <h2 className="text-lg font-semibold text-slate-900">Report reviews</h2>
+                        <p className="text-xs text-slate-500 mt-1">Unreviewed reports from any upload</p>
+                    </div>
+                    <div className="overflow-x-auto flex-1 min-h-0 border border-slate-100 rounded-lg">
+                        <table className="w-full border-collapse min-w-[600px]">
+                            <thead>
+                                <tr className="border-b border-slate-200 bg-slate-50">
+                                    <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-700">Report ID</th>
+                                    <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-700 border-l border-slate-100">Report details</th>
+                                    <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-700 border-l border-slate-100">Patient (name & DOB)</th>
+                                    <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-700 border-l border-slate-100">Status</th>
+                                    <th className="px-3 sm:px-4 py-3 text-right text-xs sm:text-sm font-semibold text-slate-700 border-l border-slate-100">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {isLoadingReportsForReview ? (
+                                    <tr>
+                                        <td colSpan={5} className="px-4 py-16 text-center">
+                                            <div className="flex flex-col items-center justify-center gap-3">
+                                                <div className="animate-spin rounded-full h-10 w-10 border-2 border-slate-200 border-t-blue-600" />
+                                                <span className="text-slate-500 text-sm font-medium">Loading reports…</span>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ) : reportsForReview.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={5} className="px-4 py-12 text-center text-slate-400 text-sm">No reports to review</td>
+                                    </tr>
+                                ) : (
+                                    reportsForReview.map((report) => {
+                                        const visitor = visitors.find((v) => v.id === report.patientId);
+                                        const reportTypeLabel = (report.reportType || '').replace(/_/g, ' ').split(' ').map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ') || '—';
+                                        const isSigned = !!report.signed;
+                                        return (
+                                            <tr
+                                                key={report.id}
+                                                onClick={() => setViewingReportForReview(report)}
+                                                className="border-b border-slate-100 hover:bg-slate-50/50 cursor-pointer transition-colors"
+                                            >
+                                                <td className="px-3 sm:px-4 py-3 align-middle text-sm font-mono text-slate-700">{report.id ? report.id.slice(0, 8) : '—'}</td>
+                                                <td className="px-3 sm:px-4 py-3 align-middle text-sm text-slate-700 border-l border-slate-100">
+                                                    <div>{reportTypeLabel}</div>
+                                                    <div className="text-xs text-slate-500 mt-0.5">
+                                                        Procedure: {formatDateMMDDYYYY(report.procedureDate) || '—'} · {report.labMetadata?.labName ? `Lab: ${report.labMetadata.labName}` : ''}
+                                                        {report.notes ? ` · ${String(report.notes).slice(0, 40)}${report.notes.length > 40 ? '…' : ''}` : ''}
+                                                    </div>
+                                                </td>
+                                                <td className="px-3 sm:px-4 py-3 align-middle text-sm text-slate-700 border-l border-slate-100">
+                                                    {visitor ? (
+                                                        <>
+                                                            <span className="font-medium">{getVisitorName(visitor.id)}</span>
+                                                            <span className="text-slate-500"> · DOB: {formatDateMMDDYYYY(visitor.dateOfBirth) || '—'}</span>
+                                                        </>
+                                                    ) : (
+                                                        <span className="text-slate-400">—</span>
+                                                    )}
+                                                </td>
+                                                <td className="px-3 sm:px-4 py-3 align-middle border-l border-slate-100">
+                                                    <span className={`inline-flex px-2.5 py-1 rounded-md text-xs font-semibold ${isSigned ? 'bg-green-100 text-green-800 border border-green-300' : 'bg-orange-100 text-orange-800 border border-orange-300'}`}>
+                                                        {isSigned ? 'Signed' : 'Under review'}
+                                                    </span>
+                                                </td>
+                                                <td className="px-3 sm:px-4 py-3 align-middle text-right border-l border-slate-100" onClick={(e) => e.stopPropagation()}>
+                                                    <div className="flex items-center justify-end gap-2">
+                                                        {!isSigned && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setViewingReportForReview(report)}
+                                                                className="px-4 py-2 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                                                            >
+                                                                Review
+                                                            </button>
+                                                        )}
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setReportForTakeAction(report);
+                                                                setShowTakeActionModal(true);
+                                                            }}
+                                                            className="px-4 py-2 rounded-lg text-xs font-semibold border-2 border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition-colors"
+                                                        >
+                                                            Take action
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             )}
 
             {/* Modals */}
@@ -320,9 +647,9 @@ const OfficerTab = ({ userData, interactions, visitors, isLoadingInteractions = 
                     getVisitorName={getVisitorName}
                     getVisitorSerial={getVisitorSerial}
                     completedInteractionsForPatient={completedInteractionsForPatient}
-                    expandedInteractionIds={expandedInteractionIds}
-                    setExpandedInteractionIds={setExpandedInteractionIds}
+                    lastVisits={lastVisits}
                     formatDate={formatDate}
+                    onInteractionClick={onInteractionClick}
                     getImageUrl={getImageUrl}
                     setViewingMedia={setViewingMedia}
                     isLoadingReports={isLoadingReports}
@@ -337,16 +664,89 @@ const OfficerTab = ({ userData, interactions, visitors, isLoadingInteractions = 
                 />
             )}
 
+            {isCleaning && (
+                <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl shadow-2xl px-8 py-6 flex flex-col items-center gap-4 min-w-[280px]">
+                        <div className="animate-spin rounded-full h-10 w-10 border-2 border-slate-200 border-t-blue-600" />
+                        <p className="text-sm font-semibold text-slate-700 text-center">{cleanupMessage || 'Cleaning…'}</p>
+                    </div>
+                </div>
+            )}
+
             <CancelInteractionModal
                 showCancelModal={showCancelModal}
                 setShowCancelModal={setShowCancelModal}
                 moveToIncomplete={moveToIncomplete}
-                confirmCancel={confirmCancel}
+                confirmCancel={async () => {
+                    const interaction = activeInteractionId != null ? interactions.find((i) => i.id === activeInteractionId) : null;
+                    const wasPhoneConsult = interaction?.visitMode === 'on_phone';
+                    await confirmCancel();
+                    if (wasPhoneConsult) setActiveMainTab(OFFICER_MAIN_TABS.PHONE_CONSULTS);
+                }}
             />
 
             <MediaViewerModal
                 viewingMedia={viewingMedia}
                 setViewingMedia={setViewingMedia}
+            />
+
+            {viewingReportForReview && (
+                <ReportDetailsModal
+                    report={viewingReportForReview}
+                    reportUrl={getReportUrlForReview(viewingReportForReview)}
+                    isLoadingReportUrl={loadingReportUrl}
+                    interactions={interactions}
+                    onClose={() => setViewingReportForReview(null)}
+                    reviewMode={true}
+                    isSigning={isSigningReport}
+                    onSignReport={async () => {
+                        setIsSigningReport(true);
+                        try {
+                            await reportService.updateReport(viewingReportForReview.id, { signed: true });
+                            loadReportsForReview();
+                            setViewingReportForReview(null);
+                        } catch (err) {
+                            console.error('Failed to sign report:', err);
+                        } finally {
+                            setIsSigningReport(false);
+                        }
+                    }}
+                />
+            )}
+
+            <TakeActionModal
+                show={showTakeActionModal}
+                onClose={() => {
+                    setShowTakeActionModal(false);
+                    setReportForTakeAction(null);
+                }}
+                report={reportForTakeAction}
+                visitors={visitors}
+                onProceed={async (action, visitor) => {
+                    if (!handleRegisterPatient || !visitor || !userData?.id || !userData?.serial) return false;
+                    if (action === 'phone_consult') {
+                        const success = await handleRegisterPatient(visitor, {
+                            reasonForVisit: 'new_visit',
+                            visitMode: 'on_phone',
+                            assignToOfficerId: userData.id,
+                            assignOfficerSerial: userData.serial
+                        });
+                        if (success) onRefreshInteractions?.();
+                        return success;
+                    }
+                    if (action === 'followup') {
+                        const success = await handleRegisterPatient(visitor, {
+                            reasonForVisit: 'followup',
+                            visitMode: 'physical',
+                            parentInteractionId: '',
+                            assignToOfficerId: userData.id,
+                            assignOfficerSerial: userData.serial
+                        });
+                        if (success) onRefreshInteractions?.();
+                        return success;
+                    }
+                    return false;
+                }}
             />
         </div>
     );
