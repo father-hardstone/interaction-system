@@ -12,7 +12,7 @@ const ZOOM_MIN = 50;
 const ZOOM_MAX = 300;
 const ZOOM_STEP = 25;
 
-const ReportDetailsModal = ({ report, reportUrl, interactions = [], onClose }) => {
+const ReportDetailsModal = ({ report, reportUrl, interactions = [], onClose, reviewMode = false, onSignReport, isSigning = false, isLoadingReportUrl = false }) => {
   const [imageError, setImageError] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(100);
   const [imgNaturalSize, setImgNaturalSize] = useState(null);
@@ -20,6 +20,7 @@ const ReportDetailsModal = ({ report, reportUrl, interactions = [], onClose }) =
   const [pdfError, setPdfError] = useState(null);
   const [pdfBlobUrl, setPdfBlobUrl] = useState(null);
   const pdfBlobUrlRef = useRef(null);
+  const [contentRendered, setContentRendered] = useState(false);
 
   const viewerRef = useRef(null);
   const isDraggingRef = useRef(false);
@@ -35,6 +36,7 @@ const ReportDetailsModal = ({ report, reportUrl, interactions = [], onClose }) =
   useEffect(() => {
     setNumPages(null);
     setPdfError(null);
+    setContentRendered(false);
     if (pdfBlobUrlRef.current) {
       URL.revokeObjectURL(pdfBlobUrlRef.current);
       pdfBlobUrlRef.current = null;
@@ -44,6 +46,18 @@ const ReportDetailsModal = ({ report, reportUrl, interactions = [], onClose }) =
     setImgNaturalSize(null);
     setZoomLevel(100);
   }, [report?.id]);
+
+  // Reset contentRendered when reportUrl becomes available (new content to load)
+  useEffect(() => {
+    if (reportUrl && !isLoadingReportUrl) setContentRendered(false);
+  }, [reportUrl, isLoadingReportUrl]);
+
+  // When type is neither PDF nor image, nothing to "load" in viewer — stop spinner
+  const isPdfCheck = report?.fileMetadata?.mimeType?.startsWith("application/pdf");
+  const isImageCheck = report?.fileMetadata?.mimeType?.startsWith("image/");
+  useEffect(() => {
+    if (reportUrl && !isLoadingReportUrl && !isPdfCheck && !isImageCheck) setContentRendered(true);
+  }, [reportUrl, isLoadingReportUrl, isPdfCheck, isImageCheck]);
 
   // Fetch PDF as blob for CORS support
   useEffect(() => {
@@ -69,6 +83,7 @@ const ReportDetailsModal = ({ report, reportUrl, interactions = [], onClose }) =
         if (!cancelled) {
           setPdfError(err?.message || "Failed to load PDF");
           setPdfBlobUrl(null);
+          setContentRendered(true);
         }
       }
     };
@@ -199,8 +214,8 @@ const ReportDetailsModal = ({ report, reportUrl, interactions = [], onClose }) =
         className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in duration-200"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50 shrink-0">
-          <h3 className="text-xl font-bold text-slate-900 tracking-tight">Report Details</h3>
+                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50 shrink-0">
+          <h3 className="text-xl font-bold text-slate-900 tracking-tight">{reviewMode ? "Review Report" : "Report Details"}</h3>
           <button
             type="button"
             onClick={onClose}
@@ -264,12 +279,21 @@ const ReportDetailsModal = ({ report, reportUrl, interactions = [], onClose }) =
               </div>
             )}
 
-            <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
-              {!reportUrl ? (
-                <div className="flex-1 flex flex-col items-center justify-center gap-3 text-slate-400 p-4">
-                  <span className="text-sm font-medium">Loading preview...</span>
+            <div className="flex-1 min-h-0 overflow-hidden flex flex-col relative">
+              {/* Spinner: while URL loading or while content (image/PDF) loading */}
+              {(!reportUrl || isLoadingReportUrl || (reportUrl && !isLoadingReportUrl && !contentRendered)) && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-slate-500 p-4 bg-white z-10">
+                  <svg className="animate-spin h-10 w-10 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  <span className="text-sm font-medium">Loading report…</span>
                 </div>
-              ) : isPdf ? (
+              )}
+              {/* Viewer: render when we have URL so image/PDF can load; hidden until contentRendered */}
+              {reportUrl && !isLoadingReportUrl && (
+                <div className={`flex-1 min-h-0 overflow-hidden flex flex-col ${!contentRendered ? 'opacity-0 pointer-events-none' : ''}`}>
+              {isPdf ? (
                 <div
                   {...panProps}
                   className="flex-1 overflow-auto p-4"
@@ -282,19 +306,18 @@ const ReportDetailsModal = ({ report, reportUrl, interactions = [], onClose }) =
                       </a>
                     </div>
                   ) : !pdfBlobUrl ? (
-                    <div className="flex flex-col items-center justify-center gap-3 text-slate-500 p-4">
-                      <span className="text-sm font-medium">Loading PDF...</span>
-                    </div>
+                    <div className="flex-1 min-h-[200px]" />
                   ) : (
                     <div className="flex flex-col items-center gap-4 min-w-max w-fit">
                       <Document
                         key={pdfBlobUrl}
                         file={pdfBlobUrl}
-                        onLoadSuccess={({ numPages }) => setNumPages(numPages)}
+                        onLoadSuccess={({ numPages }) => { setNumPages(numPages); setContentRendered(true); }}
                         onLoadError={(err) => {
                           setPdfError(err?.message || "PDF failed to load");
+                          setContentRendered(true);
                         }}
-                        loading={<div className="text-sm font-medium text-slate-500 py-8">Loading PDF...</div>}
+                        loading={null}
                       >
                         {Array.from({ length: numPages || 0 }, (_, i) => (
                           <div key={i} className="bg-white border border-slate-200 rounded-xl shadow-sm shrink-0 w-fit overflow-hidden">
@@ -350,8 +373,9 @@ const ReportDetailsModal = ({ report, reportUrl, interactions = [], onClose }) =
                         onLoad={(e) => {
                           const { naturalWidth, naturalHeight } = e.target;
                           setImgNaturalSize({ w: naturalWidth, h: naturalHeight });
+                          setContentRendered(true);
                         }}
-                        onError={() => setImageError(true)}
+                        onError={() => { setImageError(true); setContentRendered(true); }}
                       />
                     </div>
                   </div>
@@ -364,9 +388,34 @@ const ReportDetailsModal = ({ report, reportUrl, interactions = [], onClose }) =
                   </a>
                 </div>
               )}
+                </div>
+              )}
             </div>
           </div>
         </div>
+
+        {reviewMode && (
+          <div className="shrink-0 flex items-center justify-end px-6 py-4 border-t border-slate-200 bg-slate-50">
+            <button
+              type="button"
+              onClick={() => typeof onSignReport === "function" && onSignReport()}
+              disabled={isSigning}
+              className="inline-flex items-center justify-center gap-2 px-6 py-2.5 bg-white border-2 border-green-600 text-green-700 rounded-xl font-semibold text-sm hover:bg-green-50 transition-colors disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:bg-white"
+            >
+              {isSigning ? (
+                <>
+                  <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  <span>Signing…</span>
+                </>
+              ) : (
+                'Sign'
+              )}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

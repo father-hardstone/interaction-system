@@ -129,6 +129,9 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
     }, [activeViewTab]);
 
     const [showCancelModal, setShowCancelModal] = useState(false);
+    /** IDs optimistically removed from ongoing (cancel or move to incomplete) so UI updates immediately until refetch. */
+    const [pendingCancelOrMoveIds, setPendingCancelOrMoveIds] = useState([]);
+    const [openBillingTabNext, setOpenBillingTabNext] = useState(false);
     const [isCleaning, setIsCleaning] = useState(false);
     const [cleanupMessage, setCleanupMessage] = useState('');
     const [patientReports, setPatientReports] = useState([]);
@@ -215,10 +218,17 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
         [interactions, doctorId]
     );
 
-    /** Scheduled queue: oldest first (ascending by queuedAt/createdAt). Serial 1 = oldest in queue. */
+    /** Scheduled queue (in-person only): oldest first. Phone consults excluded – they appear in Phone consults tab. */
     const scheduledInteractions = useMemo(() => {
         return doctorInteractions
-            .filter((i) => !i.completed && !i.ongoing && !i.incomplete && !i.started)
+            .filter((i) => !i.completed && !i.ongoing && !i.incomplete && !i.started && (i.visitMode || 'physical') !== 'on_phone')
+            .sort((a, b) => new Date(a.queuedAt || a.createdAt || 0) - new Date(b.queuedAt || b.createdAt || 0));
+    }, [doctorInteractions]);
+
+    /** Phone consults queue: same as scheduled but only visitMode === 'on_phone'. No waiting time / expected turn in UI. */
+    const phoneConsultInteractions = useMemo(() => {
+        return doctorInteractions
+            .filter((i) => !i.completed && !i.ongoing && !i.incomplete && !i.started && (i.visitMode || '') === 'on_phone')
             .sort((a, b) => new Date(a.queuedAt || a.createdAt || 0) - new Date(b.queuedAt || b.createdAt || 0));
     }, [doctorInteractions]);
 
@@ -243,10 +253,11 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
     }, [doctorInteractions]);
 
     const ongoingInteractions = useMemo(() => {
+        const pendingSet = new Set(pendingCancelOrMoveIds);
         return doctorInteractions.filter(
-            (i) => i.ongoing || (i.id === activeInteractionId && !i.completed)
+            (i) => !pendingSet.has(i.id) && (i.ongoing || (i.id === activeInteractionId && !i.completed))
         );
-    }, [doctorInteractions, activeInteractionId]);
+    }, [doctorInteractions, activeInteractionId, pendingCancelOrMoveIds]);
 
     const completedInteractionsForPatient = useMemo(() => {
         if (!selectedPatient) return [];
@@ -293,26 +304,35 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
     const resolveScratchpadUrls = async (interaction) => {
         if (!interaction) return interaction;
         const resolveOne = async (p) => {
-            if (!p || typeof p !== 'string') return p;
-            if (p.startsWith('data:image')) return p;
-            if (p.startsWith('http') && !p.includes('/storage/')) return p;
-            const path = p.startsWith('http') ? extractStoragePathFromSupabaseUrl(p) : p;
-            if (!path || !path.includes('/interactions/')) return p;
+            if (p == null) return p;
+            const str = typeof p === 'string' ? p : String(p);
+            if (!str || str.trim() === '') return str;
+            if (str.startsWith('data:image')) return str;
+            if (str.startsWith('http')) return str;
+            // Path may use forward or backslash; normalize for detection
+            const path = str.replace(/\\/g, '/');
+            if (!path.includes('/interactions/')) return str;
             try {
-                return await supabaseStorageService.getFileUrl(SUPABASE_BUCKET, path);
+                const url = await supabaseStorageService.getFileUrl(SUPABASE_BUCKET, path);
+                return url || str;
             } catch (e) {
                 console.warn('resolveScratchpadUrls resolveOne failed:', path, e);
-                return p;
+                return str;
             }
         };
         const out = { ...interaction };
         for (const key of ['ccReason', 'subjective', 'objective', 'assessmentPlan']) {
             const obj = interaction[key];
-            if (!obj || !obj.scratchpad) {
-                if (obj) out[key] = { ...obj };
+            if (!obj) {
+                out[key] = interaction[key];
                 continue;
             }
             let val = obj.scratchpad;
+            if (val != null && typeof val !== 'string' && !Array.isArray(val)) val = String(val);
+            if (val == null || (typeof val === 'string' && val.trim() === '')) {
+                out[key] = { ...obj };
+                continue;
+            }
             try {
                 if (Array.isArray(val)) {
                     const resolved = await Promise.all(val.map(resolveOne));
@@ -321,8 +341,8 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
                     const arr = JSON.parse(val);
                     const resolved = await Promise.all(arr.map(resolveOne));
                     out[key] = { ...obj, scratchpad: resolved.length <= 1 ? (resolved[0] || '') : JSON.stringify(resolved) };
-                } else if (val && typeof val === 'string') {
-                    const resolved = val.includes('/interactions/') ? await resolveOne(val) : val;
+                } else if (typeof val === 'string') {
+                    const resolved = await resolveOne(val);
                     out[key] = { ...obj, scratchpad: resolved };
                 } else {
                     out[key] = { ...obj };
@@ -365,7 +385,9 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
                 };
             }));
         } else {
-            resetInteractionFields();
+            setServiceLines([
+                { id: Date.now(), serialNumber: 1, diagnostic: '', diagnosticDescription: '', billingCode: '', billingDescription: '', totalFee: '' }
+            ]);
         }
 
         setReferral({ type: (interaction.referral || {}).type || '', reason: (interaction.referral || {}).reason || '', to: (interaction.referral || {}).to || '', date: (interaction.referral || {}).date || '', addedLater: (interaction.referral || {}).addedLater === true });
@@ -424,20 +446,27 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
         }
     }, [activeInteractionId, doctorInteractions, activeViewTab]);
 
-    const handleEditCompleted = async (interaction) => {
+    const handleEditCompleted = async (interaction, options) => {
         if (!interaction) return;
+        if (ongoingInteractions.length > 0) {
+            showToast('Finish or cancel your current interaction before editing another.', 'error');
+            return;
+        }
+        setOpenBillingTabNext(!!options?.openBillingTab);
         setActiveInteractionId(interaction.id);
         setActiveViewTab('ongoing');
         setIsEditingCompleted(true);
         setIsLoadingEdit(true);
         try {
-            const { data } = await api.get(`/interactions/${interaction.id}`);
-            const resolved = await resolveScratchpadUrls(data);
-            const interactionToLoad = resolved || data;
+            const res = await api.get(`/interactions/${interaction.id}`);
+            const raw = res?.data?.data ?? res?.data?.interaction ?? res?.data;
+            if (!raw) throw new Error('No interaction in response');
+            const resolved = await resolveScratchpadUrls(raw);
+            const interactionToLoad = resolved || raw;
             const sheetCount = (key) => {
-                const raw = interactionToLoad[key]?.scratchpad;
-                const arr = parsePadSheets(Array.isArray(raw) ? raw : raw);
-                return arr.filter((s) => s && (String(s).startsWith('data:image') || String(s).includes('/interactions/'))).length;
+                const scratch = interactionToLoad[key]?.scratchpad;
+                const arr = parsePadSheets(Array.isArray(scratch) ? scratch : scratch);
+                return arr.filter((s) => s && (String(s).startsWith('data:image') || String(s).includes('/interactions/') || String(s).startsWith('http'))).length;
             };
             setOriginalPadSheetCounts({
                 cc: sheetCount('ccReason'),
@@ -445,9 +474,8 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
                 o: sheetCount('objective'),
                 ap: sheetCount('assessmentPlan')
             });
-            setInitialMedicationCount((interactionToLoad.medications || []).length);
+            setInitialMedicationCount((interactionToLoad.medications || []).length || 0);
             loadInteractionToState(interactionToLoad);
-            // Keep spinner until state has been applied and form has rendered (elements in place)
             requestAnimationFrame(() => {
                 requestAnimationFrame(() => {
                     setTimeout(() => setIsLoadingEdit(false), 350);
@@ -530,8 +558,16 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
             showToast('No active interaction selected to cancel.', 'error');
             return;
         }
-        const interaction = interactions.find((i) => i.id === activeInteractionId);
+        const idToCancel = activeInteractionId;
+        const interaction = interactions.find((i) => i.id === idToCancel);
         const pathsToDelete = collectInteractionScratchpadPaths(interaction);
+
+        // Optimistic UI: remove from ongoing immediately so it doesn’t stay visible until response
+        setPendingCancelOrMoveIds((prev) => (prev.includes(idToCancel) ? prev : [...prev, idToCancel]));
+        setShowCancelModal(false);
+        resetInteractionFields();
+        setActiveInteractionId(null);
+        setActiveViewTab('scheduled');
 
         try {
             if (pathsToDelete.length > 0) {
@@ -558,19 +594,18 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
                 completed: false,
                 billed: false
             };
-            await api.put(`/interactions/${activeInteractionId}/details`, clearPayload);
-            setShowCancelModal(false);
-            resetInteractionFields();
-            setActiveInteractionId(null);
-            setActiveViewTab('scheduled');
+            await api.put(`/interactions/${idToCancel}/details`, clearPayload);
             showToast('Interaction canceled', 'success');
-            if (onRefreshInteractions) onRefreshInteractions();
+            if (onRefreshInteractions) await onRefreshInteractions();
         } catch (error) {
             setIsCleaning(false);
             setCleanupMessage('');
             console.error('Error canceling interaction:', error);
             showToast('Failed to cancel interaction', 'error');
+            setPendingCancelOrMoveIds((prev) => prev.filter((id) => id !== idToCancel));
+            return;
         }
+        setPendingCancelOrMoveIds((prev) => prev.filter((id) => id !== idToCancel));
     };
 
     /** Delete scratchpad files from Supabase (e.g. before cancel or before overwriting with new save). */
@@ -590,6 +625,12 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
             showToast('No active interaction selected to move.', 'error');
             return;
         }
+        const idToMove = activeInteractionId;
+        setPendingCancelOrMoveIds((prev) => (prev.includes(idToMove) ? prev : [...prev, idToMove]));
+        setShowCancelModal(false);
+        setActiveViewTab('scheduled');
+        // Keep activeInteractionId so saveInteractionData still has the id; clear after save
+
         setIsSaving(true);
         try {
             await saveInteractionData({
@@ -598,17 +639,17 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
                 incomplete: true,
                 completed: false
             });
-            setShowCancelModal(false);
             resetInteractionFields();
             setActiveInteractionId(null);
-            setActiveViewTab('scheduled');
             showToast('Moved to incomplete', 'success');
-            if (onRefreshInteractions) onRefreshInteractions();
+            if (onRefreshInteractions) await onRefreshInteractions();
         } catch (error) {
             console.error('Error moving interaction to incomplete:', error);
             showToast('Failed to move interaction to incomplete', 'error');
+            setPendingCancelOrMoveIds((prev) => prev.filter((id) => id !== idToMove));
         } finally {
             setIsSaving(false);
+            setPendingCancelOrMoveIds((prev) => prev.filter((id) => id !== idToMove));
         }
     };
 
@@ -781,6 +822,7 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
             setActiveInteractionId(null);
             resetInteractionFields();
             setActiveViewTab('incomplete');
+            // Refetch interactions; keep spinners until refetch completes so user sees up-to-date data
             if (onRefreshInteractions) await onRefreshInteractions();
             showToast('Draft saved successfully!', 'success');
         } catch (error) {
@@ -1012,6 +1054,7 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
         isSaving,
         activePatientVisitorId,
         scheduledInteractions,
+        phoneConsultInteractions,
         incompleteInteractions,
         completedInteractions,
         closedInteractions,
@@ -1022,6 +1065,8 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
         handleSaveDraft,
         handleEditCompleted,
         handleCloseEditMode,
+        openBillingTabNext,
+        setOpenBillingTabNext,
         handleSaveEdit,
         isEditingCompleted,
         isLoadingEdit,

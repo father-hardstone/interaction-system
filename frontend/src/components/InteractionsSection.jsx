@@ -253,9 +253,14 @@ const InteractionsSection = ({
                                                 </div>
                                             )}
                                             <div className="flex justify-between items-start gap-1 min-w-0 flex-nowrap">
-                                                <span className="inline-flex items-center justify-center min-w-[2rem] text-xs font-semibold text-blue-600 bg-blue-50/80 px-1.5 py-0.5 rounded border border-blue-100 normal-case tracking-wide shrink-0">
-                                                    {getRegistrationDisplayId(interaction)}
-                                                </span>
+                                                <div className="flex flex-col gap-0.5 shrink-0">
+                                                    <span className="inline-flex items-center justify-center min-w-[2rem] text-xs font-semibold text-blue-600 bg-blue-50/80 px-1.5 py-0.5 rounded border border-blue-100 normal-case tracking-wide w-fit">
+                                                        {getRegistrationDisplayId(interaction)}
+                                                    </span>
+                                                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border normal-case w-fit ${interaction.visitMode === 'on_phone' ? 'bg-violet-50 text-violet-700 border-violet-100' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>
+                                                        {interaction.visitMode === 'on_phone' ? 'Phone consult' : 'Physical'}
+                                                    </span>
+                                                </div>
                                                 <span className={`shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded border normal-case whitespace-nowrap ${status.label === 'Ongoing' ? 'bg-blue-50 text-blue-600 border-blue-100' : status.label === 'Followup' ? 'bg-teal-50 text-teal-600 border-teal-100' : status.label === 'Refill' ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-slate-100 text-slate-700 border-slate-200'}`}>
                                                     {status.label}
                                                 </span>
@@ -345,21 +350,24 @@ const InteractionsSection = ({
 
                 {/* Right Side - Officers (Columns) */}
                 <div className="flex-[1] flex flex-col min-w-0 min-h-0 lg:max-w-[400px]">
-                    <div className="flex items-center gap-3 mb-1 shrink-0">
-                        {activeOfficers.length > 1 && (
-                            <select
-                                value={selectedOfficerId || ''}
-                                onChange={(e) => setSelectedOfficerId(e.target.value || null)}
-                                className="px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
-                            >
-                                {activeOfficers.map((o) => (
-                                    <option key={o.id} value={o.id}>{o.name}</option>
-                                ))}
-                            </select>
-                        )}
+                    <div className="flex items-center justify-between gap-2 mb-1 shrink-0">
                         <h3 className="text-sm font-semibold text-slate-700">Doctors</h3>
+                        {activeOfficers.length > 0 && (
+                            <div className="flex gap-0.5 p-0.5 rounded-lg bg-slate-100 border border-slate-200">
+                                {activeOfficers.map((o) => (
+                                    <button
+                                        key={o.id}
+                                        type="button"
+                                        onClick={() => setSelectedOfficerId(o.id)}
+                                        className={`min-w-0 px-2 py-1 rounded text-xs font-medium transition-all ${selectedOfficerId === o.id ? 'bg-blue-600 text-white' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}`}
+                                    >
+                                        {o.name}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                     </div>
-                    <p className="text-xs text-slate-500 mb-3">
+                    <p className="text-xs text-slate-500 mb-3 shrink-0">
                         {selectedOfficer ? interactions.filter(i => getInteractionStatus(i) === 'queued' && i.officerId === selectedOfficer.id && !(i.id in pendingAssignments)).length + (Object.values(pendingAssignments).filter(id => id === selectedOfficer?.id).length || 0) : 0} in scheduled registrations
                     </p>
                     <div className="flex flex-col flex-1 min-h-0">
@@ -433,9 +441,14 @@ const InteractionsSection = ({
                                                         className={`group/item relative bg-white border border-slate-100 rounded-lg p-2.5 shadow-sm transition-all hover:border-blue-300 hover:shadow-md flex flex-col min-w-0 ${canDrag ? 'cursor-move' : 'cursor-default'}`}
                                                     >
                                                         <div className="flex justify-between items-start gap-1 min-w-0">
-                                                            <span className="inline-flex items-center justify-center min-w-[2rem] text-[10px] font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 normal-case shrink-0">
-                                                                {queuePosition}
-                                                            </span>
+                                                            <div className="flex flex-col gap-0.5 shrink-0">
+                                                                <span className="inline-flex items-center justify-center min-w-[2rem] text-[10px] font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 normal-case w-fit">
+                                                                    {queuePosition}
+                                                                </span>
+                                                                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border normal-case w-fit ${interaction.visitMode === 'on_phone' ? 'bg-violet-50 text-violet-700 border-violet-100' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>
+                                                                    {interaction.visitMode === 'on_phone' ? 'Phone consult' : 'Physical'}
+                                                                </span>
+                                                            </div>
                                                             <span className={`shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded border normal-case ${status.label === 'Ongoing' ? 'bg-blue-50 text-blue-600 border-blue-100' : status.label === 'Followup' ? 'bg-teal-50 text-teal-600 border-teal-100' : status.label === 'Refill' ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-slate-100 text-slate-700 border-slate-200'}`}>
                                                                 {status.label}
                                                             </span>

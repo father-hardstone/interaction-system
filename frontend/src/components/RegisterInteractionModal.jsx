@@ -32,6 +32,7 @@ const RegisterInteractionModal = ({
     const [showRegisterConfirmModal, setShowRegisterConfirmModal] = useState(false);
     const [pendingRegisterVisitor, setPendingRegisterVisitor] = useState(null);
     const [reasonForVisit, setReasonForVisit] = useState('new_visit');
+    const [visitMode, setVisitMode] = useState('physical');
     const [parentInteractionId, setParentInteractionId] = useState('');
     const [newVisitNotes, setNewVisitNotes] = useState('');
 
@@ -66,6 +67,7 @@ const RegisterInteractionModal = ({
         if (!pendingRegisterVisitor || !handleRegisterPatient) return;
         const success = await handleRegisterPatient(pendingRegisterVisitor, {
             reasonForVisit: reasonForVisit || 'new_visit',
+            visitMode: visitMode || 'physical',
             parentInteractionId: (reasonForVisit === 'followup' || reasonForVisit === 'refill_medicine') ? (parentInteractionId || '') : '',
             reasonForVisitNotes: reasonForVisit === 'new_visit' ? newVisitNotes : ''
         });
@@ -73,6 +75,7 @@ const RegisterInteractionModal = ({
             setShowRegisterConfirmModal(false);
             setPendingRegisterVisitor(null);
             setReasonForVisit('new_visit');
+            setVisitMode('physical');
             setParentInteractionId('');
             setNewVisitNotes('');
             onClose();
@@ -82,6 +85,7 @@ const RegisterInteractionModal = ({
     const initiateRegistration = (visitor) => {
         setPendingRegisterVisitor(visitor);
         setReasonForVisit('new_visit');
+        setVisitMode('physical');
         setParentInteractionId('');
         setNewVisitNotes('');
         setShowRegisterConfirmModal(true);
@@ -243,7 +247,7 @@ const RegisterInteractionModal = ({
                 <div className="fixed inset-0 z-[1100] flex items-center justify-center px-4 pb-4 pt-0 !mt-0">
                     <div
                         className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
-                        onClick={() => !isCreatingInteraction && (setShowRegisterConfirmModal(false), setPendingRegisterVisitor(null), setReasonForVisit('new_visit'), setParentInteractionId(''), setNewVisitNotes(''))}
+                        onClick={() => !isCreatingInteraction && (setShowRegisterConfirmModal(false), setPendingRegisterVisitor(null), setReasonForVisit('new_visit'), setVisitMode('physical'), setParentInteractionId(''), setNewVisitNotes(''))}
                     />
                     <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in duration-200">
                         <div className="p-6">
@@ -252,6 +256,33 @@ const RegisterInteractionModal = ({
                                 Register an interaction for {pendingRegisterVisitor ? `${pendingRegisterVisitor.firstName || ''} ${pendingRegisterVisitor.lastName || ''}`.trim() : 'this patient'}?
                             </p>
                             <div className="space-y-4 mb-6">
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Visit mode</label>
+                                    <div className="flex gap-4">
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                            <input
+                                                type="radio"
+                                                name="visitMode"
+                                                value="physical"
+                                                checked={visitMode === 'physical'}
+                                                onChange={() => setVisitMode('physical')}
+                                                className="w-4 h-4 text-primary border-slate-300 focus:ring-primary"
+                                            />
+                                            <span className="text-sm font-medium text-slate-700">Physical</span>
+                                        </label>
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                            <input
+                                                type="radio"
+                                                name="visitMode"
+                                                value="on_phone"
+                                                checked={visitMode === 'on_phone'}
+                                                onChange={() => setVisitMode('on_phone')}
+                                                className="w-4 h-4 text-primary border-slate-300 focus:ring-primary"
+                                            />
+                                            <span className="text-sm font-medium text-slate-700">Phone consult</span>
+                                        </label>
+                                    </div>
+                                </div>
                                 <div>
                                     <label className="block text-xs font-semibold text-slate-600 mb-1.5">Reason for visit</label>
                                     <select
@@ -310,6 +341,7 @@ const RegisterInteractionModal = ({
                                             setShowRegisterConfirmModal(false);
                                             setPendingRegisterVisitor(null);
                                             setReasonForVisit('new_visit');
+                                            setVisitMode('physical');
                                             setParentInteractionId('');
                                             setNewVisitNotes('');
                                         }

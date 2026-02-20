@@ -1,4 +1,4 @@
-import supabase from '../config/supabase';
+import supabase, { SUPABASE_URL } from '../config/supabase';
 
 /**
  * Supabase Storage Service
@@ -152,7 +152,18 @@ class SupabaseStorageService {
                 throw error;
             }
 
-            return data.signedUrl;
+            const raw = data?.signedUrl ?? data?.signedURL ?? data?.path;
+            if (!raw || typeof raw !== 'string') return raw;
+
+            if (raw.startsWith('http://') || raw.startsWith('https://')) {
+                return raw;
+            }
+            const base = (SUPABASE_URL || '').replace(/\/$/, '');
+            const pathPart = raw.startsWith('/') ? raw : `/${raw}`;
+            const [pathOnly, query] = pathPart.split('?');
+            const encodedPath = pathOnly ? pathOnly.split('/').map(segment => encodeURIComponent(segment)).join('/') : pathPart;
+            const fullPath = query ? `${encodedPath}?${query}` : encodedPath;
+            return `${base}/storage/v1${fullPath}`;
         } catch (error) {
             console.error('Error creating signed URL:', error);
             throw error;

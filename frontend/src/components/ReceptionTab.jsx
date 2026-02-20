@@ -397,6 +397,7 @@ const ReceptionTab = ({
                         >
                             Incomplete
                         </button>
+                        {/* Not ready for billing – commented out
                         <button
                             onClick={() => setActiveInteractionSubTab('not_closed')}
                             className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${activeInteractionSubTab === 'not_closed'
@@ -406,6 +407,8 @@ const ReceptionTab = ({
                         >
                             Not ready for billing
                         </button>
+                        */}
+                        {/* Unbilled – commented out
                         <button
                             onClick={() => setActiveInteractionSubTab('unbilled')}
                             className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${activeInteractionSubTab === 'unbilled'
@@ -415,6 +418,7 @@ const ReceptionTab = ({
                         >
                             Unbilled
                         </button>
+                        */}
                         <button
                             onClick={() => setActiveInteractionSubTab('followup')}
                             className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${activeInteractionSubTab === 'followup'
@@ -457,6 +461,7 @@ const ReceptionTab = ({
                         </div>
                     )}
 
+                    {/* Not ready for billing – commented out
                     {activeInteractionSubTab === 'not_closed' && (
                         <div className="animate-[fadeIn_0.3s_ease-out] flex flex-col flex-1 min-h-0 p-4">
                             <div className="mb-4 shrink-0">
@@ -477,6 +482,7 @@ const ReceptionTab = ({
                             />
                         </div>
                     )}
+                    */}
 
                     {activeInteractionSubTab === 'incomplete' && (
                         <div className="animate-[fadeIn_0.3s_ease-out] flex flex-col flex-1 min-h-0 p-4">
@@ -528,6 +534,7 @@ const ReceptionTab = ({
                         </div>
                     )}
 
+                    {/* Unbilled – commented out
                     {activeInteractionSubTab === 'unbilled' && (
                         <div className="animate-[fadeIn_0.3s_ease-out] flex flex-col flex-1 min-h-0 p-4">
                             <div className="mb-4 shrink-0">
@@ -552,6 +559,7 @@ const ReceptionTab = ({
                             />
                         </div>
                     )}
+                    */}
 
                     {activeInteractionSubTab === 'cancelled' && (
                         <div className="animate-[fadeIn_0.3s_ease-out] flex flex-col flex-1 min-h-0 p-4">

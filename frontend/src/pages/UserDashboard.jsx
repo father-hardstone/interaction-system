@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { jwtDecode } from 'jwt-decode';
 import { visitorService } from '../services/visitorService';
@@ -19,8 +19,9 @@ const UserDashboard = () => {
     const navigate = useNavigate();
     const { serial } = useParams();
     const [userData, setUserData] = useState(null);
-    const [activeTab, setActiveTab] = useState('reception');
-    const { register, unregister } = useUserDashboardNav();
+    const { navState } = useUserDashboardNav();
+    const activeTab = navState?.activeTab ?? 'reception';
+    const setActiveTab = navState?.setActiveTab ?? (() => {});
     const [visitors, setVisitors] = useState([]);
     const [searchFirstName, setSearchFirstName] = useState('');
     const [searchMiddleName, setSearchMiddleName] = useState('');
@@ -75,7 +76,6 @@ const UserDashboard = () => {
     const [showCancelRegistrationModal, setShowCancelRegistrationModal] = useState(false);
     const [registrationToCancel, setRegistrationToCancel] = useState(null);
     const [queueModalInteraction, setQueueModalInteraction] = useState(null);
-    const [showLogoutModal, setShowLogoutModal] = useState(false);
     const [error, setError] = useState('');
     const [interactions, setInteractions] = useState([]);
     const [lastVisits, setLastVisits] = useState({}); // visitorId -> last completed interaction (from backend, ignores time filter)
@@ -117,43 +117,18 @@ const UserDashboard = () => {
     const [isLoadingReports, setIsLoadingReports] = useState(false);
     const [viewingMedia, setViewingMedia] = useState(null);
 
-    // 1. Initial Auth & Tab Setup
+    // 1. Initial Auth (nav state is registered by UserDashboardLayout)
     useEffect(() => {
         const token = localStorage.getItem('token');
         if (token) {
             try {
                 const decoded = jwtDecode(token);
                 setUserData(decoded);
-                // Set initial tab ONLY ONCE when component mounts/login happens
-                if (decoded.role === 'officer') {
-                    setActiveTab('officer');
-                } else if (decoded.role === 'receptionist') {
-                    setActiveTab('reception');
-                }
             } catch (e) {
                 console.error('Failed to decode token');
             }
         }
-
     }, []);
-
-    const handleLogout = useCallback(() => {
-        setShowLogoutModal(true);
-    }, []);
-
-    // Register nav state with NavBar context (for top bar tabs + profile dropdown)
-    useEffect(() => {
-        if (userData && serial) {
-            register({
-                activeTab,
-                setActiveTab,
-                userData,
-                serial,
-                onLogout: handleLogout
-            });
-        }
-        return () => unregister();
-    }, [userData, serial, activeTab, register, unregister, handleLogout]);
 
     // 2. Load Constant Data (Visitors, Officers)
     useEffect(() => {
@@ -772,7 +747,7 @@ const UserDashboard = () => {
                 province: visitorForm.state.trim(),
                 postalCode: visitorForm.postalCode.trim(),
                 gender: visitorForm.gender,
-                phone: phoneMData.fullNumber || '',
+                phone: '', // legacy unused; only phoneM, phoneB, phoneH are used
                 phoneM: phoneMData.fullNumber || '',
                 phoneB: phoneData.fullNumber || '',
                 phoneH: phoneHData.fullNumber || '',
@@ -1004,7 +979,7 @@ const UserDashboard = () => {
     const handleRegisterPatient = async (patient, options = {}) => {
         if (!patient) return false;
 
-        const { reasonForVisit = '', parentInteractionId = '', reasonForVisitNotes = '' } = options;
+        const { reasonForVisit = '', visitMode = 'physical', parentInteractionId = '', reasonForVisitNotes = '', assignToOfficerId = '', assignOfficerSerial = '' } = options;
 
         // Check if patient already has an active (incomplete) registration
         const isAlreadyRegistered = interactions.some(i => i.visitorId === patient.id && !i.completed);
@@ -1042,7 +1017,8 @@ const UserDashboard = () => {
                 visitorId: patient.id,
                 visitorSerial: visitorSerial,
                 reasonForVisit: reasonForVisit || '',
-                reasonForVisitNotes: (reasonForVisitNotes != null && String(reasonForVisitNotes).trim()) ? String(reasonForVisitNotes).trim() : ''
+                reasonForVisitNotes: (reasonForVisitNotes != null && String(reasonForVisitNotes).trim()) ? String(reasonForVisitNotes).trim() : '',
+                visitMode: (visitMode === 'on_phone' || visitMode === 'physical') ? visitMode : 'physical'
             });
 
             if ((reasonForVisit === 'followup' || reasonForVisit === 'refill_medicine') && parentInteractionId) {
@@ -1063,6 +1039,17 @@ const UserDashboard = () => {
                         incomplete: false
                     });
                 }
+            } else if (reasonForVisit === 'followup') {
+                await interactionService.saveDetails(response.id, {
+                    followup: { isFollowup: true, parentInteractionId: '' },
+                    started: false,
+                    ongoing: false,
+                    incomplete: false
+                });
+            }
+
+            if (assignToOfficerId && assignOfficerSerial) {
+                await interactionService.assignOfficer(response.id, assignToOfficerId, assignOfficerSerial);
             }
 
             setPendingInteractions(prev => prev.filter(i => i.id !== tempId));
@@ -1183,16 +1170,6 @@ const UserDashboard = () => {
         // Local file path
         const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
         return `${API_URL.replace('/api', '')}/${imagePath}`;
-    };
-
-    const confirmLogout = () => {
-        localStorage.removeItem('token');
-        localStorage.removeItem('entityName');
-        localStorage.removeItem('userRole');
-        localStorage.removeItem('userName');
-        localStorage.removeItem('entityId');
-        localStorage.removeItem('entitySerial');
-        navigate('/user/login');
     };
 
     return (
@@ -1321,6 +1298,7 @@ const UserDashboard = () => {
                             isLoadingInteractions={isLoadingInteractions}
                             onRefreshInteractions={() => loadInteractions(userData.entityId, interactionFilter)}
                             onInteractionClick={handleInteractionClick}
+                            handleRegisterPatient={handleRegisterPatient}
                         />
                     )}
                     </MasterDataProvider>
@@ -1340,6 +1318,7 @@ const UserDashboard = () => {
                     patientReports={patientReports}
                     officers={officers}
                     onOpenQueueModal={setQueueModalInteraction}
+                    interactions={interactions}
                 />
             )}
 
@@ -1376,39 +1355,6 @@ const UserDashboard = () => {
             )}
 
             {/* Logout Confirmation Modal */}
-            {showLogoutModal && (
-                <div className="fixed inset-0 bg-black/50 flex justify-center items-center px-4 pb-4 pt-0 !mt-0 z-[2000]" onClick={() => setShowLogoutModal(false)}>
-                    <div className="bg-white w-full max-w-[400px] p-6 sm:p-8 rounded-3xl shadow-lg animate-[slideUp_0.4s_ease-out]" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center gap-4 mb-6">
-                            <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
-                                <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                                </svg>
-                            </div>
-                            <div>
-                                <h2 className="text-xl font-semibold text-slate-900">Logout</h2>
-                                <p className="text-sm text-slate-600 mt-1">
-                                    Are you sure you want to log out of the interaction system?
-                                </p>
-                            </div>
-                        </div>
-                        <div className="flex gap-4">
-                            <button
-                                onClick={() => setShowLogoutModal(false)}
-                                className="flex-1 py-3 px-4 bg-slate-200 text-slate-800 rounded-xl font-semibold hover:bg-slate-300 transition-colors"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={confirmLogout}
-                                className="flex-1 py-3 px-4 bg-red-500 text-white rounded-xl font-semibold hover:bg-red-600 transition-colors"
-                            >
-                                Logout
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 };

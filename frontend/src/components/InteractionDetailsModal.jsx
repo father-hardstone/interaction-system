@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import InteractionDataView from './InteractionDataView';
+import ReportDetailsModal from './ReportDetailsModal';
 import { renderInteractionTags } from '../utils/interactionTags';
 import { stripEntityPrefix, getRegistrationDisplayId } from '../utils/formatUtils';
 
@@ -13,8 +14,11 @@ const InteractionDetailsModal = ({
     setViewingMedia,
     patientReports = [],
     officers = [],
-    onOpenQueueModal
+    onOpenQueueModal,
+    interactions = []
 }) => {
+    const [viewingReport, setViewingReport] = useState(null);
+
     if (!interaction) return null;
 
     return (
@@ -22,17 +26,21 @@ const InteractionDetailsModal = ({
             <div className="bg-white rounded-3xl shadow-2xl max-w-5xl w-full max-h-[90vh] flex flex-col overflow-hidden border border-white/20 animate-in zoom-in-95 duration-300">
                 {/* Header */}
                 <div className="flex items-center justify-between px-8 py-6 border-b border-slate-100 bg-slate-50/50">
-                    <div className="flex flex-col gap-1">
+                    <div className="flex flex-col gap-1.5">
+                        {/* Row 1: heading alone + Edited badge */}
                         <div className="flex items-center gap-3 flex-wrap">
-                            <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-semibold normal-case tracking-widest leading-none">
-                                {getRegistrationDisplayId(interaction)}
-                            </span>
                             <h3 className="text-lg font-semibold text-slate-900 tracking-tight flex items-center gap-2 flex-wrap">
                                 Interaction Details
                                 {(interaction.editCount ?? 0) > 0 && (
                                     <span className="text-xs font-semibold text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">Edited</span>
                                 )}
                             </h3>
+                        </div>
+                        {/* Row 2: ID and tags under the heading */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-semibold normal-case tracking-widest leading-none">
+                                {getRegistrationDisplayId(interaction)}
+                            </span>
                             {renderInteractionTags(interaction, { size: 'text-xs' })}
                         </div>
                         <p className="text-xl font-bold text-slate-900 tracking-tight">
@@ -76,6 +84,7 @@ const InteractionDetailsModal = ({
                         setViewingMedia={setViewingMedia}
                         patientReports={patientReports}
                         isExpanded={true}
+                        onOpenReport={(report, reportUrl) => setViewingReport({ report, reportUrl })}
                     />
                 </div>
 
@@ -104,6 +113,15 @@ const InteractionDetailsModal = ({
                     )}
                 </div>
             </div>
+
+            {viewingReport && (
+                <ReportDetailsModal
+                    report={viewingReport.report}
+                    reportUrl={viewingReport.reportUrl}
+                    interactions={interactions}
+                    onClose={() => setViewingReport(null)}
+                />
+            )}
 
             <style dangerouslySetInnerHTML={{
                 __html: `

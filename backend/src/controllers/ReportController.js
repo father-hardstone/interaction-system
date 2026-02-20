@@ -28,6 +28,18 @@ class ReportController {
         }
     }
 
+    // Get unreviewed reports for an entity (report reviews tab)
+    async getReportsForReview(req, res) {
+        try {
+            const { entityId } = req.params;
+            const reports = await ReportService.getUnreviewedByEntity(entityId);
+            res.json(reports);
+        } catch (error) {
+            console.error('getReportsForReview error:', error);
+            res.status(500).json({ error: error.message });
+        }
+    }
+
     // Get all reports for an interaction
     async getReportsByInteraction(req, res) {
         try {
@@ -85,12 +97,40 @@ class ReportController {
                 uploadedBy: uploadedBy || ''
             };
 
-            const report = await ReportService.create(reportData);
+            const reportDataWithReview = {
+                ...reportData,
+                reviewed: false,
+                action: ''
+            };
+            const report = await ReportService.create(reportDataWithReview);
 
             console.log('Report uploaded to Supabase:', report.fileMetadata.supabasePath);
             res.json(report);
         } catch (error) {
             console.error('uploadReport error:', error);
+            res.status(500).json({ error: error.message });
+        }
+    }
+
+    // Update report (e.g. set reviewed, action)
+    async updateReport(req, res) {
+        try {
+            const { id } = req.params;
+            const { reviewed, action, signed } = req.body;
+            const updates = {};
+            if (typeof reviewed === 'boolean') updates.reviewed = reviewed;
+            if (typeof action === 'string') updates.action = action;
+            if (typeof signed === 'boolean') updates.signed = signed;
+            if (Object.keys(updates).length === 0) {
+                return res.status(400).json({ error: 'No valid updates provided' });
+            }
+            const report = await ReportService.update(id, updates);
+            if (!report) {
+                return res.status(404).json({ error: 'Report not found' });
+            }
+            res.json(report);
+        } catch (error) {
+            console.error('updateReport error:', error);
             res.status(500).json({ error: error.message });
         }
     }

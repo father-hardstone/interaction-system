@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getReasonForVisitLabel, formatTimeOnly, getAgeYearsMonthsDisplay } from '../utils/formatUtils';
+import { getReasonForVisitLabel, formatTimeOnly, getAgeYearsMonthsDisplay, formatPhoneDisplay } from '../utils/formatUtils';
 
 /** Wait time from registration (createdAt) to now, in whole minutes. */
 const getWaitMinutesAgo = (createdAt, now) => {
@@ -26,10 +26,17 @@ const ScheduledInteractionsTable = ({
     formatDate,
     handleStartInteraction,
     ongoingInteractions,
+    blockStartNewInteraction = false,
     onInteractionClick,
     interactions = [],
     lastVisits = {},
-    visitors = []
+    visitors = [],
+    hideWaitingTime = false,
+    title = 'Scheduled interactions',
+    subtitle = 'Patients assigned to you and waiting to be seen',
+    emptyMessage = 'No scheduled interactions',
+    loadingMessage = 'Loading scheduled interactions…',
+    showPhoneColumn = false
 }) => {
     const [tick, setTick] = useState(() => Date.now());
 
@@ -78,8 +85,8 @@ const ScheduledInteractionsTable = ({
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-6 flex flex-col flex-1 min-h-0">
             <div className="flex items-center justify-between mb-4 shrink-0">
                 <div>
-                    <h2 className="text-lg font-semibold text-slate-900">Scheduled interactions</h2>
-                    <p className="text-xs text-slate-500 mt-1">Patients assigned to you and waiting to be seen</p>
+                    <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+                    {subtitle && <p className="text-xs text-slate-500 mt-1">{subtitle}</p>}
                 </div>
             </div>
 
@@ -89,6 +96,10 @@ const ScheduledInteractionsTable = ({
                         <tr className="border-b border-slate-200 sticky top-0 z-10">
                             <th className="w-9 px-1 py-3 text-center text-xs sm:text-sm font-semibold text-slate-700 bg-slate-50">#</th>
                             <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-700 bg-slate-50 border-l border-slate-100">Name</th>
+                            {showPhoneColumn && (
+                                <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-700 bg-slate-50 border-l border-slate-100">Phone</th>
+                            )}
+                            <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-700 bg-slate-50 border-l border-slate-100">Special notes</th>
                             <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-700 bg-slate-50 border-l border-slate-100">Registration</th>
                             <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-700 bg-slate-50 border-l border-slate-100">Age</th>
                             <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-700 bg-slate-50 border-l border-slate-100">Reason of visit</th>
@@ -101,20 +112,20 @@ const ScheduledInteractionsTable = ({
                     <tbody>
                         {isLoading ? (
                             <tr>
-                                <td colSpan={9} className="px-4 sm:px-6 py-16 text-center">
+                                <td colSpan={showPhoneColumn ? 11 : 10} className="px-4 sm:px-6 py-16 text-center">
                                     <div className="flex flex-col items-center justify-center gap-3">
                                         <svg className="animate-spin h-10 w-10 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                                         </svg>
-                                        <span className="text-sm font-semibold text-slate-500">Loading scheduled interactions…</span>
+                                        <span className="text-sm font-semibold text-slate-500">{loadingMessage}</span>
                                     </div>
                                 </td>
                             </tr>
                         ) : scheduledInteractions.length === 0 ? (
                             <tr>
-                                <td colSpan={9} className="px-4 sm:px-6 py-12 text-center text-slate-400 text-sm">
-                                    No scheduled interactions
+                                <td colSpan={showPhoneColumn ? 11 : 10} className="px-4 sm:px-6 py-12 text-center text-slate-400 text-sm">
+                                    {emptyMessage}
                                 </td>
                             </tr>
                         ) : (
@@ -135,8 +146,20 @@ const ScheduledInteractionsTable = ({
                                             <div className="font-medium text-sm text-slate-900">{getVisitorName(interaction.visitorId)}</div>
                                         </button>
                                     </td>
+                                    {showPhoneColumn && (
+                                        <td className="px-3 sm:px-4 py-3 align-middle text-sm text-slate-700 border-l border-slate-100">
+                                            {formatPhoneDisplay(visitor?.phoneM || visitor?.phone) || '—'}
+                                        </td>
+                                    )}
+                                    <td className="px-3 sm:px-4 py-3 align-middle text-sm border-l border-slate-100">
+                                        {(visitor?.specialNotes && String(visitor.specialNotes).trim() && visitor.specialNotes !== '-') ? (
+                                            <span className="text-red-600 font-medium" title={String(visitor.specialNotes).trim()}>{String(visitor.specialNotes).trim()}</span>
+                                        ) : (
+                                            <span className="text-slate-400">—</span>
+                                        )}
+                                    </td>
                                     <td className="px-3 sm:px-4 py-3 align-middle text-sm text-slate-700 border-l border-slate-100">
-                                        {formatTimeOnly(interaction.createdAt)}{waitMins !== null ? ` (${waitMins})` : ''}
+                                        {formatTimeOnly(interaction.createdAt)}{!hideWaitingTime && waitMins !== null ? ` (${waitMins})` : ''}
                                     </td>
                                     <td className="px-3 sm:px-4 py-3 align-middle text-sm text-slate-700 border-l border-slate-100">{getAgeYearsMonthsDisplay(visitor)}</td>
                                     <td className={`px-3 sm:px-4 py-3 align-middle text-sm text-slate-700 border-l border-slate-100 ${getReasonCellBg(interaction.reasonForVisit)}`}>
@@ -152,13 +175,13 @@ const ScheduledInteractionsTable = ({
                                         <button
                                             type="button"
                                             onClick={() => handleStartInteraction(interaction.id)}
-                                            disabled={ongoingInteractions.length > 0}
-                                            className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold shadow-sm transition-all active:scale-95 ${ongoingInteractions.length > 0 ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
+                                            disabled={blockStartNewInteraction}
+                                            className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold shadow-sm transition-all active:scale-95 ${blockStartNewInteraction ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
                                         >
                                             <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
                                                 <path d="M8 5v14l11-7z" />
                                             </svg>
-                                            <span>{ongoingInteractions.length > 0 ? 'Finish current first' : 'Start interaction'}</span>
+                                            <span>{blockStartNewInteraction ? 'Finish current first' : 'Start interaction'}</span>
                                         </button>
                                     </td>
                                 </tr>

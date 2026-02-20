@@ -1,6 +1,15 @@
 import React from 'react';
+import { generatePrescriptionImage } from '../utils/prescriptionImage';
 
-const MedicationBlock = ({ visitor, medications, addMedication, updateMedication, removeMedication }) => {
+/** At least one med with name and (strength or frequency) filled. */
+const hasValidMedLine = (medications) =>
+    medications.some(
+        (m) =>
+            (m?.name ?? '').trim() !== '' &&
+            ((m?.strength ?? '').trim() !== '' || (m?.frequency ?? '').trim() !== '')
+    );
+
+const MedicationBlock = ({ visitor, medications, addMedication, updateMedication, removeMedication, patientName = '', doctorName = '' }) => {
     const hasRedZone =
         (visitor?.allergies && visitor.allergies !== 'N/A') ||
         (visitor?.drugReactions && visitor.drugReactions !== 'N/A') ||
@@ -20,16 +29,38 @@ const MedicationBlock = ({ visitor, medications, addMedication, updateMedication
                     <div className="w-1 h-8 rounded-full bg-emerald-500 shadow-sm shadow-emerald-200"></div>
                     <div className="text-lg font-bold text-slate-900 normal-case">Medications</div>
                 </div>
-                <button
-                    type="button"
-                    onClick={addMedication}
-                    className="text-xs px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg font-semibold hover:bg-blue-100 transition-colors flex items-center gap-1.5 border border-blue-100 normal-case shrink-0"
-                >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-                    </svg>
-                    Add Prescription
-                </button>
+                <div className="flex items-center gap-2 shrink-0">
+                    <button
+                        type="button"
+                        onClick={async () => {
+                            const dataUrl = await generatePrescriptionImage({
+                                doctorName,
+                                patientName: patientName || (visitor && (visitor.name || visitor.fullName || visitor.firstName) ? [visitor.firstName, visitor.lastName].filter(Boolean).join(' ') : ''),
+                                medications,
+                                date: new Date().toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })
+                            });
+                            const w = window.open('', '_blank');
+                            if (w) {
+                                w.document.write(`<html><head><title>Prescription</title></head><body style="margin:0;background:#ccc;"><img src="${dataUrl}" alt="Prescription" style="display:block;max-width:100%;height:auto;" /></body></html>`);
+                                w.document.close();
+                            }
+                        }}
+                        disabled={!hasValidMedLine(medications)}
+                        className="text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors flex items-center gap-1.5 border normal-case shrink-0 disabled:opacity-50 disabled:cursor-not-allowed bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200"
+                    >
+                        Generate prescription
+                    </button>
+                    <button
+                        type="button"
+                        onClick={addMedication}
+                        className="text-xs px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg font-semibold hover:bg-blue-100 transition-colors flex items-center gap-1.5 border border-blue-100 normal-case shrink-0"
+                    >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+                        </svg>
+                        Add medicine
+                    </button>
+                </div>
             </div>
 
             {/* Red zone + Past medical conditions — side by side on larger screens */}
@@ -92,21 +123,21 @@ const MedicationBlock = ({ visitor, medications, addMedication, updateMedication
                         {medications.map((med, index) => (
                             <tr key={index} className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50/50 transition-colors group/row">
                                 <td className="px-3 py-2 align-middle">
-                                    {med.addedLater && (
-                                        <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">+Later</span>
-                                    )}
-                                    {!med.addedLater && (
-                                        <span className="flex items-center justify-center w-6 h-6 rounded-full bg-slate-100 text-xs font-semibold text-slate-600">{index + 1}</span>
-                                    )}
+                                    <span className="flex items-center justify-center w-6 h-6 rounded-full bg-slate-100 text-xs font-semibold text-slate-600">{index + 1}</span>
                                 </td>
                                 <td className="px-3 py-2 align-middle">
-                                    <input
-                                        type="text"
-                                        className="w-full min-w-[120px] px-2 py-2 text-sm border border-slate-200 rounded-lg bg-white focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 placeholder:text-slate-300"
-                                        placeholder="e.g. Amoxicillin"
-                                        value={med.name ?? ''}
-                                        onChange={(e) => updateMedication(index, 'name', e.target.value)}
-                                    />
+                                    <div className="relative w-full min-w-[120px]">
+                                        <input
+                                            type="text"
+                                            className={`w-full px-2 py-2 text-sm border border-slate-200 rounded-lg bg-white focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 placeholder:text-slate-300 ${med.addedLater ? 'pr-24' : ''}`}
+                                            placeholder="e.g. Amoxicillin"
+                                            value={med.name ?? ''}
+                                            onChange={(e) => updateMedication(index, 'name', e.target.value)}
+                                        />
+                                        {med.addedLater && (
+                                            <span className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-[10px] font-semibold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded border border-amber-200 whitespace-nowrap">Added later</span>
+                                        )}
+                                    </div>
                                 </td>
                                 <td className="px-3 py-2 align-middle">
                                     <input
@@ -166,7 +197,7 @@ const MedicationBlock = ({ visitor, medications, addMedication, updateMedication
             </div>
             {medications.length === 0 && (
                 <div className="text-center py-8 text-xs text-slate-400 font-medium italic bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
-                    No medications listed. Click &quot;Add Prescription&quot; to add one.
+                    No medications listed. Click &quot;Add medicine&quot; to add one.
                 </div>
             )}
         </div>

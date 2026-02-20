@@ -51,6 +51,11 @@ class ReportService {
         return reports.map(r => r.toObject());
     }
 
+    async getUnreviewedByEntity(entityId) {
+        const reports = await Report.find({ entityId, deletedAt: '', reviewed: { $ne: true } }).sort({ createdAt: -1 });
+        return reports.map(r => r.toObject());
+    }
+
     async getByInteraction(interactionId) {
         const reports = await Report.find({ interactionId, deletedAt: '' }).sort({ createdAt: -1 });
         return reports.map(r => r.toObject());
