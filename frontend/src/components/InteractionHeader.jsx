@@ -61,6 +61,9 @@ const InteractionHeader = ({
                         </span>
                         <h2 className="text-xl sm:text-2xl font-bold text-slate-900 normal-case tracking-tighter group-hover:text-blue-600 transition-colors flex items-center gap-2 flex-wrap">
                             {name}
+                            {interaction.visitMode === 'on_phone' && (
+                                <span className="shrink-0 text-xs font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">Phone consult</span>
+                            )}
                             {(interaction.editCount ?? 0) > 0 && (
                                 <span className="text-xs font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">Edited</span>
                             )}

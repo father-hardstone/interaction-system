@@ -73,7 +73,8 @@ const OngoingInteractionsView = ({
     interactions,
     handleOpenPatientDetails,
     initialSubTab,
-    onClearInitialSubTab
+    onClearInitialSubTab,
+    doctorName = ''
 }) => {
     const [activeTab, setActiveTab] = useState('cc');
 
@@ -197,6 +198,8 @@ const OngoingInteractionsView = ({
                         addMedication={addMedication}
                         updateMedication={updateMedication}
                         removeMedication={removeMedication}
+                        patientName={getVisitorName(interaction.visitorId) || ''}
+                        doctorName={doctorName}
                     />
                 );
             case 'referral':

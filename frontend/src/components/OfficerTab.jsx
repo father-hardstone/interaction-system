@@ -91,6 +91,14 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
 
     const [showPatientHistoryOverlay, setShowPatientHistoryOverlay] = useState(false);
 
+    /** When starting from Phone consults tab, switch to Interactions main tab so the ongoing panel is visible. */
+    const handleStartInteractionFromUI = useCallback((interactionId) => {
+        if (activeMainTab === OFFICER_MAIN_TABS.PHONE_CONSULTS) {
+            setActiveMainTab(OFFICER_MAIN_TABS.INTERACTIONS);
+        }
+        handleStartInteraction(interactionId);
+    }, [activeMainTab, handleStartInteraction]);
+
     // Report reviews tab
     const [reportsForReview, setReportsForReview] = useState([]);
     const [isLoadingReportsForReview, setIsLoadingReportsForReview] = useState(false);
@@ -441,6 +449,7 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
                             formatDate={formatDate}
                             onInteractionClick={onInteractionClick}
                             interactions={interactions}
+                            doctorName={userData?.name || ''}
                         />
                     </div>
                     {/* Patient History - sidebar on xl+, overlay on smaller screens */}
@@ -512,7 +521,7 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
                         getVisitorName={getVisitorName}
                         getVisitorSerial={getVisitorSerial}
                         formatDate={formatDate}
-                        handleStartInteraction={handleStartInteraction}
+                        handleStartInteraction={handleStartInteractionFromUI}
                         ongoingInteractions={ongoingInteractions}
                         blockStartNewInteraction={ongoingInteractions.length > 0 || (isEditingCompleted && !!activeInteractionId)}
                         onInteractionClick={onInteractionClick}
