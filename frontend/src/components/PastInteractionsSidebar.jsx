@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import ReportDetailsModal from './ReportDetailsModal';
 import supabaseStorageService from '../services/supabaseService';
-import { formatDateMMDDYYYY, getShortInteractionId } from '../utils/formatUtils';
+import { formatDateMMDDYYYY, getShortInteractionId, getAgeYearsMonthsDisplay } from '../utils/formatUtils';
 
 const PastInteractionsSidebar = ({
     activePatientVisitorId,
+    visitor,
     interactions,
     activeInteractionId,
     patientReports,
@@ -47,9 +48,10 @@ const PastInteractionsSidebar = ({
 
     return (
         <aside className="w-full xl:w-[307px] bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col h-full overflow-hidden shrink-0">
-            <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center shrink-0">
-                <h3 className="text-sm font-semibold text-slate-800 normal-case tracking-wide">Patient History</h3>
-                {isOverlay && onCloseOverlay && (
+            <div className="p-4 border-b border-slate-200 bg-slate-50 shrink-0">
+                <div className="flex justify-between items-center">
+                    <h3 className="text-sm font-semibold text-slate-800 normal-case tracking-wide">Patient History</h3>
+                    {isOverlay && onCloseOverlay && (
                     <button
                         type="button"
                         onClick={onCloseOverlay}
@@ -60,6 +62,16 @@ const PastInteractionsSidebar = ({
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                         </svg>
                     </button>
+                    )}
+                </div>
+                {visitor && (
+                    <p className="text-xs text-slate-600 mt-2 font-medium">
+                        <span className="text-slate-500 normal-case tracking-wide">DOB</span>{' '}
+                        <span className="text-slate-700">{formatDateMMDDYYYY(visitor.dateOfBirth) || '—'}</span>
+                        {visitor.dateOfBirth && (
+                            <span className="text-slate-600 ml-1">({getAgeYearsMonthsDisplay(visitor)})</span>
+                        )}
+                    </p>
                 )}
             </div>
 

@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { jwtDecode } from 'jwt-decode';
 import { visitorService } from '../services/visitorService';
 import { interactionService } from '../services/interactionService';
 import { officerService } from '../services/officerService';
 import { validateEmail } from '../utils/crypto';
-import { formatHealthCardDisplay, parseHealthCardToDigits, getVisitorSerialDisplay } from '../utils/formatUtils';
+import { formatHealthCardDisplay, parseHealthCardToDigits, parsePhoneToDigits, getVisitorSerialDisplay } from '../utils/formatUtils';
 import { useUserDashboardNav } from '../contexts/UserDashboardNavContext';
 import ReceptionTab from '../components/ReceptionTab';
 import { MasterDataProvider } from '../contexts/MasterDataContext';
@@ -19,14 +19,15 @@ const UserDashboard = () => {
     const navigate = useNavigate();
     const { serial } = useParams();
     const [userData, setUserData] = useState(null);
-    const [activeTab, setActiveTab] = useState('reception');
-    const { register, unregister } = useUserDashboardNav();
+    const { navState } = useUserDashboardNav();
+    const activeTab = navState?.activeTab ?? 'reception';
+    const setActiveTab = navState?.setActiveTab ?? (() => {});
     const [visitors, setVisitors] = useState([]);
     const [searchFirstName, setSearchFirstName] = useState('');
     const [searchMiddleName, setSearchMiddleName] = useState('');
     const [searchLastName, setSearchLastName] = useState('');
     const [searchSerial, setSearchSerial] = useState('');
-    const [searchPhone, setSearchPhone] = useState('');
+    const [searchContact, setSearchContact] = useState('');
     const [searchHealthCard, setSearchHealthCard] = useState('');
     const [searchDob, setSearchDob] = useState('');
     const [showVisitorModal, setShowVisitorModal] = useState(false);
@@ -46,18 +47,18 @@ const UserDashboard = () => {
         phoneM: '',
         notes: '',
         memo: '',
-        allergies: 'N/A',
-        drugReactions: 'N/A',
-        ongoingHealthConditions: 'N/A',
+        allergies: '',
+        drugReactions: '',
+        ongoingHealthConditions: '',
         specialNotes: '',
         highBloodPressure: '',
         heartDisease: '',
         diabetes: '',
         cholesterol: '',
         smoke: '',
-        guardianName: '',
-        guardianId: '',
-        guardianPhone: ''
+        emergencyName: '',
+        emergencyRelation: '',
+        emergencyPhone: ''
     });
     const [phoneData, setPhoneData] = useState({ fullNumber: '', valid: false });
     const [phoneHData, setPhoneHData] = useState({ fullNumber: '', valid: false });
@@ -75,7 +76,6 @@ const UserDashboard = () => {
     const [showCancelRegistrationModal, setShowCancelRegistrationModal] = useState(false);
     const [registrationToCancel, setRegistrationToCancel] = useState(null);
     const [queueModalInteraction, setQueueModalInteraction] = useState(null);
-    const [showLogoutModal, setShowLogoutModal] = useState(false);
     const [error, setError] = useState('');
     const [interactions, setInteractions] = useState([]);
     const [lastVisits, setLastVisits] = useState({}); // visitorId -> last completed interaction (from backend, ignores time filter)
@@ -90,6 +90,7 @@ const UserDashboard = () => {
 
     // Filter state
     const [interactionFilter, setInteractionFilter] = useState('this_week');
+    const [receptionSubTab, setReceptionSubTab] = useState('patients');
 
     // Loading states
     const [isLoadingVisitors, setIsLoadingVisitors] = useState(true);
@@ -116,43 +117,18 @@ const UserDashboard = () => {
     const [isLoadingReports, setIsLoadingReports] = useState(false);
     const [viewingMedia, setViewingMedia] = useState(null);
 
-    // 1. Initial Auth & Tab Setup
+    // 1. Initial Auth (nav state is registered by UserDashboardLayout)
     useEffect(() => {
         const token = localStorage.getItem('token');
         if (token) {
             try {
                 const decoded = jwtDecode(token);
                 setUserData(decoded);
-                // Set initial tab ONLY ONCE when component mounts/login happens
-                if (decoded.role === 'officer') {
-                    setActiveTab('officer');
-                } else if (decoded.role === 'receptionist') {
-                    setActiveTab('reception');
-                }
             } catch (e) {
                 console.error('Failed to decode token');
             }
         }
-
     }, []);
-
-    const handleLogout = useCallback(() => {
-        setShowLogoutModal(true);
-    }, []);
-
-    // Register nav state with NavBar context (for top bar tabs + profile dropdown)
-    useEffect(() => {
-        if (userData && serial) {
-            register({
-                activeTab,
-                setActiveTab,
-                userData,
-                serial,
-                onLogout: handleLogout
-            });
-        }
-        return () => unregister();
-    }, [userData, serial, activeTab, register, unregister, handleLogout]);
 
     // 2. Load Constant Data (Visitors, Officers)
     useEffect(() => {
@@ -164,7 +140,7 @@ const UserDashboard = () => {
         }
     }, [userData?.entityId]);
 
-    // 3. Load Interactions once on mount/filter change (no polling - fetch only when needed)
+    // 3. Load interactions on mount and when time filter changes. Do not refetch on Operations tab switch (last visit comes from visitor.lastVisitAt).
     useEffect(() => {
         if (!userData?.entityId) {
             setIsLoadingInteractions(false);
@@ -552,7 +528,7 @@ const UserDashboard = () => {
         }
         const dup = checkHealthCardDuplicate(parseHealthCardToDigits(healthCardNumber), val);
         if (dup) {
-            setFieldErrors(prev => ({ ...prev, healthCard: `Health card already in use (${dup.firstName} ${dup.lastName})` }));
+            setFieldErrors(prev => ({ ...prev, healthCard: `HC already in use (${dup.firstName} ${dup.lastName})` }));
         } else {
             setFieldErrors(prev => { const n = { ...prev }; delete n.healthCard; return n; });
         }
@@ -564,12 +540,12 @@ const UserDashboard = () => {
         setHealthCardNumber(masked);
 
         const digits = parseHealthCardToDigits(masked);
-        if (!digits) setFieldErrors(prev => ({ ...prev, healthCard: 'Health card number is required' }));
+        if (!digits) setFieldErrors(prev => ({ ...prev, healthCard: 'HC is required' }));
         else if (digits.length < 10) setFieldErrors(prev => ({ ...prev, healthCard: 'Must be 10 digits (XXXX-XXX-XXX)' }));
         else {
             const dup = checkHealthCardDuplicate(digits, healthCardVersion);
             if (dup) {
-                setFieldErrors(prev => ({ ...prev, healthCard: `Health card already in use (${dup.firstName} ${dup.lastName})` }));
+                setFieldErrors(prev => ({ ...prev, healthCard: `HC already in use (${dup.firstName} ${dup.lastName})` }));
             } else {
                 setFieldErrors(prev => { const n = { ...prev }; delete n.healthCard; return n; });
             }
@@ -599,11 +575,11 @@ const UserDashboard = () => {
         }
         if (!visitorForm.gender) newErrors.gender = 'Sex is required';
         if (!phoneMData.valid) newErrors.phoneM = 'Phone (M) is required';
-        if (!healthCardNumber?.trim()) newErrors.healthCard = 'Health card number is required';
+        if (!healthCardNumber?.trim()) newErrors.healthCard = 'HC is required';
         else if (parseHealthCardToDigits(healthCardNumber).length !== 10) newErrors.healthCard = 'Must be 10 digits (XXXX-XXX-XXX)';
-        if (!healthCardVersion?.trim()) newErrors.healthCardVersion = 'Health card version is required';
+        if (!healthCardVersion?.trim()) newErrors.healthCardVersion = 'Version is required';
         else if (!/^[A-Za-z]{1,2}$/.test(healthCardVersion.trim())) newErrors.healthCardVersion = 'Version must be 1-2 letters (e.g. AB)';
-        if (!healthCardEffectivityDate) newErrors.healthCardEffectivity = 'Effectivity date is required';
+        if (!healthCardEffectivityDate) newErrors.healthCardEffectivity = 'Issue date is required';
         if (!healthCardExpiryDate) newErrors.healthCardExpiry = 'Expiry date is required';
 
         // Date comparison validation
@@ -611,9 +587,14 @@ const UserDashboard = () => {
             const eff = new Date(healthCardEffectivityDate);
             const exp = new Date(healthCardExpiryDate);
             if (exp < eff) {
-                newErrors.healthCardDate = 'Expiry date cannot be before effectivity date';
+                newErrors.healthCardDate = 'Expiry date cannot be before issue date';
             }
         }
+
+        // Past medical history: all five required (yes or no)
+        const pmhKeys = ['highBloodPressure', 'heartDisease', 'diabetes', 'cholesterol', 'smoke'];
+        const pastMedicalHistoryFilled = pmhKeys.every(k => visitorForm[k] === 'yes' || visitorForm[k] === 'no');
+        if (!pastMedicalHistoryFilled) newErrors.pastMedicalHistory = 'Fill the past medical history.';
 
         if (Object.keys(newErrors).length > 0) {
             setFieldErrors(newErrors);
@@ -624,7 +605,7 @@ const UserDashboard = () => {
         // Validate health card number (10 digits, unique)
         const healthCardDigits = parseHealthCardToDigits(healthCardNumber);
         if (healthCardDigits.length !== 10) {
-            setError('Health card number must be exactly 10 digits (XXXX-XXX-XXX)');
+            setError('HC must be exactly 10 digits (XXXX-XXX-XXX)');
             setIsCreatingVisitor(false);
             return;
         }
@@ -635,7 +616,7 @@ const UserDashboard = () => {
             (v.healthCardVersion || '').trim().toUpperCase() === versionNorm
         );
         if (duplicate) {
-            setError('Health card number and version already in use');
+            setError('HC and version already in use');
             setIsCreatingVisitor(false);
             return;
         }
@@ -714,19 +695,19 @@ const UserDashboard = () => {
 
         // Validate health card version (1-2 alphabetic, required)
         if (!healthCardVersion?.trim()) {
-            setError('Health card version is required (e.g. AB)');
+            setError('Version is required');
             setIsCreatingVisitor(false);
             return;
         }
         if (!/^[A-Za-z]{1,2}$/.test(healthCardVersion.trim())) {
-            setError('Health card version must be 1-2 letters (e.g. AB)');
+            setError('Version must be 1-2 letters (e.g. AB)');
             setIsCreatingVisitor(false);
             return;
         }
 
-        // Dates: required, expiry >= effectivity
+        // Dates: required, expiry >= issue date
         if (!healthCardEffectivityDate) {
-            setError('Effectivity date is required');
+            setError('Issue date is required');
             setIsCreatingVisitor(false);
             return;
         }
@@ -738,7 +719,7 @@ const UserDashboard = () => {
         const effDate = new Date(healthCardEffectivityDate);
         const expDate = new Date(healthCardExpiryDate);
         if (isNaN(effDate.getTime())) {
-            setError('Effectivity date is invalid');
+            setError('Issue date is invalid');
             setIsCreatingVisitor(false);
             return;
         }
@@ -748,7 +729,7 @@ const UserDashboard = () => {
             return;
         }
         if (expDate < effDate) {
-            setError('Expiry date must be after or equal to effectivity date');
+            setError('Expiry date must be after or equal to issue date');
             setIsCreatingVisitor(false);
             return;
         }
@@ -766,7 +747,7 @@ const UserDashboard = () => {
                 province: visitorForm.state.trim(),
                 postalCode: visitorForm.postalCode.trim(),
                 gender: visitorForm.gender,
-                phone: phoneMData.fullNumber || '',
+                phone: '', // legacy unused; only phoneM, phoneB, phoneH are used
                 phoneM: phoneMData.fullNumber || '',
                 phoneB: phoneData.fullNumber || '',
                 phoneH: phoneHData.fullNumber || '',
@@ -777,24 +758,28 @@ const UserDashboard = () => {
                 healthCardExpiryDate: healthCardExpiryDate,
                 notes: visitorForm.notes,
                 memo: visitorForm.memo,
-                // Red-zone (clinical) fields – always send so backend persists them
-                allergies: (visitorForm.allergies != null && String(visitorForm.allergies).trim()) ? String(visitorForm.allergies).trim() : 'N/A',
-                drugReactions: (visitorForm.drugReactions != null && String(visitorForm.drugReactions).trim()) ? String(visitorForm.drugReactions).trim() : 'N/A',
-                ongoingHealthConditions: (visitorForm.ongoingHealthConditions != null && String(visitorForm.ongoingHealthConditions).trim()) ? String(visitorForm.ongoingHealthConditions).trim() : 'N/A',
+                // Red-zone (clinical) fields – optional (send empty if not provided)
+                allergies: (() => {
+                    const v = (visitorForm.allergies != null) ? String(visitorForm.allergies).trim() : '';
+                    return v && v.toUpperCase() !== 'N/A' ? v : '';
+                })(),
+                drugReactions: (() => {
+                    const v = (visitorForm.drugReactions != null) ? String(visitorForm.drugReactions).trim() : '';
+                    return v && v.toUpperCase() !== 'N/A' ? v : '';
+                })(),
+                ongoingHealthConditions: (() => {
+                    const v = (visitorForm.ongoingHealthConditions != null) ? String(visitorForm.ongoingHealthConditions).trim() : '';
+                    return v && v.toUpperCase() !== 'N/A' ? v : '';
+                })(),
                 specialNotes: (visitorForm.specialNotes != null && String(visitorForm.specialNotes).trim()) ? String(visitorForm.specialNotes).trim() : '',
                 highBloodPressure: visitorForm.highBloodPressure === 'yes' || visitorForm.highBloodPressure === 'no' ? visitorForm.highBloodPressure : '',
                 heartDisease: visitorForm.heartDisease === 'yes' || visitorForm.heartDisease === 'no' ? visitorForm.heartDisease : '',
                 diabetes: visitorForm.diabetes === 'yes' || visitorForm.diabetes === 'no' ? visitorForm.diabetes : '',
                 cholesterol: visitorForm.cholesterol === 'yes' || visitorForm.cholesterol === 'no' ? visitorForm.cholesterol : '',
                 smoke: visitorForm.smoke === 'yes' || visitorForm.smoke === 'no' ? visitorForm.smoke : '',
-                guardianName: visitorForm.guardianName || '',
-                guardianPhone: guardianPhoneData.fullNumber || '',
-                ...(visitorForm.guardianId?.length === 6 && visitors.some((v) => {
-                    const serial = v.serial ? String(v.serial).padStart(6, '0') : '';
-                    return serial === visitorForm.guardianId;
-                })
-                    ? { guardianId: visitorForm.guardianId }
-                    : {}),
+                emergencyName: (visitorForm.emergencyName || '').trim(),
+                emergencyRelation: (visitorForm.emergencyRelation || '').trim(),
+                emergencyPhone: guardianPhoneData.fullNumber || '',
             };
 
             if (editingVisitorId) {
@@ -819,18 +804,18 @@ const UserDashboard = () => {
                 phoneM: '',
                 notes: '',
                 memo: '',
-                allergies: 'N/A',
-                drugReactions: 'N/A',
-                ongoingHealthConditions: 'N/A',
+                allergies: '',
+                drugReactions: '',
+                ongoingHealthConditions: '',
                 specialNotes: '',
                 highBloodPressure: '',
                 heartDisease: '',
                 diabetes: '',
                 cholesterol: '',
                 smoke: '',
-                guardianName: '',
-                guardianId: '',
-                guardianPhone: ''
+                emergencyName: '',
+                emergencyRelation: '',
+                emergencyPhone: ''
             });
             setPhoneData({ fullNumber: '', valid: false });
             setPhoneHData({ fullNumber: '', valid: false });
@@ -847,7 +832,7 @@ const UserDashboard = () => {
             // Reload visitors and interactions
             await loadVisitors(userData.entityId);
             if (!editingVisitorId) {
-                await loadInteractions(userData.entityId);
+                await loadInteractions(userData.entityId, interactionFilter);
             }
         } catch (err) {
             setError(err.response?.data?.error || (editingVisitorId ? 'Failed to update patient' : 'Failed to create visitor'));
@@ -868,9 +853,9 @@ const UserDashboard = () => {
             state: '',
             postalCode: '',
             gender: '',
-            allergies: 'N/A',
-            drugReactions: 'N/A',
-            ongoingHealthConditions: 'N/A',
+            allergies: '',
+            drugReactions: '',
+            ongoingHealthConditions: '',
             specialNotes: '',
             highBloodPressure: '',
             heartDisease: '',
@@ -882,9 +867,9 @@ const UserDashboard = () => {
             phoneM: '',
             notes: '',
             memo: '',
-            guardianName: '',
-            guardianId: '',
-            guardianPhone: ''
+            emergencyName: '',
+            emergencyRelation: '',
+            emergencyPhone: ''
         });
         setPhoneData({ fullNumber: '', valid: false });
         setPhoneHData({ fullNumber: '', valid: false });
@@ -911,9 +896,9 @@ const UserDashboard = () => {
             postalCode: visitor.postalCode || '',
             gender: (() => { const g = (visitor.gender || '').toLowerCase(); if (g === 'male') return 'M'; if (g === 'female') return 'F'; if (g === 'other' || g === 'm' || g === 'f' || g === 'o') return (visitor.gender || '').toUpperCase().slice(0, 1); return visitor.gender || ''; })(),
             email: visitor.email || '',
-            allergies: visitor.allergies || 'N/A',
-            drugReactions: visitor.drugReactions || 'N/A',
-            ongoingHealthConditions: visitor.ongoingHealthConditions || 'N/A',
+            allergies: (visitor.allergies && String(visitor.allergies).trim().toUpperCase() !== 'N/A') ? visitor.allergies : '',
+            drugReactions: (visitor.drugReactions && String(visitor.drugReactions).trim().toUpperCase() !== 'N/A') ? visitor.drugReactions : '',
+            ongoingHealthConditions: (visitor.ongoingHealthConditions && String(visitor.ongoingHealthConditions).trim().toUpperCase() !== 'N/A') ? visitor.ongoingHealthConditions : '',
             specialNotes: visitor.specialNotes || '',
             highBloodPressure: visitor.highBloodPressure || '',
             heartDisease: visitor.heartDisease || '',
@@ -924,17 +909,18 @@ const UserDashboard = () => {
             phoneM: visitor.phoneM || '',
             notes: visitor.notes || '',
             memo: visitor.memo || '',
-            guardianName: visitor.guardianName || '',
-            guardianId: visitor.guardianId || '',
-            guardianPhone: visitor.guardianPhone || ''
+            emergencyName: visitor.emergencyName || visitor.guardianName || '',
+            emergencyRelation: visitor.emergencyRelation || '',
+            emergencyPhone: visitor.emergencyPhone || visitor.guardianPhone || ''
         });
-        // Backward compat: old data may have phone (B or M) but no phoneB
+        // Backward compat: old data may have phone (B or M) but no phoneB. Store digits only so PhoneInput doesn't double "1".
         const mobile = visitor.phoneM || visitor.phone || '';
         const business = visitor.phoneB || (visitor.phone && visitor.phone !== mobile ? visitor.phone : '');
-        setPhoneData({ fullNumber: business, valid: !!business });
-        setPhoneHData({ fullNumber: visitor.phoneH || '', valid: !!visitor.phoneH });
-        setPhoneMData({ fullNumber: mobile, valid: !!mobile });
-        setGuardianPhoneData({ fullNumber: visitor.guardianPhone || '', valid: !!visitor.guardianPhone });
+        setPhoneData({ fullNumber: parsePhoneToDigits(business), valid: !!business });
+        setPhoneHData({ fullNumber: parsePhoneToDigits(visitor.phoneH || ''), valid: !!visitor.phoneH });
+        setPhoneMData({ fullNumber: parsePhoneToDigits(mobile), valid: !!mobile });
+        const emergencyPhone = visitor.emergencyPhone || visitor.guardianPhone || '';
+        setGuardianPhoneData({ fullNumber: parsePhoneToDigits(emergencyPhone), valid: !!emergencyPhone });
         setHealthCardNumber(formatHealthCardDisplay(visitor.healthCardNumber || ''));
         setHealthCardVersion(visitor.healthCardVersion || '');
         setHealthCardEffectivityDate(visitor.healthCardEffectivityDate || '');
@@ -993,7 +979,7 @@ const UserDashboard = () => {
     const handleRegisterPatient = async (patient, options = {}) => {
         if (!patient) return false;
 
-        const { reasonForVisit = '', parentInteractionId = '', reasonForVisitNotes = '' } = options;
+        const { reasonForVisit = '', visitMode = 'physical', parentInteractionId = '', reasonForVisitNotes = '', assignToOfficerId = '', assignOfficerSerial = '' } = options;
 
         // Check if patient already has an active (incomplete) registration
         const isAlreadyRegistered = interactions.some(i => i.visitorId === patient.id && !i.completed);
@@ -1031,10 +1017,11 @@ const UserDashboard = () => {
                 visitorId: patient.id,
                 visitorSerial: visitorSerial,
                 reasonForVisit: reasonForVisit || '',
-                reasonForVisitNotes: (reasonForVisitNotes != null && String(reasonForVisitNotes).trim()) ? String(reasonForVisitNotes).trim() : ''
+                reasonForVisitNotes: (reasonForVisitNotes != null && String(reasonForVisitNotes).trim()) ? String(reasonForVisitNotes).trim() : '',
+                visitMode: (visitMode === 'on_phone' || visitMode === 'physical') ? visitMode : 'physical'
             });
 
-            if (reasonForVisit === 'followup' && parentInteractionId) {
+            if ((reasonForVisit === 'followup' || reasonForVisit === 'refill_medicine') && parentInteractionId) {
                 const parentInteraction = interactions.find(i => i.id === parentInteractionId);
                 if (parentInteraction) {
                     const existingFr = parentInteraction.followupRequired || parentInteraction.followup;
@@ -1046,12 +1033,23 @@ const UserDashboard = () => {
                         }
                     });
                     await interactionService.saveDetails(response.id, {
-                        followup: { isFollowup: true, parentInteractionId },
+                        followup: { isFollowup: reasonForVisit === 'followup', parentInteractionId },
                         started: false,
                         ongoing: false,
                         incomplete: false
                     });
                 }
+            } else if (reasonForVisit === 'followup') {
+                await interactionService.saveDetails(response.id, {
+                    followup: { isFollowup: true, parentInteractionId: '' },
+                    started: false,
+                    ongoing: false,
+                    incomplete: false
+                });
+            }
+
+            if (assignToOfficerId && assignOfficerSerial) {
+                await interactionService.assignOfficer(response.id, assignToOfficerId, assignOfficerSerial);
             }
 
             setPendingInteractions(prev => prev.filter(i => i.id !== tempId));
@@ -1174,16 +1172,6 @@ const UserDashboard = () => {
         return `${API_URL.replace('/api', '')}/${imagePath}`;
     };
 
-    const confirmLogout = () => {
-        localStorage.removeItem('token');
-        localStorage.removeItem('entityName');
-        localStorage.removeItem('userRole');
-        localStorage.removeItem('userName');
-        localStorage.removeItem('entityId');
-        localStorage.removeItem('entitySerial');
-        navigate('/user/login');
-    };
-
     return (
         <div className="flex h-[calc(100vh-64px)] relative overflow-x-hidden">
             {/* Main Content */}
@@ -1194,6 +1182,7 @@ const UserDashboard = () => {
                         <ReceptionTab
                             interactionFilter={interactionFilter}
                             setInteractionFilter={setInteractionFilter}
+                            onReceptionSubTabChange={setReceptionSubTab}
                             visitors={visitors}
                             isLoadingVisitors={isLoadingVisitors}
                             searchFirstName={searchFirstName}
@@ -1206,8 +1195,8 @@ const UserDashboard = () => {
                             setSearchLastName={setSearchLastName}
                             searchSerial={searchSerial}
                             setSearchSerial={setSearchSerial}
-                            searchPhone={searchPhone}
-                            setSearchPhone={setSearchPhone}
+                            searchContact={searchContact}
+                            setSearchContact={setSearchContact}
                             searchHealthCard={searchHealthCard}
                             setSearchHealthCard={setSearchHealthCard}
                             searchDob={searchDob}
@@ -1309,6 +1298,7 @@ const UserDashboard = () => {
                             isLoadingInteractions={isLoadingInteractions}
                             onRefreshInteractions={() => loadInteractions(userData.entityId, interactionFilter)}
                             onInteractionClick={handleInteractionClick}
+                            handleRegisterPatient={handleRegisterPatient}
                         />
                     )}
                     </MasterDataProvider>
@@ -1328,6 +1318,7 @@ const UserDashboard = () => {
                     patientReports={patientReports}
                     officers={officers}
                     onOpenQueueModal={setQueueModalInteraction}
+                    interactions={interactions}
                 />
             )}
 
@@ -1364,39 +1355,6 @@ const UserDashboard = () => {
             )}
 
             {/* Logout Confirmation Modal */}
-            {showLogoutModal && (
-                <div className="fixed inset-0 bg-black/50 flex justify-center items-center px-4 pb-4 pt-0 !mt-0 z-[2000]" onClick={() => setShowLogoutModal(false)}>
-                    <div className="bg-white w-full max-w-[400px] p-6 sm:p-8 rounded-3xl shadow-lg animate-[slideUp_0.4s_ease-out]" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center gap-4 mb-6">
-                            <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
-                                <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                                </svg>
-                            </div>
-                            <div>
-                                <h2 className="text-xl font-semibold text-slate-900">Logout</h2>
-                                <p className="text-sm text-slate-600 mt-1">
-                                    Are you sure you want to log out of the interaction system?
-                                </p>
-                            </div>
-                        </div>
-                        <div className="flex gap-4">
-                            <button
-                                onClick={() => setShowLogoutModal(false)}
-                                className="flex-1 py-3 px-4 bg-slate-200 text-slate-800 rounded-xl font-semibold hover:bg-slate-300 transition-colors"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={confirmLogout}
-                                className="flex-1 py-3 px-4 bg-red-500 text-white rounded-xl font-semibold hover:bg-red-600 transition-colors"
-                            >
-                                Logout
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 };

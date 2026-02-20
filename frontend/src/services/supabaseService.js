@@ -1,9 +1,29 @@
-import supabase from '../config/supabase';
+import supabase, { SUPABASE_URL } from '../config/supabase';
 
 /**
  * Supabase Storage Service
  * Handles file uploads and storage operations
  */
+
+/** Extract storage path from a Supabase signed/public URL. Returns null if not a Supabase storage URL or if the extracted path is itself a URL (malformed data). */
+export function extractStoragePathFromSupabaseUrl(url) {
+    if (!url || typeof url !== 'string') return null;
+    if (!url.includes('/storage/') || !url.includes('/object/')) return null;
+    // Signed: .../object/sign/BUCKET/PATH?token=...  Public: .../object/public/PATH
+    const signMatch = url.match(/\/object\/sign\/[^/]+\/(.+?)(\?|$)/);
+    if (signMatch) {
+        const path = decodeURIComponent(signMatch[1]);
+        if (path.startsWith('http')) return null;
+        return path;
+    }
+    const publicMatch = url.match(/\/object\/public\/(.+?)(\?|$)/);
+    if (publicMatch) {
+        const path = decodeURIComponent(publicMatch[1]);
+        if (path.startsWith('http')) return null;
+        return path;
+    }
+    return null;
+}
 
 class SupabaseStorageService {
     /**
@@ -132,7 +152,18 @@ class SupabaseStorageService {
                 throw error;
             }
 
-            return data.signedUrl;
+            const raw = data?.signedUrl ?? data?.signedURL ?? data?.path;
+            if (!raw || typeof raw !== 'string') return raw;
+
+            if (raw.startsWith('http://') || raw.startsWith('https://')) {
+                return raw;
+            }
+            const base = (SUPABASE_URL || '').replace(/\/$/, '');
+            const pathPart = raw.startsWith('/') ? raw : `/${raw}`;
+            const [pathOnly, query] = pathPart.split('?');
+            const encodedPath = pathOnly ? pathOnly.split('/').map(segment => encodeURIComponent(segment)).join('/') : pathPart;
+            const fullPath = query ? `${encodedPath}?${query}` : encodedPath;
+            return `${base}/storage/v1${fullPath}`;
         } catch (error) {
             console.error('Error creating signed URL:', error);
             throw error;
@@ -227,7 +258,7 @@ class SupabaseStorageService {
             const path = `${entityId}/interactions/${interactionId}/${fieldName}.png`;
             
             const result = await this.uploadFile(file, 'CRM testing', path, {
-                upsert: false, // Don't overwrite existing files
+                upsert: true, // Overwrite if exists (e.g. re-saving edit without changing image)
                 contentType: 'image/png'
             });
             

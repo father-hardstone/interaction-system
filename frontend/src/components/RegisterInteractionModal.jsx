@@ -1,4 +1,4 @@
-import { formatPhoneDisplay, formatHealthCardDisplay, parseHealthCardToDigits, formatDateMMDDYYYY, stripEntityPrefix, getVisitorSerialDisplay } from '../utils/formatUtils';
+import { formatPhoneDisplay, formatHealthCardDisplay, parseHealthCardToDigits, formatDateMMDDYYYY, stripEntityPrefix, getVisitorSerialDisplay, getLastVisitDisplay } from '../utils/formatUtils';
 
 import { useState, useMemo } from 'react';
 
@@ -32,6 +32,7 @@ const RegisterInteractionModal = ({
     const [showRegisterConfirmModal, setShowRegisterConfirmModal] = useState(false);
     const [pendingRegisterVisitor, setPendingRegisterVisitor] = useState(null);
     const [reasonForVisit, setReasonForVisit] = useState('new_visit');
+    const [visitMode, setVisitMode] = useState('physical');
     const [parentInteractionId, setParentInteractionId] = useState('');
     const [newVisitNotes, setNewVisitNotes] = useState('');
 
@@ -64,16 +65,17 @@ const RegisterInteractionModal = ({
 
     const confirmRegistration = async () => {
         if (!pendingRegisterVisitor || !handleRegisterPatient) return;
-        if (reasonForVisit === 'followup' && !parentInteractionId) return; // Must select prior visit for followup
         const success = await handleRegisterPatient(pendingRegisterVisitor, {
             reasonForVisit: reasonForVisit || 'new_visit',
-            parentInteractionId: (reasonForVisit === 'followup' || reasonForVisit === 'refill_medicine') ? parentInteractionId : '',
+            visitMode: visitMode || 'physical',
+            parentInteractionId: (reasonForVisit === 'followup' || reasonForVisit === 'refill_medicine') ? (parentInteractionId || '') : '',
             reasonForVisitNotes: reasonForVisit === 'new_visit' ? newVisitNotes : ''
         });
         if (success) {
             setShowRegisterConfirmModal(false);
             setPendingRegisterVisitor(null);
             setReasonForVisit('new_visit');
+            setVisitMode('physical');
             setParentInteractionId('');
             setNewVisitNotes('');
             onClose();
@@ -83,6 +85,7 @@ const RegisterInteractionModal = ({
     const initiateRegistration = (visitor) => {
         setPendingRegisterVisitor(visitor);
         setReasonForVisit('new_visit');
+        setVisitMode('physical');
         setParentInteractionId('');
         setNewVisitNotes('');
         setShowRegisterConfirmModal(true);
@@ -192,10 +195,6 @@ const RegisterInteractionModal = ({
                                         const isRegisteringThis = isCreatingInteraction && pendingRegisterVisitor?.id === visitor.id;
                                         const isDisabled = isRegistered || isRegisteringThis;
 
-                                        const lastVisit = lastVisits[visitor.id] || interactions
-                                            .filter(i => i.visitorId === visitor.id && i.completed)
-                                            .sort((a, b) => new Date(b.editedAt || b.createdAt) - new Date(a.editedAt || a.createdAt))[0];
-
                                         return (
                                             <tr
                                                 key={visitor.id}
@@ -213,7 +212,7 @@ const RegisterInteractionModal = ({
                                                 <td className="px-4 py-3 text-slate-700 hidden xl:table-cell text-sm">{formatHealthCardDisplay(visitor.healthCardNumber || '') || '-'}</td>
                                                 <td className="px-4 py-3 text-slate-700 hidden xl:table-cell text-sm">{(visitor.healthCardVersion || '-').toUpperCase()}</td>
                                                 <td className="px-4 py-3 text-slate-700 hidden xl:table-cell text-sm">
-                                                    {lastVisit ? formatDate(lastVisit.editedAt || lastVisit.createdAt, true) : '-'}
+                                                    {getLastVisitDisplay(visitor, lastVisits, interactions)}
                                                 </td>
                                                 <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                                                     <button
@@ -248,7 +247,7 @@ const RegisterInteractionModal = ({
                 <div className="fixed inset-0 z-[1100] flex items-center justify-center px-4 pb-4 pt-0 !mt-0">
                     <div
                         className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
-                        onClick={() => !isCreatingInteraction && (setShowRegisterConfirmModal(false), setPendingRegisterVisitor(null), setReasonForVisit('new_visit'), setParentInteractionId(''), setNewVisitNotes(''))}
+                        onClick={() => !isCreatingInteraction && (setShowRegisterConfirmModal(false), setPendingRegisterVisitor(null), setReasonForVisit('new_visit'), setVisitMode('physical'), setParentInteractionId(''), setNewVisitNotes(''))}
                     />
                     <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in duration-200">
                         <div className="p-6">
@@ -257,6 +256,33 @@ const RegisterInteractionModal = ({
                                 Register an interaction for {pendingRegisterVisitor ? `${pendingRegisterVisitor.firstName || ''} ${pendingRegisterVisitor.lastName || ''}`.trim() : 'this patient'}?
                             </p>
                             <div className="space-y-4 mb-6">
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Visit mode</label>
+                                    <div className="flex gap-4">
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                            <input
+                                                type="radio"
+                                                name="visitMode"
+                                                value="physical"
+                                                checked={visitMode === 'physical'}
+                                                onChange={() => setVisitMode('physical')}
+                                                className="w-4 h-4 text-primary border-slate-300 focus:ring-primary"
+                                            />
+                                            <span className="text-sm font-medium text-slate-700">Physical</span>
+                                        </label>
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                            <input
+                                                type="radio"
+                                                name="visitMode"
+                                                value="on_phone"
+                                                checked={visitMode === 'on_phone'}
+                                                onChange={() => setVisitMode('on_phone')}
+                                                className="w-4 h-4 text-primary border-slate-300 focus:ring-primary"
+                                            />
+                                            <span className="text-sm font-medium text-slate-700">Phone consult</span>
+                                        </label>
+                                    </div>
+                                </div>
                                 <div>
                                     <label className="block text-xs font-semibold text-slate-600 mb-1.5">Reason for visit</label>
                                     <select
@@ -288,7 +314,7 @@ const RegisterInteractionModal = ({
                                     <div>
                                         <label className="block text-xs font-semibold text-slate-600 mb-1.5">
                                             {reasonForVisit === 'followup' ? 'Prior visit (followup to)' : 'Prior visit (refill from)'}
-                                            {reasonForVisit === 'followup' && <span className="text-red-500 ml-0.5">*</span>}
+                                            <span className="text-slate-400 font-normal ml-0.5">(optional)</span>
                                         </label>
                                         <select
                                             value={parentInteractionId}
@@ -315,6 +341,7 @@ const RegisterInteractionModal = ({
                                             setShowRegisterConfirmModal(false);
                                             setPendingRegisterVisitor(null);
                                             setReasonForVisit('new_visit');
+                                            setVisitMode('physical');
                                             setParentInteractionId('');
                                             setNewVisitNotes('');
                                         }
@@ -326,7 +353,7 @@ const RegisterInteractionModal = ({
                                 </button>
                                 <button
                                     onClick={confirmRegistration}
-                                    disabled={isCreatingInteraction || (reasonForVisit === 'followup' && !parentInteractionId)}
+                                    disabled={isCreatingInteraction}
                                     className="px-4 py-2 rounded-lg bg-green-600 text-white font-medium hover:bg-green-700 transition-colors shadow-lg shadow-green-200/50 disabled:opacity-90 disabled:cursor-not-allowed flex items-center justify-center gap-2 min-w-[140px]"
                                 >
                                     {isCreatingInteraction ? (

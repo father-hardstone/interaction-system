@@ -33,6 +33,17 @@ class VisitorService {
         return visitor ? visitor.toObject() : null;
     }
 
+    /** Update only lastVisitAt (e.g. when an interaction is completed). Does not change editedAt. */
+    async updateLastVisitAt(visitorId, lastVisitAt) {
+        if (!visitorId || !lastVisitAt) return null;
+        const visitor = await Visitor.findOneAndUpdate(
+            { id: visitorId, deletedAt: '' },
+            { lastVisitAt },
+            { new: true }
+        );
+        return visitor ? visitor.toObject() : null;
+    }
+
     async delete(id) {
         const visitor = await Visitor.findOneAndUpdate(
             { id },

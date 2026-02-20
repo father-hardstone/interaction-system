@@ -9,6 +9,9 @@ router.use(authenticateToken, requireRoles(['entity', 'officer', 'receptionist']
 // Get all interactions for an entity
 router.get('/entity/:entityId', InteractionController.getInteractionsByEntity);
 
+// Get one interaction by id (full document)
+router.get('/:id', InteractionController.getInteractionById);
+
 // Create a new interaction
 router.post('/', InteractionController.createInteraction);
 

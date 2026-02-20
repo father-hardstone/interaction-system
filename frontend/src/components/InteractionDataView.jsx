@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import supabaseStorageService from '../services/supabaseService';
+import supabaseStorageService, { extractStoragePathFromSupabaseUrl } from '../services/supabaseService';
 
 /** Parse scratchpad into paths array (single path or JSON array). */
 const parseScratchpadPaths = (scratchpad) => {
@@ -20,7 +20,8 @@ const InteractionDataView = ({
     getImageUrl,
     setViewingMedia,
     patientReports = [],
-    isExpanded = true
+    isExpanded = true,
+    onOpenReport
 }) => {
     const [imageLoadingStates, setImageLoadingStates] = useState({});
     const [supabaseUrls, setSupabaseUrls] = useState({});
@@ -46,7 +47,9 @@ const InteractionDataView = ({
                 for (const p of paths) {
                     if (p && p.includes('/interactions/')) {
                         try {
-                            const url = await supabaseStorageService.getFileUrl('CRM testing', p);
+                            const pathForApi = p.startsWith('http') ? extractStoragePathFromSupabaseUrl(p) : p;
+                            if (!pathForApi) continue;
+                            const url = await supabaseStorageService.getFileUrl('CRM testing', pathForApi);
                             urls[p] = url;
                         } catch (error) {
                             console.error(`Error fetching Supabase URL for ${field.key}:`, error);
@@ -112,47 +115,54 @@ const InteractionDataView = ({
         setImageLoadingStates(prev => ({ ...prev, [imageId]: false }));
     };
 
-    const getImageId = (type, scratchpad) => `${type}-${scratchpad}`;
+    const getImageId = (type, path) => `${type}-${path}`;
 
-    const setSheetIndex = (sectionKey, index) => {
+    /** Set sheet index and mark the new sheet's image as loading so spinner shows until onLoad. */
+    const setSheetIndex = (sectionKey, index, paths) => {
+        const path = paths[index];
+        if (path) {
+            const newImgId = getImageId(sectionKey, path);
+            setImageLoadingStates(prev => ({ ...prev, [newImgId]: true }));
+        }
         setSheetIndices(prev => ({ ...prev, [sectionKey]: index }));
     };
 
-    /** Renders scratchpad image(s) with optional prev/next when multiple sheets. */
-    const renderScratchpadSheets = (sectionKey, scratchpad, zoomTitle) => {
+    /** Renders scratchpad image(s) with optional prev/next when multiple sheets. addedLaterSheetIndices: array of sheet indices that show "Added later" badge. */
+    const renderScratchpadSheets = (sectionKey, scratchpad, zoomTitle, addedLaterSheetIndices) => {
         const paths = parseScratchpadPaths(scratchpad);
         if (!paths.length) return null;
         const currentIndex = Math.min(sheetIndices[sectionKey] ?? 0, paths.length - 1);
         const currentPath = paths[currentIndex];
         const imgId = getImageId(sectionKey, currentPath);
-        const isLoading = imageLoadingStates[imgId] !== false;
         const url = getResolvedImageUrl(currentPath);
+        const isLoading = !url || imageLoadingStates[imgId] !== false;
+        const isAddedLater = Array.isArray(addedLaterSheetIndices) && addedLaterSheetIndices.includes(currentIndex);
         return (
-            <div className="mt-2 relative min-h-[100px]">
+            <div className="mt-2 relative min-h-[280px]">
+                {isAddedLater && (
+                    <span className="absolute top-0 right-0 z-10 text-[10px] font-semibold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 shadow-sm">Added later</span>
+                )}
                 {isLoading && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-slate-50 rounded-xl z-10">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                    <div className="absolute inset-0 flex items-center justify-center bg-slate-50 rounded-xl z-[5] min-h-[280px]">
+                        <div className="animate-spin rounded-full h-8 w-8 border-2 border-slate-200 border-t-blue-600"></div>
                     </div>
                 )}
-                <img
-                    src={url}
-                    alt={`${sectionKey} Scratchpad`}
-                    className="max-w-full h-auto rounded-xl border-2 border-slate-100 cursor-zoom-in hover:border-blue-400 transition-all shadow-sm"
-                    onClick={() => url && setViewingMedia({ type: 'image', url, title: zoomTitle })}
-                    onLoad={() => handleImageLoad(imgId)}
-                    onError={() => handleImageError(imgId)}
-                    onLoadStart={() => {
-                        if (imageLoadingStates[imgId] === undefined) {
-                            setImageLoadingStates(prev => ({ ...prev, [imgId]: true }));
-                        }
-                    }}
-                    style={{ display: isLoading ? 'none' : 'block' }}
-                />
+                {url && (
+                    <img
+                        src={url}
+                        alt={`${sectionKey} Scratchpad`}
+                        className="max-w-full h-auto rounded-xl border-2 border-slate-100 cursor-zoom-in hover:border-blue-400 transition-all shadow-sm"
+                        style={{ display: isLoading ? 'none' : 'block' }}
+                        onClick={() => setViewingMedia({ type: 'image', url, title: zoomTitle })}
+                        onLoad={() => handleImageLoad(imgId)}
+                        onError={() => handleImageError(imgId)}
+                    />
+                )}
                 {paths.length > 1 && (
                     <div className="flex items-center justify-center gap-2 mt-2">
                         <button
                             type="button"
-                            onClick={() => setSheetIndex(sectionKey, currentIndex - 1)}
+                            onClick={() => setSheetIndex(sectionKey, currentIndex - 1, paths)}
                             disabled={currentIndex <= 0}
                             className="p-2 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                             aria-label="Previous sheet"
@@ -162,7 +172,7 @@ const InteractionDataView = ({
                         <span className="text-xs font-medium text-slate-600 min-w-[5rem] text-center">Sheet {currentIndex + 1} of {paths.length}</span>
                         <button
                             type="button"
-                            onClick={() => setSheetIndex(sectionKey, currentIndex + 1)}
+                            onClick={() => setSheetIndex(sectionKey, currentIndex + 1, paths)}
                             disabled={currentIndex >= paths.length - 1}
                             className="p-2 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                             aria-label="Next sheet"
@@ -174,6 +184,18 @@ const InteractionDataView = ({
             </div>
         );
     };
+
+    const editedBadgeEl = (
+        <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 ml-1.5 inline-flex">Edited</span>
+    );
+    const isCcEdited = (interaction.ccReason?.addedLaterSheetIndices?.length ?? 0) > 0;
+    const isSubjectiveEdited = (interaction.subjective?.addedLaterSheetIndices?.length ?? 0) > 0;
+    const isObjectiveEdited = (interaction.objective?.addedLaterSheetIndices?.length ?? 0) > 0;
+    const isApEdited = (interaction.assessmentPlan?.addedLaterSheetIndices?.length ?? 0) > 0;
+    const isMedsEdited = interaction.medications?.some(m => m.addedLater);
+    const isReferralEdited = !!interaction.referral?.addedLater;
+    const isFollowupEdited = !!interaction.followupRequired?.addedLater;
+    const isNotesEdited = (interaction.editCount ?? 0) > 0 && interaction.savedNotes?.some(n => (n.text || '').includes('Edit ('));
 
     const formatSimpleDate = (dateString) => {
         if (!dateString) return 'N/A';
@@ -194,14 +216,16 @@ const InteractionDataView = ({
             {/* ROW 1: CC */}
             {(interaction.ccReason?.text || (interaction.ccReason?.hasScratchpad && interaction.ccReason?.scratchpad)) && (
                 <div className="group">
-                    <label className="text-xs font-semibold text-slate-400 normal-case tracking-wide block mb-2 transition-colors group-hover:text-blue-500">Chief Complaint (CC)</label>
+                    <label className="text-xs font-semibold text-slate-400 normal-case tracking-wide block mb-2 transition-colors group-hover:text-blue-500 flex items-center flex-wrap gap-1">
+                        Chief Complaint (CC){isCcEdited ? editedBadgeEl : null}
+                    </label>
                     <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 shadow-sm transition-all hover:border-blue-200 hover:bg-white min-h-[60px]">
                         {interaction.ccReason.text && (
                             <p className="text-sm text-slate-700 leading-relaxed font-medium whitespace-pre-wrap mb-3">
                                 {interaction.ccReason.text}
                             </p>
                         )}
-                        {interaction.ccReason.hasScratchpad && interaction.ccReason.scratchpad && renderScratchpadSheets('cc', interaction.ccReason.scratchpad, 'Chief Complaint Handwriting')}
+                        {interaction.ccReason.hasScratchpad && interaction.ccReason.scratchpad && renderScratchpadSheets('cc', interaction.ccReason.scratchpad, 'Chief Complaint Handwriting', interaction.ccReason.addedLaterSheetIndices)}
                     </div>
                 </div>
             )}
@@ -209,14 +233,16 @@ const InteractionDataView = ({
             {/* ROW 2: Subjective */}
             {(interaction.subjective?.text || (interaction.subjective?.hasScratchpad && interaction.subjective?.scratchpad)) && (
                 <div className="group">
-                    <label className="text-xs font-semibold text-slate-400 normal-case tracking-wide block mb-2 transition-colors group-hover:text-blue-500">Subjective (S)</label>
+                    <label className="text-xs font-semibold text-slate-400 normal-case tracking-wide block mb-2 transition-colors group-hover:text-blue-500 flex items-center flex-wrap gap-1">
+                        Subjective (S){isSubjectiveEdited ? editedBadgeEl : null}
+                    </label>
                     <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 shadow-sm transition-all hover:border-blue-200 hover:bg-white min-h-[60px]">
                         {interaction.subjective.text && (
                             <p className="text-sm text-slate-700 leading-relaxed font-medium whitespace-pre-wrap mb-3">
                                 {interaction.subjective.text}
                             </p>
                         )}
-                        {interaction.subjective.hasScratchpad && interaction.subjective.scratchpad && renderScratchpadSheets('subjective', interaction.subjective.scratchpad, 'Subjective Handwriting')}
+                        {interaction.subjective.hasScratchpad && interaction.subjective.scratchpad && renderScratchpadSheets('subjective', interaction.subjective.scratchpad, 'Subjective Handwriting', interaction.subjective.addedLaterSheetIndices)}
                     </div>
                 </div>
             )}
@@ -224,14 +250,16 @@ const InteractionDataView = ({
             {/* ROW 3: Objective */}
             {(interaction.objective?.text || (interaction.objective?.hasScratchpad && interaction.objective?.scratchpad)) && (
                 <div className="group">
-                    <label className="text-xs font-semibold text-slate-400 normal-case tracking-wide block mb-2 transition-colors group-hover:text-blue-500">Objective (O)</label>
+                    <label className="text-xs font-semibold text-slate-400 normal-case tracking-wide block mb-2 transition-colors group-hover:text-blue-500 flex items-center flex-wrap gap-1">
+                        Objective (O){isObjectiveEdited ? editedBadgeEl : null}
+                    </label>
                     <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 shadow-sm transition-all hover:border-blue-200 hover:bg-white min-h-[60px]">
                         {interaction.objective.text && (
                             <p className="text-sm text-slate-700 leading-relaxed font-medium whitespace-pre-wrap mb-3">
                                 {interaction.objective.text}
                             </p>
                         )}
-                        {interaction.objective.hasScratchpad && interaction.objective.scratchpad && renderScratchpadSheets('objective', interaction.objective.scratchpad, 'Objective Handwriting')}
+                        {interaction.objective.hasScratchpad && interaction.objective.scratchpad && renderScratchpadSheets('objective', interaction.objective.scratchpad, 'Objective Handwriting', interaction.objective.addedLaterSheetIndices)}
                     </div>
                 </div>
             )}
@@ -239,14 +267,16 @@ const InteractionDataView = ({
             {/* ROW 4: Assessment & Plan */}
             {(interaction.assessmentPlan?.text || (interaction.assessmentPlan?.hasScratchpad && interaction.assessmentPlan?.scratchpad)) && (
                 <div className="group">
-                    <label className="text-xs font-semibold text-slate-400 normal-case tracking-wide block mb-2 transition-colors group-hover:text-blue-500">Assessment & Plan (A&P)</label>
+                    <label className="text-xs font-semibold text-slate-400 normal-case tracking-wide block mb-2 transition-colors group-hover:text-blue-500 flex items-center flex-wrap gap-1">
+                        Assessment & Plan (A&P){isApEdited ? editedBadgeEl : null}
+                    </label>
                     <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 shadow-sm transition-all hover:border-blue-200 hover:bg-white min-h-[60px]">
                         {interaction.assessmentPlan.text && (
                             <p className="text-sm text-slate-700 leading-relaxed font-medium whitespace-pre-wrap mb-3">
                                 {interaction.assessmentPlan.text}
                             </p>
                         )}
-                        {interaction.assessmentPlan.hasScratchpad && interaction.assessmentPlan.scratchpad && renderScratchpadSheets('assessmentPlan', interaction.assessmentPlan.scratchpad, 'Assessment & Plan Handwriting')}
+                        {interaction.assessmentPlan.hasScratchpad && interaction.assessmentPlan.scratchpad && renderScratchpadSheets('assessmentPlan', interaction.assessmentPlan.scratchpad, 'Assessment & Plan Handwriting', interaction.assessmentPlan.addedLaterSheetIndices)}
                     </div>
                 </div>
             )}
@@ -254,7 +284,9 @@ const InteractionDataView = ({
             {/* ROW 5: Medications */}
             {interaction.medications && interaction.medications.length > 0 && (
                 <div className="group">
-                    <label className="text-xs font-semibold text-slate-400 normal-case tracking-wide block mb-2 transition-colors group-hover:text-emerald-600">Medications prescribed</label>
+                    <label className="text-xs font-semibold text-slate-400 normal-case tracking-wide block mb-2 transition-colors group-hover:text-emerald-600 flex items-center flex-wrap gap-1">
+                        Medications prescribed{isMedsEdited ? editedBadgeEl : null}
+                    </label>
                     <div className="space-y-4">
                         {interaction.medications.map((med, idx) => (
                             <div key={idx} className="bg-emerald-50/50 border border-emerald-100 rounded-2xl p-4 shadow-sm transition-all hover:shadow-md hover:bg-white">
@@ -268,8 +300,8 @@ const InteractionDataView = ({
                                         <span className="text-slate-700 font-semibold">{med.frequency} • {med.duration}</span>
                                     </div>
                                     <div className="flex flex-col text-right">
-                                        <span className="text-xs normal-case font-semibold text-emerald-600/60 tracking-wider">Refills / Suspension</span>
-                                        <span className="text-slate-700 font-semibold">{med.refills} refills • {med.suspension || 'tablet'}</span>
+                                        <span className="text-xs normal-case font-semibold text-emerald-600/60 tracking-wider">Repeat</span>
+                                        <span className="text-slate-700 font-semibold">{med.refills}</span>
                                     </div>
                                 </div>
                             </div>
@@ -278,23 +310,23 @@ const InteractionDataView = ({
                 </div>
             )}
 
-            {/* ROW 6: Referral / Requisition */}
+            {/* ROW 6: Referral / Requisition — single row */}
             {interaction.referral && interaction.referral.type && (
                 <div className="group">
-                    <label className="text-xs font-semibold text-slate-400 normal-case tracking-wide block mb-2 transition-colors group-hover:text-blue-600">Referral / requisition</label>
+                    <label className="text-xs font-semibold text-slate-400 normal-case tracking-wide block mb-2 transition-colors group-hover:text-blue-600 flex items-center flex-wrap gap-1">Referral / requisition{isReferralEdited ? editedBadgeEl : null}</label>
                     <div className="bg-blue-50/50 border border-blue-100 rounded-2xl p-4 shadow-sm transition-all hover:shadow-md hover:bg-white">
-                        <div className="flex justify-between items-center mb-3">
-                            <span className="font-semibold text-blue-700 normal-case p-1.5 bg-blue-100/50 rounded-lg text-xs tracking-widest">{interaction.referral.type}</span>
-                            <span className="text-sm font-semibold text-slate-500">{formatSimpleDate(interaction.referral.date)}</span>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                             <div>
-                                <span className="text-xs normal-case font-semibold text-slate-400 block mb-0.5 tracking-tighter">Directed To</span>
-                                <div className="font-semibold text-slate-800">{interaction.referral.to}</div>
+                                <span className="text-xs normal-case font-semibold text-slate-400 block mb-0.5 tracking-tighter">Type of referral</span>
+                                <span className="font-semibold text-blue-700 normal-case">{interaction.referral.type}</span>
                             </div>
                             <div>
-                                <span className="text-xs normal-case font-semibold text-slate-400 block mb-0.5 tracking-tighter">Clinical Indication</span>
-                                <div className="font-medium text-slate-600 text-xs leading-relaxed italic">{interaction.referral.reason}</div>
+                                <span className="text-xs normal-case font-semibold text-slate-400 block mb-0.5 tracking-tighter">Description</span>
+                                <div className="font-medium text-slate-700">{interaction.referral.reason || '—'}</div>
+                            </div>
+                            <div>
+                                <span className="text-xs normal-case font-semibold text-slate-400 block mb-0.5 tracking-tighter">Referred to</span>
+                                <div className="font-semibold text-slate-800">{interaction.referral.to || '—'}</div>
                             </div>
                         </div>
                     </div>
@@ -304,25 +336,24 @@ const InteractionDataView = ({
             {/* ROW 7: Follow-up */}
             {((interaction.followupRequired?.required) || (interaction.followup?.required)) && (
                 <div className="group">
-                    <label className="text-xs font-semibold text-slate-400 normal-case tracking-wide block mb-2 transition-colors group-hover:text-orange-600">Required follow-up</label>
-                    <div className="bg-orange-50/50 border border-orange-100 rounded-2xl p-4 flex items-center justify-between shadow-sm transition-all hover:shadow-md hover:bg-white">
-                        <div className="flex items-center gap-3">
-                            <div className="bg-orange-100 p-2 rounded-xl">
-                                <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                </svg>
-                            </div>
-                            <span className="font-semibold text-orange-900 normal-case text-xs tracking-tighter">Next appointment recommended</span>
-                        </div>
-                        <span className="font-semibold text-slate-700 bg-white px-3 py-1.5 rounded-xl border border-orange-200 shadow-sm">{formatSimpleDate((interaction.followupRequired || interaction.followup)?.date)}</span>
-                    </div>
+                    {(() => {
+                        const fr = interaction.followupRequired || interaction.followup || {};
+                        const dateStr = fr.date ? formatSimpleDate(fr.date) : '';
+                        const intervalStr = fr.intervalWeeks != null && fr.intervalWeeks !== '' ? `${fr.intervalWeeks} ${fr.intervalWeeks === 1 ? 'week' : 'weeks'}` : (fr.intervalMonths != null && fr.intervalMonths !== '' ? `${fr.intervalMonths} ${fr.intervalMonths === 1 ? 'month' : 'months'}` : '');
+                        const detailStr = [dateStr, intervalStr].filter(Boolean).join(', ');
+                        return (
+                            <label className="text-xs font-semibold text-slate-400 normal-case tracking-wide block transition-colors group-hover:text-orange-600 flex items-center flex-wrap gap-1.5">
+                                Followup details{detailStr ? ` — ${detailStr}` : ''}{isFollowupEdited ? editedBadgeEl : null}
+                            </label>
+                        );
+                    })()}
                 </div>
             )}
 
             {/* ROW 6: Interaction Notes history */}
             {interaction.savedNotes && interaction.savedNotes.length > 0 && (
                 <div className="group">
-                    <label className="text-xs font-semibold text-slate-400 normal-case tracking-wide block mb-2 transition-colors group-hover:text-yellow-600">Interaction notes history</label>
+                    <label className="text-xs font-semibold text-slate-400 normal-case tracking-wide block mb-2 transition-colors group-hover:text-yellow-600 flex items-center flex-wrap gap-1">Interaction notes history{isNotesEdited ? editedBadgeEl : null}</label>
                     <div className="bg-yellow-50/30 border border-yellow-100/50 rounded-3xl p-4 space-y-4">
                         {interaction.savedNotes.map((note, idx) => (
                             <div key={idx} className="bg-white border border-yellow-100 p-4 rounded-2xl shadow-sm relative group/note">
@@ -351,7 +382,7 @@ const InteractionDataView = ({
             {/* ROW 7: Billing Lines */}
             {interaction.serviceLines && interaction.serviceLines.length > 0 && (
                 <div className="group">
-                    <label className="text-xs font-semibold text-slate-400 normal-case tracking-wide block mb-2 transition-colors group-hover:text-slate-900">Billing & diagnostics</label>
+                    <label className="text-xs font-semibold text-slate-400 normal-case tracking-wide block mb-2 transition-colors group-hover:text-slate-900 flex items-center flex-wrap gap-1">Billing & diagnostics</label>
                     <div className="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
                         <table className="w-full text-left text-xs">
                             <thead className="bg-slate-50 border-b border-slate-100">
@@ -389,7 +420,7 @@ const InteractionDataView = ({
             {/* ROW 8: Medical Files (SIMPLER VERSION) */}
             <div className="pt-6 border-t border-slate-100">
                 <div className="flex items-center justify-between mb-4">
-                    <label className="text-xs font-semibold text-slate-400 normal-case tracking-wide block">Medical Reports Vault</label>
+                    <label className="text-xs font-semibold text-slate-400 normal-case tracking-wide block">Attached reports</label>
                     <span className="bg-slate-100 text-slate-500 font-semibold text-xs px-2 py-0.5 rounded-md normal-case">{reports.length} Files</span>
                 </div>
 
@@ -402,7 +433,9 @@ const InteractionDataView = ({
                             <div
                                 key={report.id}
                                 onClick={() => {
-                                    if (fileUrl) {
+                                    if (fileUrl && onOpenReport) {
+                                        onOpenReport(report, fileUrl);
+                                    } else if (fileUrl) {
                                         setViewingMedia({
                                             type: isPdf ? 'pdf' : 'image',
                                             url: fileUrl,

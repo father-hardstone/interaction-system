@@ -3,7 +3,7 @@ import ReportUpload from './ReportUpload';
 import ReportDetailsModal from './ReportDetailsModal';
 import { renderInteractionTags } from '../utils/interactionTags';
 import supabaseStorageService from '../services/supabaseService';
-import { formatPhoneDisplay, formatHealthCardDisplay, formatDateMMDDYYYY, getShortInteractionId } from '../utils/formatUtils';
+import { formatPhoneDisplay, formatHealthCardDisplay, formatDateMMDDYYYY, getShortInteractionId, getLastVisitDisplay } from '../utils/formatUtils';
 
 const toTitleCase = (str) => {
     if (!str) return '';
@@ -106,12 +106,37 @@ const PatientDetailsModal = ({
                             <div>
                                 <span className="text-slate-500 font-semibold normal-case tracking-wide">DOB</span>
                                 <span className="ml-1.5 font-semibold text-slate-700">{formatDateMMDDYYYY(selectedPatient.dateOfBirth) || '-'}</span>
+                                {selectedPatient.dateOfBirth && (() => {
+                                    const parts = String(selectedPatient.dateOfBirth).split(/[-/]/);
+                                    if (parts.length >= 3) {
+                                        let month, day, year;
+                                        if (parts[0].length === 4) {
+                                            [year, month, day] = parts;
+                                        } else {
+                                            [month, day, year] = parts;
+                                        }
+                                        month = parseInt(month, 10) - 1;
+                                        day = parseInt(day, 10);
+                                        year = parseInt(year, 10);
+                                        const dob = new Date(year, month, day);
+                                        const today = new Date();
+                                        let years = today.getFullYear() - dob.getFullYear();
+                                        let months = today.getMonth() - dob.getMonth();
+                                        if (today.getDate() < dob.getDate()) months--;
+                                        if (months < 0) { years--; months += 12; }
+                                        if (!isNaN(years) && years >= 0) {
+                                            if (years === 0) return <span className="ml-1.5 text-slate-600 font-semibold">({months} mo)</span>;
+                                            return <span className="ml-1.5 text-slate-600 font-semibold">({months > 0 ? `${years} yr ${months} mo` : `${years} yr`})</span>;
+                                        }
+                                    }
+                                    return null;
+                                })()}
                             </div>
                             {selectedPatient.healthCardNumber && (
                                 <>
                                     <div className="text-slate-300">|</div>
                                     <div>
-                                        <span className="text-slate-500 font-semibold normal-case tracking-wide">Health Card</span>
+                                        <span className="text-slate-500 font-semibold normal-case tracking-wide">HC</span>
                                         <span className="ml-1.5 font-sans font-semibold text-slate-700">{formatHealthCardDisplay(selectedPatient.healthCardNumber)}</span>
                                         {selectedPatient.healthCardVersion && <span className="ml-1 text-slate-600 font-semibold">({selectedPatient.healthCardVersion})</span>}
                                     </div>
@@ -134,11 +159,6 @@ const PatientDetailsModal = ({
                     {/* SECTION 1: Personal Profile (hidden in reportsOnly mode) */}
                     {!reportsOnly && (
                     <div className="space-y-1.5">
-                        <div className="flex items-center gap-2 mb-1">
-                            <div className="w-1 h-3.5 bg-blue-500 rounded-full"></div>
-                            <h4 className="text-base font-semibold text-slate-900 normal-case tracking-wide">Identity Details</h4>
-                        </div>
-
                         <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-1.5">
                             {[
                                 { label: 'Full Name', value: toTitleCase(getVisitorName(selectedPatient.id)) },
@@ -147,23 +167,21 @@ const PatientDetailsModal = ({
                                 { label: 'Phone (B)', value: (() => { const m = selectedPatient.phoneM || selectedPatient.phone || ''; const b = selectedPatient.phoneB || (selectedPatient.phone && selectedPatient.phone !== m ? selectedPatient.phone : ''); return b ? formatPhoneDisplay(b) : '—'; })() },
                                 { label: 'Phone (H)', value: formatPhoneDisplay(selectedPatient.phoneH) },
                                 { label: 'Email Address', value: selectedPatient.email },
-                                { label: 'Last Visit', value: (() => {
-                                    const lastVisit = lastVisits[selectedPatient?.id] || completedInteractionsForPatient
-                                        .sort((a, b) => {
-                                            const dateA = new Date(a.editedAt || a.createdAt);
-                                            const dateB = new Date(b.editedAt || b.createdAt);
-                                            return dateB - dateA;
-                                        })[0];
-                                    return lastVisit ? formatDate(lastVisit.editedAt || lastVisit.createdAt, true) : '-';
-                                })() },
-                                { label: 'Health Card Effectivity', value: formatDateMMDDYYYY(selectedPatient.healthCardEffectivityDate) },
-                                { label: 'Health Card Expiry', value: formatDateMMDDYYYY(selectedPatient.healthCardExpiryDate) },
-                            ].map((item, idx) => (
-                                <div key={idx} className="space-y-0">
-                                    <label className="text-xs font-semibold text-slate-600 normal-case tracking-wide block">{item.label}</label>
-                                    <div className={`text-sm font-semibold text-slate-700 tracking-tight ${item.label === 'Full Name' ? 'font-bold normal-case' : 'normal-case'}`}>{item.value || '-'}</div>
-                                </div>
-                            ))}
+                                { label: 'Last Visit', value: getLastVisitDisplay(selectedPatient, lastVisits, completedInteractionsForPatient) },
+                                { label: 'HC issue date', value: formatDateMMDDYYYY(selectedPatient.healthCardEffectivityDate) },
+                                { label: 'HC expiry date', value: formatDateMMDDYYYY(selectedPatient.healthCardExpiryDate), isExpiryDate: true, rawDate: selectedPatient.healthCardExpiryDate },
+                            ].map((item, idx) => {
+                                const isExpired = item.isExpiryDate && item.rawDate && (() => {
+                                    const exp = new Date(item.rawDate);
+                                    return !isNaN(exp.getTime()) && exp < new Date();
+                                })();
+                                return (
+                                    <div key={idx} className="space-y-0">
+                                        <label className="text-xs font-semibold text-slate-600 normal-case tracking-wide block">{item.label}</label>
+                                        <div className={`text-sm font-semibold tracking-tight normal-case ${item.label === 'Full Name' ? 'font-bold text-slate-700' : isExpired ? 'text-red-600' : 'text-slate-700'}`}>{item.value || '-'}</div>
+                                    </div>
+                                );
+                            })}
                         </div>
 
                         <div className="pt-0.5">
@@ -182,12 +200,8 @@ const PatientDetailsModal = ({
                                     <div className="text-sm font-semibold text-slate-700 normal-case tracking-tight">{selectedPatient.allergies || 'N/A'}</div>
                                 </div>
                                 <div className="space-y-0.5">
-                                    <label className="text-sm font-semibold text-red-900 normal-case tracking-wide block">Drug Reactions</label>
+                                    <label className="text-sm font-semibold text-red-900 normal-case tracking-wide block">Type of Reactions</label>
                                     <div className="text-sm font-semibold text-slate-700 normal-case tracking-tight">{selectedPatient.drugReactions || 'N/A'}</div>
-                                </div>
-                                <div className="space-y-0.5">
-                                    <label className="text-sm font-semibold text-red-900 normal-case tracking-wide block">Ongoing Health Conditions</label>
-                                    <div className="text-sm font-semibold text-slate-700 normal-case tracking-tight">{selectedPatient.ongoingHealthConditions || 'N/A'}</div>
                                 </div>
                                 <div className="space-y-0.5">
                                     <label className="text-sm font-semibold text-red-900 normal-case tracking-wide block">Special Notes</label>
@@ -238,162 +252,155 @@ const PatientDetailsModal = ({
                     </div>
                     )}
 
-                    {/* SECTION 2: Guardian Info (If exists) - hidden in reportsOnly mode */}
-                    {!reportsOnly && (selectedPatient.guardianName || selectedPatient.guardianId) && (() => {
-                        const guardian = selectedPatient.guardianId
-                            ? visitors.find(v => v.id === selectedPatient.guardianId)
-                            : null;
-                        const handleGuardianClick = () => {
-                            if (guardian && handlePatientClick) handlePatientClick(guardian);
-                        };
-                        return (
-                            <div className="bg-slate-50 rounded-xl border border-slate-100 p-2">
-                                <div className="flex items-center gap-2 mb-1">
-                                    <div className="w-1 h-3.5 bg-indigo-500 rounded-full"></div>
-                                    <h4 className="text-base font-semibold text-slate-900 normal-case tracking-wide">Guardian Information</h4>
+                    {/* SECTION 2: Emergency Contact (replaces guardian) - hidden in reportsOnly mode */}
+                    {!reportsOnly && (selectedPatient.emergencyName || selectedPatient.emergencyRelation || selectedPatient.emergencyPhone) && (
+                        <div className="bg-slate-50 rounded-xl border border-slate-100 py-2">
+                            <div className="flex items-center gap-2 mb-1">
+                                <div className="w-1 h-3.5 bg-amber-500 rounded-full"></div>
+                                <h4 className="text-base font-semibold text-slate-900 normal-case tracking-wide">Emergency Contact</h4>
+                            </div>
+                            <div className="grid grid-cols-3 gap-x-6 gap-y-1">
+                                <div className="space-y-0">
+                                    <label className="text-xs font-semibold text-slate-600 normal-case tracking-wide block">Name</label>
+                                    <div className="text-sm font-semibold text-slate-700 normal-case">{selectedPatient.emergencyName || '-'}</div>
                                 </div>
-                                <div
-                                    className={`grid grid-cols-3 gap-x-6 gap-y-1 ${guardian && handlePatientClick ? 'cursor-pointer hover:bg-slate-100/50 rounded-lg transition-colors py-0.5 -mx-0.5 px-0.5' : ''}`}
-                                    onClick={guardian && handlePatientClick ? handleGuardianClick : undefined}
-                                >
-                                    <div className="space-y-0">
-                                        <label className="text-xs font-semibold text-slate-600 normal-case tracking-wide block">Guardian ID</label>
-                                        <div className="text-sm font-semibold text-slate-700 normal-case">{selectedPatient.guardianId || '-'}</div>
-                                    </div>
-                                    <div className="space-y-0">
-                                        <label className="text-xs font-semibold text-slate-600 normal-case tracking-wide block">Guardian Name</label>
-                                        <div className="text-sm font-semibold text-slate-700 normal-case">{selectedPatient.guardianName || '-'}</div>
-                                    </div>
-                                    <div className="space-y-0">
-                                        <label className="text-xs font-semibold text-slate-600 normal-case tracking-wide block">Contact Phone</label>
-                                        <div className="text-sm font-semibold text-slate-700 normal-case">{formatPhoneDisplay(selectedPatient.guardianPhone) || '-'}</div>
-                                    </div>
+                                <div className="space-y-0">
+                                    <label className="text-xs font-semibold text-slate-600 normal-case tracking-wide block">Relation</label>
+                                    <div className="text-sm font-semibold text-slate-700 normal-case">{selectedPatient.emergencyRelation || '-'}</div>
+                                </div>
+                                <div className="space-y-0">
+                                    <label className="text-xs font-semibold text-slate-600 normal-case tracking-wide block">Phone</label>
+                                    <div className="text-sm font-semibold text-slate-700 normal-case">{formatPhoneDisplay(selectedPatient.emergencyPhone) || '-'}</div>
                                 </div>
                             </div>
-                        );
-                    })()}
-
-                    {/* SECTION 3: Clinical Interactions History - hidden in reportsOnly mode */}
-                    {!reportsOnly && (
-                    <div className="space-y-1.5">
-                        <div className="flex items-center gap-2 mb-1">
-                            <div className="w-1 h-3.5 bg-emerald-500 rounded-full"></div>
-                            <h4 className="text-base font-semibold text-slate-900 normal-case tracking-wide">Past Interactions</h4>
                         </div>
-                        {completedInteractionsForPatient.length === 0 ? (
-                            <div className="bg-slate-50 border border-dashed border-slate-200 rounded-xl py-4 text-center">
-                                <span className="text-sm text-slate-400 font-medium italic">No historical interactions recorded.</span>
-                            </div>
-                        ) : (
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
-                                {completedInteractionsForPatient.map((interaction) => (
-                                    <button
-                                        key={interaction.id}
-                                        type="button"
-                                        onClick={() => onInteractionClick?.(interaction)}
-                                        className="w-full text-left border border-slate-200 rounded-xl overflow-hidden bg-slate-100 shadow-sm transition-all hover:border-blue-200 hover:bg-slate-200"
-                                    >
-                                        <div className="flex items-center justify-between px-3 py-2">
-                                            <div className="flex flex-col items-start gap-0.5 min-w-0">
-                                                <div className="flex items-center gap-2 flex-wrap">
-                                                    <span className="text-base font-semibold text-blue-600 normal-case tracking-tight">
-                                                        {getShortInteractionId(interaction.interactionSerial) || '-'}
-                                                    </span>
-                                                    {renderInteractionTags(interaction, { size: 'text-xs' })}
-                                                </div>
-                                                <span className="text-sm text-slate-400 font-semibold normal-case tracking-wide">
-                                                    Interaction Date: {formatDate(interaction.editedAt || interaction.createdAt)}
-                                                </span>
-                                            </div>
-                                            <svg className="w-4 h-4 text-slate-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
-                                            </svg>
-                                        </div>
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-                    </div>
                     )}
 
-                    {/* SECTION 4: Medical Reports Repository */}
-                    <div className="space-y-1.5">
-                        <div className="flex items-center gap-2 mb-1">
-                            <div className="w-1 h-3.5 bg-red-500 rounded-full"></div>
-                            <h4 className="text-base font-semibold text-slate-900 normal-case tracking-wide">Reports</h4>
-                        </div>
-                        {isLoadingReports ? (
-                            <div className="text-center py-2">
-                                <div className="animate-spin h-5 w-5 border-2 border-primary border-t-transparent rounded-full mx-auto"></div>
+                    {/* SECTION 3 & 4: Past Interactions and Reports side by side, max two rows height, internal scroll */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 max-h-[18rem] min-h-0">
+                        {/* Past Interactions - hidden in reportsOnly mode */}
+                        {!reportsOnly && (
+                        <div className="flex flex-col min-h-0 border border-slate-100 rounded-xl bg-slate-50/50 overflow-hidden">
+                            <div className="flex items-center gap-2 px-3 py-2 shrink-0 border-b border-slate-100">
+                                <div className="w-1 h-3.5 bg-emerald-500 rounded-full"></div>
+                                <h4 className="text-base font-semibold text-slate-900 normal-case tracking-wide">Past Interactions</h4>
                             </div>
-                        ) : patientReports.length === 0 ? (
-                            <div className="bg-slate-50 border border-dashed border-slate-200 rounded-xl py-4 text-center">
-                                <span className="text-sm text-slate-400 font-medium italic">No clinical reports available.</span>
-                            </div>
-                        ) : (
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
-                                {patientReports.map((report) => {
-                                    const reportUrl = getReportUrl(report);
-                                    const isPdf = report.fileMetadata?.mimeType?.startsWith('application/pdf');
-                                    const fileTypeLabel = report.fileMetadata?.mimeType ? (isPdf ? 'PDF' : report.fileMetadata.mimeType.replace('image/', '').toUpperCase()) : '';
-                                    const linkedInteraction = report.interactionId && interactions?.find(i => i.id === report.interactionId);
-                                    return (
+                            <div className="flex-1 min-h-0 max-h-[14rem] overflow-y-auto overflow-x-hidden p-2 space-y-2" style={{ scrollbarGutter: 'stable' }}>
+                                {completedInteractionsForPatient.length === 0 ? (
+                                    <div className="bg-white border border-dashed border-slate-200 rounded-lg py-4 text-center">
+                                        <span className="text-sm text-slate-400 font-medium italic">No historical interactions recorded.</span>
+                                    </div>
+                                ) : (
+                                    completedInteractionsForPatient.map((interaction) => (
                                         <button
-                                            key={report.id}
+                                            key={interaction.id}
                                             type="button"
-                                            onClick={() => handleViewReport(report)}
-                                            disabled={!reportUrl}
-                                            className="w-full text-left bg-slate-200 border border-slate-200 rounded-xl px-3 py-2 flex items-center justify-between hover:shadow-md hover:bg-slate-300 transition-all group cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                                            onClick={() => onInteractionClick?.(interaction)}
+                                            className="w-full text-left border border-slate-200 rounded-lg overflow-hidden bg-white shadow-sm transition-all hover:border-blue-200 hover:bg-slate-100"
                                         >
-                                            <div className="flex items-center gap-4 min-w-0 flex-1">
-                                                <div className="w-12 h-12 rounded-xl bg-slate-300 flex items-center justify-center text-slate-500 border border-slate-300 overflow-hidden relative shrink-0">
-                                                    {report.fileMetadata?.mimeType?.startsWith('image/') ? (
-                                                        <>
-                                                            {imageLoadingStates[report.id] !== false && (
-                                                                <div className="absolute inset-0 flex items-center justify-center z-10 bg-slate-100">
-                                                                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
-                                                                </div>
-                                                            )}
-                                                            <img
-                                                                src={reportUrl}
-                                                                className="w-full h-full object-cover group-hover:scale-110 transition-transform pointer-events-none"
-                                                                onLoad={() => handleImageLoad(report.id)}
-                                                                onError={() => handleImageError(report.id)}
-                                                                onLoadStart={() => {
-                                                                    if (imageLoadingStates[report.id] === undefined) handleImageStartLoad(report.id);
-                                                                }}
-                                                                style={{ display: imageLoadingStates[report.id] === false ? 'block' : 'none' }}
-                                                            />
-                                                        </>
-                                                    ) : (
-                                                        <svg className="w-5 h-5 text-red-400" fill="currentColor" viewBox="0 0 20 20">
-                                                            <path d="M4 18V2h12l4 4v12H4zm14-11h-4V3.1L17.9 7zM6 4h7v4h4v8H6V4z" />
-                                                        </svg>
-                                                    )}
+                                            <div className="flex items-center justify-between px-3 py-2">
+                                                <div className="flex flex-col items-start gap-0.5 min-w-0">
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        <span className="text-base font-semibold text-blue-600 normal-case tracking-tight">
+                                                            {getShortInteractionId(interaction.interactionSerial) || '-'}
+                                                        </span>
+                                                        {renderInteractionTags(interaction, { size: 'text-xs' })}
+                                                    </div>
+                                                    <span className="text-sm text-slate-400 font-semibold normal-case tracking-wide">
+                                                        Interaction Date: {formatDate(interaction.editedAt || interaction.createdAt)}
+                                                    </span>
                                                 </div>
-                                                <div className="min-w-0 flex-1">
-                                                    <div className="text-base font-semibold text-blue-600 normal-case tracking-wide">{report.reportType.replace(/_/g, ' ')}</div>
-                                                    <div className="text-base font-semibold text-slate-700 normal-case tracking-tight leading-none mt-0.5">{report.labMetadata?.labName || 'Diagnostic Report'}</div>
-                                                    <div className="text-base font-semibold text-slate-600 mt-0.5 normal-case tracking-wide">{formatDateMMDDYYYY(report.procedureDate)}</div>
-                                                    {linkedInteraction && (
-                                                        <div className="text-sm font-medium text-emerald-600 mt-1 normal-case tracking-wide">
-                                                            Linked to {getShortInteractionId(linkedInteraction.interactionSerial)}
-                                                        </div>
-                                                    )}
-                                                    {fileTypeLabel && (
-                                                        <span className="inline-block mt-1 text-xs font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{fileTypeLabel}</span>
-                                                    )}
-                                                </div>
+                                                <svg className="w-4 h-4 text-slate-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                                                </svg>
                                             </div>
-                                            <svg className="w-5 h-5 text-slate-400 shrink-0 group-hover:text-blue-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                                            </svg>
                                         </button>
-                                    );
-                                })}
+                                    ))
+                                )}
                             </div>
+                        </div>
                         )}
+
+                        {/* Reports */}
+                        <div className="flex flex-col min-h-0 border border-slate-100 rounded-xl bg-slate-50/50 overflow-hidden">
+                            <div className="flex items-center gap-2 px-3 py-2 shrink-0 border-b border-slate-100">
+                                <div className="w-1 h-3.5 bg-red-500 rounded-full"></div>
+                                <h4 className="text-base font-semibold text-slate-900 normal-case tracking-wide">Reports</h4>
+                            </div>
+                            <div className="flex-1 min-h-0 max-h-[14rem] overflow-y-auto overflow-x-hidden p-2 space-y-2" style={{ scrollbarGutter: 'stable' }}>
+                                {isLoadingReports ? (
+                                    <div className="flex items-center justify-center py-6">
+                                        <div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full"></div>
+                                    </div>
+                                ) : patientReports.length === 0 ? (
+                                    <div className="bg-white border border-dashed border-slate-200 rounded-lg py-4 text-center">
+                                        <span className="text-sm text-slate-400 font-medium italic">No clinical reports available.</span>
+                                    </div>
+                                ) : (
+                                    patientReports.map((report) => {
+                                        const reportUrl = getReportUrl(report);
+                                        const isPdf = report.fileMetadata?.mimeType?.startsWith('application/pdf');
+                                        const fileTypeLabel = report.fileMetadata?.mimeType ? (isPdf ? 'PDF' : report.fileMetadata.mimeType.replace('image/', '').toUpperCase()) : '';
+                                        const linkedInteraction = report.interactionId && interactions?.find(i => i.id === report.interactionId);
+                                        return (
+                                            <button
+                                                key={report.id}
+                                                type="button"
+                                                onClick={() => handleViewReport(report)}
+                                                disabled={!reportUrl}
+                                                className="w-full text-left bg-white border border-slate-200 rounded-lg px-3 py-2 flex items-center justify-between hover:shadow-md hover:bg-slate-100 transition-all group cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                                            >
+                                                <div className="flex items-center gap-3 min-w-0 flex-1">
+                                                    <div className="w-10 h-10 rounded-lg bg-slate-200 flex items-center justify-center text-slate-500 border border-slate-300 overflow-hidden relative shrink-0">
+                                                        {report.fileMetadata?.mimeType?.startsWith('image/') ? (
+                                                            <>
+                                                                {imageLoadingStates[report.id] !== false && (
+                                                                    <div className="absolute inset-0 flex items-center justify-center z-10 bg-slate-100">
+                                                                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                                                                    </div>
+                                                                )}
+                                                                <img
+                                                                    src={reportUrl}
+                                                                    className="w-full h-full object-cover group-hover:scale-110 transition-transform pointer-events-none"
+                                                                    onLoad={() => handleImageLoad(report.id)}
+                                                                    onError={() => handleImageError(report.id)}
+                                                                    onLoadStart={() => {
+                                                                        if (imageLoadingStates[report.id] === undefined) handleImageStartLoad(report.id);
+                                                                    }}
+                                                                    style={{ display: imageLoadingStates[report.id] === false ? 'block' : 'none' }}
+                                                                />
+                                                            </>
+                                                        ) : (
+                                                            <svg className="w-4 h-4 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+                                                                <path d="M4 18V2h12l4 4v12H4zm14-11h-4V3.1L17.9 7zM6 4h7v4h4v8H6V4z" />
+                                                            </svg>
+                                                        )}
+                                                    </div>
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className="text-sm font-semibold text-blue-600 normal-case tracking-wide truncate">{report.reportType.replace(/_/g, ' ')}</div>
+                                                        <div className="text-xs font-semibold text-slate-600 normal-case tracking-tight truncate">{report.labMetadata?.labName || 'Diagnostic Report'}</div>
+                                                        <div className="mt-0.5">
+                                                            <span className="text-xs font-semibold text-slate-500 normal-case tracking-wide">Report date </span>
+                                                            <span className="text-xs font-semibold text-slate-600">{formatDateMMDDYYYY(report.reportGeneratedDate) || formatDateMMDDYYYY(report.procedureDate) || '—'}</span>
+                                                        </div>
+                                                        {linkedInteraction && (
+                                                            <div className="text-xs font-medium text-emerald-600 mt-0.5 normal-case tracking-wide">Linked to {getShortInteractionId(linkedInteraction.interactionSerial)}</div>
+                                                        )}
+                                                        {fileTypeLabel && (
+                                                            <span className="inline-block mt-1 text-[10px] font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">{fileTypeLabel}</span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <svg className="w-4 h-4 text-slate-400 shrink-0 group-hover:text-blue-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                                </svg>
+                                            </button>
+                                        );
+                                    })
+                                )}
+                            </div>
+                        </div>
                     </div>
                 </div>
 

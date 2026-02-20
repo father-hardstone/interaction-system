@@ -34,8 +34,8 @@ const ReceptionTab = ({
     setSearchLastName,
     searchSerial,
     setSearchSerial,
-    searchPhone,
-    setSearchPhone,
+    searchContact,
+    setSearchContact,
     searchHealthCard,
     setSearchHealthCard,
     searchDob,
@@ -119,6 +119,7 @@ const ReceptionTab = ({
     draggedInteraction,
     interactionFilter,
     setInteractionFilter,
+    onReceptionSubTabChange,
     handleRegisterPatient,
     nextVisitorSerial,
     onInteractionClick,
@@ -128,6 +129,10 @@ const ReceptionTab = ({
     registeringFollowupForId
 }) => {
     const [activeSubTab, setActiveSubTab] = useState('patients');
+    const handleSubTabChange = (tab) => {
+        setActiveSubTab(tab);
+        onReceptionSubTabChange?.(tab);
+    };
     const [activeInteractionSubTab, setActiveInteractionSubTab] = useState('ongoing'); // for Interactions tab: ongoing, not_closed, incomplete, followup, unbilled
     const [billingModalInteraction, setBillingModalInteraction] = useState(null);
     const [reports, setReports] = useState([]);
@@ -171,7 +176,7 @@ const ReceptionTab = ({
                 <div className="flex overflow-x-auto scrollbar-hide">
                 <div className="flex bg-slate-100 p-1.5 rounded-2xl w-fit">
                     <button
-                        onClick={() => setActiveSubTab('patients')}
+                        onClick={() => handleSubTabChange('patients')}
                         className={`flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 whitespace-nowrap ${activeSubTab === 'patients'
                             ? 'bg-white text-primary shadow-sm scale-105'
                             : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
@@ -183,7 +188,7 @@ const ReceptionTab = ({
                         Patients
                     </button>
                     <button
-                        onClick={() => setActiveSubTab('registrations')}
+                        onClick={() => handleSubTabChange('registrations')}
                         className={`flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 whitespace-nowrap ${activeSubTab === 'registrations'
                             ? 'bg-white text-primary shadow-sm scale-105'
                             : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
@@ -195,7 +200,7 @@ const ReceptionTab = ({
                         Registrations
                     </button>
                     <button
-                        onClick={() => setActiveSubTab('interactions')}
+                        onClick={() => handleSubTabChange('interactions')}
                         className={`flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 whitespace-nowrap ${activeSubTab === 'interactions'
                             ? 'bg-white text-primary shadow-sm scale-105'
                             : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
@@ -207,7 +212,7 @@ const ReceptionTab = ({
                         Interactions
                     </button>
                     <button
-                        onClick={() => setActiveSubTab('reports')}
+                        onClick={() => handleSubTabChange('reports')}
                         className={`flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 whitespace-nowrap ${activeSubTab === 'reports'
                             ? 'bg-white text-primary shadow-sm scale-105'
                             : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
@@ -219,7 +224,7 @@ const ReceptionTab = ({
                         Reports
                     </button>
                     <button
-                        onClick={() => setActiveSubTab('billings')}
+                        onClick={() => handleSubTabChange('billings')}
                         className={`flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 whitespace-nowrap ${activeSubTab === 'billings'
                             ? 'bg-white text-primary shadow-sm scale-105'
                             : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
@@ -232,6 +237,7 @@ const ReceptionTab = ({
                     </button>
                 </div>
                 </div>
+                {activeSubTab !== 'patients' && (
                 <div className="flex items-center gap-2 shrink-0">
                     <span className="text-xs font-semibold normal-case tracking-wide text-slate-500">Time filter</span>
                     <div className="flex bg-slate-200/50 p-1 rounded-xl flex-wrap gap-1">
@@ -246,6 +252,7 @@ const ReceptionTab = ({
                         ))}
                     </div>
                 </div>
+                )}
             </div>
 
             {activeSubTab === 'patients' && (
@@ -264,8 +271,8 @@ const ReceptionTab = ({
                     setSearchLastName={setSearchLastName}
                     searchSerial={searchSerial}
                     setSearchSerial={setSearchSerial}
-                    searchPhone={searchPhone}
-                    setSearchPhone={setSearchPhone}
+                    searchContact={searchContact}
+                    setSearchContact={setSearchContact}
                     searchHealthCard={searchHealthCard}
                     setSearchHealthCard={setSearchHealthCard}
                     searchDob={searchDob}
@@ -390,6 +397,7 @@ const ReceptionTab = ({
                         >
                             Incomplete
                         </button>
+                        {/* Not ready for billing – commented out
                         <button
                             onClick={() => setActiveInteractionSubTab('not_closed')}
                             className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${activeInteractionSubTab === 'not_closed'
@@ -399,6 +407,8 @@ const ReceptionTab = ({
                         >
                             Not ready for billing
                         </button>
+                        */}
+                        {/* Unbilled – commented out
                         <button
                             onClick={() => setActiveInteractionSubTab('unbilled')}
                             className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${activeInteractionSubTab === 'unbilled'
@@ -408,6 +418,7 @@ const ReceptionTab = ({
                         >
                             Unbilled
                         </button>
+                        */}
                         <button
                             onClick={() => setActiveInteractionSubTab('followup')}
                             className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${activeInteractionSubTab === 'followup'
@@ -450,6 +461,7 @@ const ReceptionTab = ({
                         </div>
                     )}
 
+                    {/* Not ready for billing – commented out
                     {activeInteractionSubTab === 'not_closed' && (
                         <div className="animate-[fadeIn_0.3s_ease-out] flex flex-col flex-1 min-h-0 p-4">
                             <div className="mb-4 shrink-0">
@@ -470,6 +482,7 @@ const ReceptionTab = ({
                             />
                         </div>
                     )}
+                    */}
 
                     {activeInteractionSubTab === 'incomplete' && (
                         <div className="animate-[fadeIn_0.3s_ease-out] flex flex-col flex-1 min-h-0 p-4">
@@ -494,7 +507,6 @@ const ReceptionTab = ({
                                 handleStartInteraction={null}
                                 onInteractionClick={onInteractionClick}
                                 interactions={interactions}
-                                lastVisits={lastVisits}
                             />
                         </div>
                     )}
@@ -522,6 +534,7 @@ const ReceptionTab = ({
                         </div>
                     )}
 
+                    {/* Unbilled – commented out
                     {activeInteractionSubTab === 'unbilled' && (
                         <div className="animate-[fadeIn_0.3s_ease-out] flex flex-col flex-1 min-h-0 p-4">
                             <div className="mb-4 shrink-0">
@@ -541,11 +554,12 @@ const ReceptionTab = ({
                                 lastVisits={lastVisits}
                                 onBillNow={(interaction) => {
                                     setBillingModalInteraction(interaction);
-                                    setActiveSubTab('billings');
+                                    handleSubTabChange('billings');
                                 }}
                             />
                         </div>
                     )}
+                    */}
 
                     {activeInteractionSubTab === 'cancelled' && (
                         <div className="animate-[fadeIn_0.3s_ease-out] flex flex-col flex-1 min-h-0 p-4">

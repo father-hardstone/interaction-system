@@ -15,8 +15,7 @@ const ServicesBillingBlock = ({
     const [billingDropdownRect, setBillingDropdownRect] = useState(null);
     const maxLines = 4;
 
-    const sharedDiagnostic = serviceLines[0]?.diagnostic ?? '';
-    const sharedDiagDesc = serviceLines[0] ? (diagnostics.find((d) => (d.code || '').toUpperCase() === (serviceLines[0].diagnostic || '').trim().toUpperCase())?.description ?? serviceLines[0].diagnosticDescription ?? '') : '';
+    const getDiagDesc = (line) => (diagnostics.find((d) => (d.code || '').toUpperCase() === (line?.diagnostic || '').trim().toUpperCase())?.description ?? line?.diagnosticDescription ?? '');
 
     return (
         <div className="space-y-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative group transition-all hover:shadow-md">
@@ -39,7 +38,7 @@ const ServicesBillingBlock = ({
             </div>
 
             <div className="overflow-x-auto rounded-lg border border-slate-200 w-full">
-                <table className="w-full border-collapse min-w-[640px]">
+                <table className="w-full border-collapse min-w-[520px]">
                     <thead>
                         <tr className="bg-slate-50 border-b border-slate-200">
                             <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 normal-case tracking-wider w-12">Sr</th>
@@ -47,7 +46,6 @@ const ServicesBillingBlock = ({
                             <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 normal-case tracking-wider min-w-[140px]">Description</th>
                             <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 normal-case tracking-wider w-[90px]">Billing Code</th>
                             <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 normal-case tracking-wider min-w-[140px]">Description</th>
-                            <th className="text-right px-3 py-2.5 text-xs font-semibold text-slate-500 normal-case tracking-wider w-[72px]">Fee</th>
                             <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 normal-case tracking-wider w-20">Actions</th>
                         </tr>
                     </thead>
@@ -79,8 +77,8 @@ const ServicesBillingBlock = ({
                                     </div>
                                 </td>
                                 <td className="px-3 py-2 align-middle">
-                                    <div className="text-sm text-slate-500 truncate max-w-[200px]" title={sharedDiagDesc}>
-                                        {sharedDiagDesc || '—'}
+                                    <div className="text-sm text-slate-500 truncate max-w-[200px]" title={getDiagDesc(line)}>
+                                        {getDiagDesc(line) || '—'}
                                     </div>
                                 </td>
                                 <td className="px-3 py-2 align-middle">
@@ -106,11 +104,6 @@ const ServicesBillingBlock = ({
                                     <div className="text-sm text-slate-500 truncate max-w-[200px]" title={line.billingDescription}>
                                         {line.billingDescription || '—'}
                                     </div>
-                                </td>
-                                <td className="px-3 py-2 align-middle text-right">
-                                    <span className="text-sm font-semibold text-blue-600">
-                                        {line.totalFee ? `$${line.totalFee}` : '$0.00'}
-                                    </span>
                                 </td>
                                 <td className="px-3 py-2 align-middle">
                                     <button
