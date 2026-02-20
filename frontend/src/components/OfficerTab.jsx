@@ -323,6 +323,7 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
                         formatDate={formatDate}
                         onInteractionClick={onInteractionClick}
                         onEditCompleted={handleEditCompleted}
+                        blockEditCompleted={ongoingInteractions.length > 0}
                         interactions={interactions}
                         lastVisits={lastVisits}
                         title="Completed interactions"
@@ -345,6 +346,7 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
                         formatDate={formatDate}
                         onInteractionClick={onInteractionClick}
                         onEditCompleted={handleEditCompleted}
+                        blockEditCompleted={ongoingInteractions.length > 0}
                         interactions={interactions}
                         lastVisits={lastVisits}
                         title="Closed interactions"
@@ -365,7 +367,7 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
                     getVisitorSerial={getVisitorSerial}
                     formatDate={formatDate}
                     handleStartInteraction={handleStartInteraction}
-                    blockResume={isEditingCompleted && !!activeInteractionId}
+                    blockResume={ongoingInteractions.length > 0 || (isEditingCompleted && !!activeInteractionId)}
                     onInteractionClick={onInteractionClick}
                     interactions={interactions}
                 />
@@ -675,7 +677,12 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
                 showCancelModal={showCancelModal}
                 setShowCancelModal={setShowCancelModal}
                 moveToIncomplete={moveToIncomplete}
-                confirmCancel={confirmCancel}
+                confirmCancel={async () => {
+                    const interaction = activeInteractionId != null ? interactions.find((i) => i.id === activeInteractionId) : null;
+                    const wasPhoneConsult = interaction?.visitMode === 'on_phone';
+                    await confirmCancel();
+                    if (wasPhoneConsult) setActiveMainTab(OFFICER_MAIN_TABS.PHONE_CONSULTS);
+                }}
             />
 
             <MediaViewerModal

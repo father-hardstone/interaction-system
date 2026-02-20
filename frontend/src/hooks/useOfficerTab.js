@@ -448,6 +448,10 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
 
     const handleEditCompleted = async (interaction, options) => {
         if (!interaction) return;
+        if (ongoingInteractions.length > 0) {
+            showToast('Finish or cancel your current interaction before editing another.', 'error');
+            return;
+        }
         setOpenBillingTabNext(!!options?.openBillingTab);
         setActiveInteractionId(interaction.id);
         setActiveViewTab('ongoing');

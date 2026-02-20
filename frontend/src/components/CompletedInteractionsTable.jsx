@@ -28,6 +28,7 @@ const CompletedInteractionsTable = ({
     formatDate,
     onInteractionClick,
     onEditCompleted,
+    blockEditCompleted = false,
     interactions = [],
     lastVisits = {},
     title = 'Completed interactions',
@@ -110,9 +111,12 @@ const CompletedInteractionsTable = ({
                                         <button
                                             type="button"
                                             onClick={() => handleOpenPatientDetails(interaction.visitorId)}
-                                            className="text-left hover:text-blue-700 transition-colors"
+                                            className="text-left hover:text-blue-700 transition-colors flex items-center gap-2 flex-wrap"
                                         >
-                                            <div className="font-medium text-sm text-slate-900">{getVisitorName(interaction.visitorId)}</div>
+                                            <span className="font-medium text-sm text-slate-900">{getVisitorName(interaction.visitorId)}</span>
+                                            {interaction.visitMode === 'on_phone' && (
+                                                <span className="shrink-0 text-xs font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">Phone consult</span>
+                                            )}
                                         </button>
                                     </td>
                                     <td className="px-4 sm:px-6 py-4 align-middle text-sm text-slate-600 hidden md:table-cell">{getDateValue(interaction)}</td>
@@ -128,8 +132,10 @@ const CompletedInteractionsTable = ({
                                             {onEditCompleted && (
                                                 <button
                                                     type="button"
-                                                    onClick={() => onEditCompleted(interaction)}
-                                                    className="px-3 py-1.5 text-sm font-medium text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors"
+                                                    onClick={() => !blockEditCompleted && onEditCompleted(interaction)}
+                                                    disabled={blockEditCompleted}
+                                                    title={blockEditCompleted ? 'Finish or cancel your current interaction first' : undefined}
+                                                    className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${blockEditCompleted ? 'text-slate-400 border border-slate-200 bg-slate-50 cursor-not-allowed' : 'text-blue-600 border border-blue-200 hover:bg-blue-50'}`}
                                                 >
                                                     Edit
                                                 </button>
@@ -137,8 +143,10 @@ const CompletedInteractionsTable = ({
                                             {!isClosed && onEditCompleted && (
                                                 <button
                                                     type="button"
-                                                    onClick={() => onEditCompleted(interaction, { openBillingTab: true })}
-                                                    className="px-3 py-1.5 text-sm font-medium text-emerald-600 border border-emerald-200 rounded-lg hover:bg-emerald-50 transition-colors"
+                                                    onClick={() => !blockEditCompleted && onEditCompleted(interaction, { openBillingTab: true })}
+                                                    disabled={blockEditCompleted}
+                                                    title={blockEditCompleted ? 'Finish or cancel your current interaction first' : undefined}
+                                                    className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${blockEditCompleted ? 'text-slate-400 border border-slate-200 bg-slate-50 cursor-not-allowed' : 'text-emerald-600 border border-emerald-200 hover:bg-emerald-50'}`}
                                                 >
                                                     Close it
                                                 </button>
