@@ -86,6 +86,26 @@ class InteractionService {
     }
 
     /**
+     * Get next accountingNumber (integer as string) for an entity.
+     * Uses top-level accountingNumber when present; else first service line's accountingNumber.
+     */
+    async getNextAccountingNumber(entityId) {
+        const docs = await Interaction.find({ entityId, deletedAt: '' })
+            .select('accountingNumber serviceLines')
+            .lean();
+        let max = 0;
+        for (const doc of docs) {
+            let val = doc.accountingNumber;
+            if (!val && Array.isArray(doc.serviceLines) && doc.serviceLines.length > 0) {
+                val = doc.serviceLines[0].accountingNumber;
+            }
+            const n = parseInt(val, 10);
+            if (!isNaN(n) && n > max) max = n;
+        }
+        return String(max + 1);
+    }
+
+    /**
      * Get the last completed interaction per visitor for the given entity.
      * Used for "last visit" display regardless of time filter. Does not apply any date filter.
      * @param {string} entityId

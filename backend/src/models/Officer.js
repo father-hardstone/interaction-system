@@ -30,6 +30,18 @@ const officerSchema = new mongoose.Schema({
         type: String,
         default: ''
     },
+    billingNumber: {
+        type: String,
+        default: ''
+    },
+    cpsoNumber: {
+        type: String,
+        default: ''
+    },
+    profilePicture: {
+        type: String,
+        default: ''
+    },
     password: {
         type: String,
         required: true

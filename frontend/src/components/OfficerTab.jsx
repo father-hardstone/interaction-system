@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import useOfficerTab from '../hooks/useOfficerTab';
 import ScheduledInteractionsTable from './ScheduledInteractionsTable';
 import IncompleteInteractionsTable from './IncompleteInteractionsTable';
@@ -20,7 +20,7 @@ const OFFICER_MAIN_TABS = {
     REPORT_REVIEWS: 'report_reviews'
 };
 
-const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadingInteractions = false, onRefreshInteractions, onInteractionClick, handleRegisterPatient }) => {
+const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadingInteractions = false, onRefreshInteractions, onInteractionClick, handleRegisterPatient, interactionFilter = 'today', setInteractionFilter }) => {
     const [activeMainTab, setActiveMainTab] = useState(OFFICER_MAIN_TABS.INTERACTIONS);
 
     const {
@@ -55,6 +55,7 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
         diagnostics,
         isSaving,
         activePatientVisitorId,
+        pastInteractionsForSidebar,
         scheduledInteractions,
         phoneConsultInteractions,
         incompleteInteractions,
@@ -122,6 +123,13 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
             setIsLoadingReportsForReview(false);
         }
     }, [userData?.entityId]);
+
+    // Load report reviews when Officer tab mounts (so "Report reviews (N)" count is correct upfront)
+    useEffect(() => {
+        if (userData?.entityId) {
+            loadReportsForReview();
+        }
+    }, [userData?.entityId, loadReportsForReview]);
 
     useEffect(() => {
         if (activeMainTab === OFFICER_MAIN_TABS.REPORT_REVIEWS && userData?.entityId) {
@@ -203,37 +211,62 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
         return `${datePart} ${hh}:${min}`;
     };
 
+    // Tab counts: number of entries in each tab's table
+    const mainTabCounts = useMemo(() => ({
+        interactions: scheduledInteractions.length + ongoingInteractions.length + incompleteInteractions.length + completedInteractions.length + closedInteractions.length,
+        phoneConsults: phoneConsultInteractions.length,
+        reportReviews: reportsForReview.length
+    }), [scheduledInteractions.length, ongoingInteractions.length, incompleteInteractions.length, completedInteractions.length, closedInteractions.length, phoneConsultInteractions.length, reportsForReview.length]);
+
     return (
         <div className="flex flex-col min-h-0 flex-1 space-y-6 overflow-hidden">
-            {/* Main tab row: Interactions | Phone consults | Report reviews */}
-            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl w-fit overflow-x-auto scrollbar-hide shrink-0">
-                <button
-                    onClick={() => setActiveMainTab(OFFICER_MAIN_TABS.INTERACTIONS)}
-                    className={`flex items-center gap-2 px-4 py-2 sm:px-5 sm:py-2.5 rounded-lg text-sm sm:text-base font-semibold transition-all shrink-0 ${activeMainTab === OFFICER_MAIN_TABS.INTERACTIONS ? 'bg-white text-primary shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
-                >
-                    <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-                    </svg>
-                    Interactions
-                </button>
-                <button
-                    onClick={() => setActiveMainTab(OFFICER_MAIN_TABS.PHONE_CONSULTS)}
-                    className={`flex items-center gap-2 px-4 py-2 sm:px-5 sm:py-2.5 rounded-lg text-sm sm:text-base font-semibold transition-all shrink-0 ${activeMainTab === OFFICER_MAIN_TABS.PHONE_CONSULTS ? 'bg-white text-primary shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
-                >
-                    <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                    </svg>
-                    Phone consults
-                </button>
-                <button
-                    onClick={() => setActiveMainTab(OFFICER_MAIN_TABS.REPORT_REVIEWS)}
-                    className={`flex items-center gap-2 px-4 py-2 sm:px-5 sm:py-2.5 rounded-lg text-sm sm:text-base font-semibold transition-all shrink-0 ${activeMainTab === OFFICER_MAIN_TABS.REPORT_REVIEWS ? 'bg-white text-primary shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
-                >
-                    <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    Report reviews
-                </button>
+            {/* Main tab row: Interactions | Phone consults | Report reviews — and time filter when not on Report reviews */}
+            <div className="flex flex-wrap items-center justify-between gap-3 shrink-0">
+                <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl w-fit overflow-x-auto scrollbar-hide">
+                    <button
+                        onClick={() => setActiveMainTab(OFFICER_MAIN_TABS.INTERACTIONS)}
+                        className={`flex items-center gap-2 px-4 py-2 sm:px-5 sm:py-2.5 rounded-lg text-sm sm:text-base font-semibold transition-all shrink-0 ${activeMainTab === OFFICER_MAIN_TABS.INTERACTIONS ? 'bg-white text-primary shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                    >
+                        <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                        </svg>
+                        Interactions ({mainTabCounts.interactions})
+                    </button>
+                    <button
+                        onClick={() => setActiveMainTab(OFFICER_MAIN_TABS.PHONE_CONSULTS)}
+                        className={`flex items-center gap-2 px-4 py-2 sm:px-5 sm:py-2.5 rounded-lg text-sm sm:text-base font-semibold transition-all shrink-0 ${activeMainTab === OFFICER_MAIN_TABS.PHONE_CONSULTS ? 'bg-white text-primary shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                    >
+                        <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                        </svg>
+                        Phone consults ({mainTabCounts.phoneConsults})
+                    </button>
+                    <button
+                        onClick={() => setActiveMainTab(OFFICER_MAIN_TABS.REPORT_REVIEWS)}
+                        className={`flex items-center gap-2 px-4 py-2 sm:px-5 sm:py-2.5 rounded-lg text-sm sm:text-base font-semibold transition-all shrink-0 ${activeMainTab === OFFICER_MAIN_TABS.REPORT_REVIEWS ? 'bg-white text-primary shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                    >
+                        <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        Report reviews ({mainTabCounts.reportReviews})
+                    </button>
+                </div>
+                {activeMainTab !== OFFICER_MAIN_TABS.REPORT_REVIEWS && !(activeMainTab === OFFICER_MAIN_TABS.INTERACTIONS && activeViewTab === 'ongoing') && setInteractionFilter && (
+                    <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-xs font-semibold normal-case tracking-wide text-slate-500">Time filter</span>
+                        <div className="flex bg-slate-200/50 p-1 rounded-xl flex-wrap gap-1">
+                            {['today', 'this_week', 'this_month', 'last_three_months', 'all'].map((f) => (
+                                <button
+                                    key={f}
+                                    onClick={() => setInteractionFilter(f)}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${interactionFilter === f ? 'bg-white text-primary shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                                >
+                                    {f === 'this_week' ? 'This week' : f === 'this_month' ? 'This month' : f === 'last_three_months' ? 'Last 3 months' : f.charAt(0).toUpperCase() + f.slice(1)}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Interactions tab: existing sub-tabs and content (unchanged) */}
@@ -248,7 +281,7 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
                     <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                     </svg>
-                    Scheduled
+                    Scheduled ({scheduledInteractions.length})
                 </button>
                 <button
                     onClick={() => setActiveViewTab('ongoing')}
@@ -258,7 +291,7 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    {isEditingCompleted ? 'Editing interaction' : 'Ongoing'}
+                    {isEditingCompleted ? 'Editing interaction' : `Ongoing (${ongoingInteractions.length})`}
                 </button>
                 <button
                     onClick={() => setActiveViewTab('incomplete')}
@@ -267,7 +300,7 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
                     <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    Incomplete
+                    Incomplete ({incompleteInteractions.length})
                 </button>
                 <button
                     onClick={() => setActiveViewTab('completed')}
@@ -276,7 +309,7 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
                     <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    Completed
+                    Completed ({completedInteractions.length})
                 </button>
                 <button
                     onClick={() => setActiveViewTab('closed')}
@@ -285,7 +318,7 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
                     <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
                     </svg>
-                    Closed
+                    Closed ({closedInteractions.length})
                 </button>
             </div>
 
@@ -463,6 +496,7 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
                                     activePatientVisitorId={activePatientVisitorId}
                                     visitor={visitors.find((v) => v.id === activePatientVisitorId)}
                                     interactions={interactions}
+                                    pastInteractionsOverride={pastInteractionsForSidebar}
                                     activeInteractionId={activeInteractionId}
                                     patientReports={patientReports}
                                     onInteractionClick={onInteractionClick}
@@ -499,6 +533,7 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
                                         activePatientVisitorId={activePatientVisitorId}
                                         visitor={visitors.find((v) => v.id === activePatientVisitorId)}
                                         interactions={interactions}
+                                        pastInteractionsOverride={pastInteractionsForSidebar}
                                         activeInteractionId={activeInteractionId}
                                         patientReports={patientReports}
                                         onInteractionClick={onInteractionClick}

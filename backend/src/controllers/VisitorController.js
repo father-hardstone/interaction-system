@@ -1,27 +1,38 @@
 const VisitorService = require('../services/VisitorService');
+const InteractionService = require('../services/InteractionService');
 const { v4: uuidv4 } = require('uuid');
 const EntityService = require('../services/EntityService');
 
 class VisitorController {
-    // Get all visitors for a specific entity
+    // Get all visitors for a specific entity (each visitor includes stillInService: true if they have an active/incomplete interaction)
     async getVisitorsByEntity(req, res) {
         try {
             const { entityId } = req.params;
             console.log('getVisitorsByEntity - entityId:', entityId);
             const all = await VisitorService.getAll();
             console.log('getVisitorsByEntity - total visitors:', all.length);
-            console.log('getVisitorsByEntity - all visitors entityIds:', all.map(v => ({ id: v.id, entityId: v.entityId, serial: v.serial })));
             const filtered = all.filter(
-                v => {
-                    const matches = v.entityId === entityId && (!v.deletedAt || v.deletedAt === '');
-                    console.log(`getVisitorsByEntity - visitor ${v.id}: entityId=${v.entityId}, matches=${matches}`);
-                    return matches;
-                }
+                v => v.entityId === entityId && (!v.deletedAt || v.deletedAt === '')
             );
-            console.log('getVisitorsByEntity - filtered visitors:', filtered.length);
-            console.log('getVisitorsByEntity - filtered visitors data:', filtered);
+            // Visitor IDs that have at least one non-completed, non-cancelled interaction (still in service)
+            const activeInteractions = await InteractionService.findMany({
+                entityId,
+                deletedAt: '',
+                completed: false
+            });
+            const stillInServiceSet = new Set(
+                (activeInteractions || [])
+                    .filter(i => !i.cancelled)
+                    .map(i => i.visitorId)
+                    .filter(Boolean)
+            );
+            const withFlags = filtered.map(v => ({
+                ...v,
+                stillInService: stillInServiceSet.has(v.id)
+            }));
+            console.log('getVisitorsByEntity - filtered visitors:', withFlags.length);
 
-            res.json(filtered);
+            res.json(withFlags);
         } catch (e) {
             console.error('getVisitorsByEntity error:', e);
             res.status(500).json({ error: e.message });
