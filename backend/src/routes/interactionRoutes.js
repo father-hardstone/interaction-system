@@ -9,6 +9,9 @@ router.use(authenticateToken, requireRoles(['entity', 'officer', 'receptionist']
 // Get all interactions for an entity
 router.get('/entity/:entityId', InteractionController.getInteractionsByEntity);
 
+// Get all interactions for a visitor (no time filter; for patient history)
+router.get('/entity/:entityId/visitor/:visitorId', InteractionController.getInteractionsByVisitor);
+
 // Get one interaction by id (full document)
 router.get('/:id', InteractionController.getInteractionById);
 

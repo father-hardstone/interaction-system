@@ -11,6 +11,7 @@ const VisitorsSection = ({
     visitors,
     isLoadingVisitors = false,
     interactions = [],
+    allInteractionsForPatients = [],
     lastVisits = {},
     officers = [],
     searchFirstName,
@@ -119,6 +120,8 @@ const VisitorsSection = ({
         setParentInteractionId('');
         setNewVisitNotes('');
     };
+
+    const interactionsForRegistration = allInteractionsForPatients.length > 0 ? allInteractionsForPatients : interactions;
 
     const priorVisitsForPatient = useMemo(() => {
         if (!pendingRegisterVisitor) return [];
@@ -385,7 +388,9 @@ const searchContactDigits = parsePhoneToDigits(searchContact || '');
                                                         Edit
                                                     </button>
                                                     {(() => {
-                                                        const isRegistered = interactions.some(i => i.visitorId === visitor.id && !i.completed);
+                                                        const isRegistered =
+                                                            visitor.stillInService === true ||
+                                                            interactionsForRegistration.some(i => i.visitorId === visitor.id && !i.completed && !i.cancelled);
                                                         const isRegisteringThis = isCreatingInteraction && pendingRegisterVisitor?.id === visitor.id;
                                                         const isDisabled = isRegistered || isRegisteringThis;
                                                         return (

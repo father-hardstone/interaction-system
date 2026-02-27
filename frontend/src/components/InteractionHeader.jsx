@@ -1,7 +1,29 @@
 import React, { useState, useRef, useEffect } from 'react';
+import PatientHealthWarningTooltip from './PatientHealthWarningTooltip';
 
 const WEEK_OPTIONS = [1, 2, 3, 5, 6];
 const MONTH_OPTIONS = [1, 2, 3, 6];
+
+/** YYYY-MM-DD for date input from today + weeks or months */
+function getEndDateFromInterval(intervalWeeks, intervalMonths) {
+    const d = new Date();
+    if (intervalWeeks != null) {
+        d.setDate(d.getDate() + 7 * intervalWeeks);
+    } else if (intervalMonths != null) {
+        d.setMonth(d.getMonth() + intervalMonths);
+    } else {
+        return '';
+    }
+    return d.toISOString().split('T')[0];
+}
+
+/** Format YYYY-MM-DD as mm/dd/yyyy for display */
+function formatFollowupDate(isoDate) {
+    if (!isoDate) return '';
+    const [y, m, d] = isoDate.split('-').map(Number);
+    const pad = (n) => (n < 10 ? '0' + n : String(n));
+    return `${pad(m)}/${pad(d)}/${y}`;
+}
 
 const InteractionHeader = ({
     interaction,
@@ -35,12 +57,37 @@ const InteractionHeader = ({
 
     const serial = getVisitorSerial(interaction.visitorId) || '-';
     const name = getVisitorName(interaction.visitorId) || '-';
-    const hasSpecialNotes = visitor && visitor.specialNotes && visitor.specialNotes !== '-';
+    const hasRedZone =
+        (visitor?.allergies && visitor.allergies !== 'N/A') ||
+        (visitor?.drugReactions && visitor.drugReactions !== 'N/A') ||
+        (visitor?.specialNotes && visitor.specialNotes !== '-');
 
     const handleFollowupCheckboxChange = (e) => {
         const checked = e.target.checked;
-        setFollowup?.(prev => ({ ...prev, required: checked }));
-        setFollowupTooltipOpen(checked);
+        if (checked) {
+            setFollowup?.(prev => ({ ...prev, required: true }));
+            setFollowupTooltipOpen(true);
+        } else {
+            setFollowup?.(prev => ({
+                ...prev,
+                required: false,
+                date: '',
+                intervalWeeks: null,
+                intervalMonths: null
+            }));
+            setFollowupTooltipOpen(false);
+        }
+    };
+
+    const handleIntervalChange = (intervalWeeks, intervalMonths) => {
+        const date = getEndDateFromInterval(intervalWeeks ?? null, intervalMonths ?? null);
+        setFollowup?.(prev => ({
+            ...prev,
+            intervalWeeks: intervalWeeks ?? null,
+            intervalMonths: intervalMonths ?? null,
+            date: date || prev.date
+        }));
+        setFollowupTooltipOpen(false);
     };
 
     const tomorrow = new Date();
@@ -55,10 +102,13 @@ const InteractionHeader = ({
                     onClick={() => handleOpenPatientDetails?.(interaction.visitorId)}
                     className="text-left group w-fit"
                 >
-                    <div className="flex items-baseline gap-2 flex-wrap">
+                    <div className="flex items-baseline gap-2 flex-wrap items-center">
                         <span className="shrink-0 text-sm font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 normal-case tracking-widest">
                             {serial}
                         </span>
+                        {hasRedZone && visitor && (
+                            <PatientHealthWarningTooltip visitor={visitor} className="shrink-0" />
+                        )}
                         <h2 className="text-xl sm:text-2xl font-bold text-slate-900 normal-case tracking-tighter group-hover:text-blue-600 transition-colors flex items-center gap-2 flex-wrap">
                             {name}
                             {interaction.visitMode === 'on_phone' && (
@@ -70,12 +120,6 @@ const InteractionHeader = ({
                         </h2>
                     </div>
                 </button>
-                {hasSpecialNotes && (
-                    <p className="text-sm text-slate-700 truncate max-w-full" title={visitor.specialNotes}>
-                        <span className="font-semibold text-red-600">Special notes:</span>{' '}
-                        <span className="text-slate-700">{visitor.specialNotes}</span>
-                    </p>
-                )}
             </div>
             <div className="flex flex-wrap items-center gap-2 sm:gap-3 shrink-0">
                 {setFollowup && followup && (
@@ -88,6 +132,12 @@ const InteractionHeader = ({
                                 className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                             />
                             <span className="text-sm font-medium text-slate-700 whitespace-nowrap">Followup required</span>
+                            {followup.required && followup.date && (
+                                <>
+                                    <span className="text-slate-300">|</span>
+                                    <span className="text-sm font-medium text-slate-600 whitespace-nowrap">{formatFollowupDate(followup.date)}</span>
+                                </>
+                            )}
                         </label>
                         {followup.required && followupTooltipOpen && (
                             <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-lg border border-slate-200 p-3 z-[200]">
@@ -112,7 +162,7 @@ const InteractionHeader = ({
                                                         name="followup-interval-header"
                                                         className="w-3.5 h-3.5 text-blue-600 border-slate-300"
                                                         checked={followup.intervalWeeks === n}
-                                                        onChange={() => setFollowup(prev => ({ ...prev, intervalWeeks: n, intervalMonths: null }))}
+                                                        onChange={() => handleIntervalChange(n, null)}
                                                     />
                                                     <span className="text-xs text-slate-700">{n}w</span>
                                                 </label>
@@ -129,7 +179,7 @@ const InteractionHeader = ({
                                                         name="followup-interval-header"
                                                         className="w-3.5 h-3.5 text-blue-600 border-slate-300"
                                                         checked={followup.intervalMonths === n}
-                                                        onChange={() => setFollowup(prev => ({ ...prev, intervalMonths: n, intervalWeeks: null }))}
+                                                        onChange={() => handleIntervalChange(null, n)}
                                                     />
                                                     <span className="text-xs text-slate-700">{n}m</span>
                                                 </label>

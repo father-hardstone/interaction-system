@@ -63,13 +63,13 @@ const MedicationBlock = ({ visitor, medications, addMedication, updateMedication
                 </div>
             </div>
 
-            {/* Red zone + Past medical conditions — side by side on larger screens */}
+            {/* Red zone + Past medical history — same row, same dimensions */}
             {visitor && (hasRedZone || pastMedicalKeys.some(({ key }) => visitor[key])) && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                    {hasRedZone && (
-                        <div className="p-3 bg-red-50 border-2 border-red-200 rounded-xl min-w-0">
-                            <div className="text-xs font-semibold text-red-800 normal-case tracking-wide mb-2">Allergies & reactions</div>
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-2 text-sm">
+                    <div className={`p-3 rounded-xl min-w-0 min-h-[88px] flex flex-col ${hasRedZone ? 'bg-red-50 border-2 border-red-200' : 'bg-slate-50/50 border border-slate-100 border-dashed'}`}>
+                        <div className="text-xs font-semibold text-red-800 normal-case tracking-wide mb-2">Allergies & reactions</div>
+                        {hasRedZone ? (
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-1.5 text-sm">
                                 <div>
                                     <span className="text-xs font-semibold text-red-900 normal-case block">Allergies</span>
                                     <span className="font-medium text-slate-700">{visitor.allergies || 'N/A'}</span>
@@ -83,11 +83,13 @@ const MedicationBlock = ({ visitor, medications, addMedication, updateMedication
                                     <span className="font-medium text-slate-700">{visitor.specialNotes || '-'}</span>
                                 </div>
                             </div>
-                        </div>
-                    )}
-                    {pastMedicalKeys.some(({ key }) => visitor[key]) && (
-                        <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl min-w-0">
-                            <div className="text-xs font-semibold text-slate-700 normal-case tracking-wide mb-2">Past medical history</div>
+                        ) : (
+                            <span className="text-xs text-slate-400">—</span>
+                        )}
+                    </div>
+                    <div className={`p-3 rounded-xl min-w-0 min-h-[88px] flex flex-col ${pastMedicalKeys.some(({ key }) => visitor[key]) ? 'bg-slate-50 border border-slate-200' : 'bg-slate-50/50 border border-slate-100 border-dashed'}`}>
+                        <div className="text-xs font-semibold text-slate-700 normal-case tracking-wide mb-2">Past medical history</div>
+                        {pastMedicalKeys.some(({ key }) => visitor[key]) ? (
                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-x-4 gap-y-1.5 text-sm">
                                 {pastMedicalKeys.map(({ key, label }) => {
                                     const val = visitor[key];
@@ -100,8 +102,10 @@ const MedicationBlock = ({ visitor, medications, addMedication, updateMedication
                                     );
                                 })}
                             </div>
-                        </div>
-                    )}
+                        ) : (
+                            <span className="text-xs text-slate-400">—</span>
+                        )}
+                    </div>
                 </div>
             )}
 

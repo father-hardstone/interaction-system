@@ -39,6 +39,7 @@ const InteractionsSection = ({
     lastVisits = {},
     officers,
     userData,
+    isLoadingInteractions = false,
     draggedOverOfficer,
     draggedOverUnassigned,
     setDraggedOverUnassigned,
@@ -76,7 +77,8 @@ const InteractionsSection = ({
     onInteractionClick,
     visitors = [],
     handleRegisterPatient,
-    onPatientClick
+    onPatientClick,
+    registrationCount
 }) => {
     const [draggedOverDelete, setDraggedOverDelete] = useState(false);
     const [showRegisterModal, setShowRegisterModal] = useState(false);
@@ -129,7 +131,10 @@ const InteractionsSection = ({
                 <div>
                     <h2 className="text-lg font-semibold text-slate-900">Registrations</h2>
                     <p className="text-sm text-slate-500 mt-1">
-                        Manage and assign registrations to doctors {interactions.length > 0 && `(${interactions.length} registration${interactions.length !== 1 ? 's' : ''})`}
+                        {(() => {
+                            const count = typeof registrationCount === 'number' ? registrationCount : interactions.length;
+                            return `Manage and assign registrations to doctors${count > 0 ? ` (${count} registration${count !== 1 ? 's' : ''})` : ''}`;
+                        })()}
                     </p>
                 </div>
                 <button
@@ -188,6 +193,18 @@ const InteractionsSection = ({
                         className={`grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-2 p-3 rounded-xl transition-colors flex-1 min-h-0 overflow-y-auto scrollbar-hide ${draggedOverUnassigned ? 'bg-blue-50 border-2 border-blue-300 border-dashed' : 'bg-slate-50'
                             }`}
                     >
+                        {isLoadingInteractions ? (
+                            <div className="col-span-full flex flex-1 min-h-[200px] items-center justify-center">
+                                <div className="flex flex-col items-center gap-3">
+                                    <svg className="animate-spin h-10 w-10 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                    </svg>
+                                    <span className="text-sm font-medium text-slate-500">Loading registrations…</span>
+                                </div>
+                            </div>
+                        ) : (
+                        <>
                         {/* Show existing interactions + optimistic unassigned (being moved from doctor) */}
                         {interactions
                             .filter(i => {
@@ -342,6 +359,8 @@ const InteractionsSection = ({
                                 No unassigned registrations
                             </div>
                         )}
+                        </>
+                        )}
                     </div>
                 </div>
 
@@ -393,6 +412,18 @@ const InteractionsSection = ({
 
                                     {/* Assigned Interactions for this officer - overflow inside, no scrollbar */}
                                     <div className="space-y-2 flex-1 min-h-0 overflow-y-auto scrollbar-hide">
+                                        {isLoadingInteractions ? (
+                                            <div className="flex flex-1 min-h-[200px] items-center justify-center">
+                                                <div className="flex flex-col items-center gap-3">
+                                                    <svg className="animate-spin h-10 w-10 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                                    </svg>
+                                                    <span className="text-sm font-medium text-slate-500">Loading…</span>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                        <>
                                         {/* Show pending assignments (optimistic UI) */}
                                         {Object.entries(pendingAssignments)
                                             .filter(([interactionId, targetOfficerId]) => targetOfficerId === selectedOfficer.id)
@@ -492,6 +523,8 @@ const InteractionsSection = ({
                                             <div className="text-xs text-slate-400 italic text-center py-4 border-2 border-dashed border-slate-200 rounded-lg">
                                                 Drop registrations here
                                             </div>
+                                        )}
+                                        </>
                                         )}
                                     </div>
                                 </div>

@@ -212,10 +212,98 @@ class OfficerController {
                 name: user.name,
                 phone: user.phone,
                 email: user.email,
+                billingNumber: user.billingNumber || '',
+                cpsoNumber: user.cpsoNumber || '',
+                profilePicture: user.profilePicture || '',
                 role: role || 'officer'
             }, SECRET_KEY, { expiresIn: '1d' });
 
             res.json({ message: "Login success", token });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    }
+
+    // Get current internal user profile (officer or receptionist)
+    async getMe(req, res) {
+        try {
+            const { id, role } = req.user || {};
+            if (!id || !role) return res.status(401).json({ error: 'Unauthenticated' });
+
+            const record = role === 'receptionist'
+                ? await ReceptionistService.findOne({ id })
+                : await OfficerService.findOne({ id });
+
+            if (!record) return res.status(404).json({ error: 'User not found' });
+
+            const { password, ...safe } = record;
+            res.json({
+                user: {
+                    ...safe,
+                    billingNumber: safe.billingNumber || '',
+                    cpsoNumber: safe.cpsoNumber || '',
+                    profilePicture: safe.profilePicture || ''
+                }
+            });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    }
+
+    // Update current internal user profile (officer or receptionist)
+    async updateMe(req, res) {
+        try {
+            const { id, role, entityName, entitySerial, entityId, serial } = req.user || {};
+            if (!id || !role) return res.status(401).json({ error: 'Unauthenticated' });
+
+            const body = req.body || {};
+            const updates = {};
+
+            if (body.name !== undefined) updates.name = String(body.name || '').trim();
+            if (body.billingNumber !== undefined) updates.billingNumber = String(body.billingNumber || '').trim();
+            if (body.cpsoNumber !== undefined) updates.cpsoNumber = String(body.cpsoNumber || '').trim();
+            if (body.profilePicture !== undefined) {
+                const v = String(body.profilePicture || '');
+                // Basic size guard: prevent huge base64 payloads
+                if (v && v.length > 700000) return res.status(413).json({ error: 'Profile image is too large' });
+                updates.profilePicture = v;
+            }
+
+            // Email is intentionally not editable right now
+            delete updates.email;
+
+            const updated = role === 'receptionist'
+                ? await ReceptionistService.update(id, updates)
+                : await OfficerService.update(id, updates);
+
+            if (!updated) return res.status(404).json({ error: 'User not found' });
+
+            const { password, ...safe } = updated;
+
+            const token = jwt.sign({
+                id: safe.id,
+                serial: safe.serial || serial,
+                entityId: safe.entityId || entityId,
+                entitySerial: safe.entitySerial || entitySerial,
+                entityName: entityName || safe.entitySerial || entitySerial,
+                name: safe.name,
+                phone: safe.phone,
+                email: safe.email,
+                billingNumber: safe.billingNumber || '',
+                cpsoNumber: safe.cpsoNumber || '',
+                profilePicture: safe.profilePicture || '',
+                role
+            }, SECRET_KEY, { expiresIn: '1d' });
+
+            res.json({
+                user: {
+                    ...safe,
+                    billingNumber: safe.billingNumber || '',
+                    cpsoNumber: safe.cpsoNumber || '',
+                    profilePicture: safe.profilePicture || ''
+                },
+                token
+            });
         } catch (e) {
             res.status(500).json({ error: e.message });
         }

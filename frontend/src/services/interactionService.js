@@ -6,6 +6,12 @@ export const interactionService = {
         return response.data;
     },
 
+    /** Get all interactions for a visitor (no time filter; for patient history). */
+    getByVisitor: async (entityId, visitorId) => {
+        const response = await api.get(`/interactions/entity/${entityId}/visitor/${visitorId}`);
+        return response.data;
+    },
+
     create: async (data) => {
         const response = await api.post('/interactions', data);
         return response.data;

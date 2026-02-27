@@ -46,6 +46,16 @@ const interactionSchema = new mongoose.Schema({
         type: String,
         default: ''
     },
+    /** Unique billing serial per entity (1, 2, 3...). Set when interaction becomes closed. */
+    accountingNumber: {
+        type: String,
+        default: ''
+    },
+    /** Fee type used when billing (hcp, t_fee, etc.). */
+    billingType: {
+        type: String,
+        default: ''
+    },
     // Interaction notes fields
     ccReason: {
         text: { type: String, default: '' },

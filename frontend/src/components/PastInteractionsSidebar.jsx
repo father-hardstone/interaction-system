@@ -7,6 +7,8 @@ const PastInteractionsSidebar = ({
     activePatientVisitorId,
     visitor,
     interactions,
+    /** When provided, use this list instead of filtering from interactions (e.g. fetched by visitor, no time filter). */
+    pastInteractionsOverride = null,
     activeInteractionId,
     patientReports,
     onCloseOverlay,
@@ -42,9 +44,11 @@ const PastInteractionsSidebar = ({
         return null;
     };
 
-    const pastInteractions = interactions
-        .filter(i => i.visitorId === activePatientVisitorId && i.id !== activeInteractionId && i.completed)
-        .sort((a, b) => new Date(b.editedAt || b.createdAt) - new Date(a.editedAt || a.createdAt));
+    const pastInteractions = pastInteractionsOverride != null
+        ? pastInteractionsOverride
+        : (interactions || [])
+            .filter(i => i.visitorId === activePatientVisitorId && i.id !== activeInteractionId && i.completed)
+            .sort((a, b) => new Date(b.editedAt || b.createdAt) - new Date(a.editedAt || a.createdAt));
 
     return (
         <aside className="w-full xl:w-[307px] bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col h-full overflow-hidden shrink-0">
