@@ -191,7 +191,7 @@ const RegisterInteractionModal = ({
                                     </tr>
                                 ) : (
                                     filteredVisitors.map((visitor) => {
-                                        const isRegistered = interactions.some(i => i.visitorId === visitor.id && !i.completed);
+                                        const isRegistered = visitor.stillInService === true || interactions.some(i => i.visitorId === visitor.id && !i.completed);
                                         const isRegisteringThis = isCreatingInteraction && pendingRegisterVisitor?.id === visitor.id;
                                         const isDisabled = isRegistered || isRegisteringThis;
 

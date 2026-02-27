@@ -2,7 +2,7 @@
   "name": "bilals-interaction-system",
   "private": true,
   "version": "1.0.0",
-  "description": "Bilal's Interaction System - Manage patient interactions, registrations, billing, and clinical workflows.",
+  "description": "Medical Interaction System - Manage patient interactions, registrations, billing, and clinical workflows.",
   "type": "module",
   "scripts": {
     "dev": "vite",

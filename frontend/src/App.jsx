@@ -24,7 +24,7 @@ const NavBar = () => {
   const token = localStorage.getItem('token');
   const [entityIconUrl, setEntityIconUrl] = useState(null);
   const [userInfo, setUserInfo] = useState({
-    displayName: "Bilal's Interaction System",
+    displayName: "Medical Interaction System",
     isAuthed: false,
     isEntity: false,
     entityId: null,
@@ -35,7 +35,7 @@ const NavBar = () => {
   useEffect(() => {
     if (!token) {
       setUserInfo({
-        displayName: "Bilal's Interaction System",
+        displayName: "Medical Interaction System",
         isAuthed: false,
         isEntity: false,
         entityId: null,
@@ -68,7 +68,7 @@ const NavBar = () => {
           });
         } else {
           setUserInfo({
-            displayName: localStorage.getItem('entityName') || "Bilal's Interaction System",
+            displayName: localStorage.getItem('entityName') || "Medical Interaction System",
             isAuthed: true,
             isEntity: false,
             entityId: null,
@@ -77,7 +77,7 @@ const NavBar = () => {
         }
       } else {
         setUserInfo({
-          displayName: "Bilal's Interaction System",
+          displayName: "Medical Interaction System",
           isAuthed: false,
           isEntity: false,
           entityId: null,
@@ -86,7 +86,7 @@ const NavBar = () => {
       }
     } catch {
       setUserInfo({
-        displayName: "Bilal's Interaction System",
+        displayName: "Medical Interaction System",
         isAuthed: false,
         isEntity: false,
         entityId: null,
@@ -237,7 +237,7 @@ const NavBar = () => {
             )
           ) : (
             <span className="font-semibold text-xl normal-case tracking-tighter text-slate-900 group-hover:text-primary transition-colors">
-              {userInfo.isAuthed && isDashboardRoute ? userInfo.displayName : "Bilal's Interaction System"}
+              {userInfo.isAuthed && isDashboardRoute ? userInfo.displayName : "Medical Interaction System"}
             </span>
           )}
           {userInfo.isAuthed && isDashboardRoute && (
@@ -270,8 +270,8 @@ function App() {
             <Route path="/" element={
               <div className="flex-1 flex items-center justify-center p-8 w-full">
                 <div className="text-center">
-                  <img src="/icons/interaction_system_icon.png" alt="Bilal's Interaction System" className="h-20 w-auto mx-auto mb-6 object-contain" />
-                  <h1 className="text-5xl mb-4 font-semibold">Bilal's Interaction System</h1>
+                  <img src="/icons/interaction_system_icon.png" alt="Medical Interaction System" className="h-20 w-auto mx-auto mb-6 object-contain" />
+                  <h1 className="text-5xl mb-4 font-semibold">Medical Interaction System</h1>
                   <p className="mb-8 text-gray-600">Select a portal to continue.</p>
                   <div className="flex gap-4 justify-center">
                     <Link to="/entity/login" className="px-6 py-3 bg-white text-primary border border-primary rounded-xl font-semibold text-base no-underline inline-block transition-all hover:bg-blue-50">Entity Portal</Link>

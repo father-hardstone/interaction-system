@@ -39,6 +39,22 @@ class InteractionController {
         }
     }
 
+    // Get all interactions for a specific visitor (no time filter; for patient history / past interactions)
+    async getInteractionsByVisitor(req, res) {
+        try {
+            const { entityId, visitorId } = req.params;
+            const interactions = await InteractionService.findMany({
+                entityId,
+                visitorId,
+                deletedAt: ''
+            });
+            res.json({ interactions: interactions || [] });
+        } catch (e) {
+            console.error('getInteractionsByVisitor error:', e);
+            res.status(500).json({ error: e.message });
+        }
+    }
+
     // Get a single interaction by id (full document for edit view)
     async getInteractionById(req, res) {
         try {
@@ -141,11 +157,12 @@ class InteractionController {
                 return res.status(400).json({ error: 'Missing required fields' });
             }
 
-            // Check if there's already an active (non-completed) interaction for this visitor
+            // Check if there's already an active (non-completed, non-cancelled) interaction for this visitor
             const existingActive = await InteractionService.findOne({
                 visitorId: visitorId,
                 entityId: entityId,
                 completed: { $ne: true },
+                cancelled: { $ne: true },
                 deletedAt: ''
             });
 
@@ -270,7 +287,8 @@ class InteractionController {
                 incomplete,
                 completed,
                 closed,
-                billed
+                billed,
+                billingType
             } = req.body;
 
             // Validate interaction exists
@@ -328,10 +346,34 @@ class InteractionController {
             if (billed === true) {
                 updates.billed = true;
                 if (!existing.billed) updates.billedAt = new Date().toISOString();
+            } else if (billed === false) {
+                updates.billed = false;
+                if (existing.billed) updates.billedAt = '';
             } else if (billed !== undefined) {
                 updates.billed = billed === true;
             } else {
                 updates.billed = false;
+            }
+
+            if (billingType !== undefined) {
+                updates.billingType = billingType || '';
+            }
+
+            // Assign accounting number at billing time (when billed is true) if missing.
+            const needsAccountingNumber = billed === true && existing.entityId &&
+                !(existing.accountingNumber && String(existing.accountingNumber).trim());
+            if (needsAccountingNumber) {
+                const nextAccountingNumber = await InteractionService.getNextAccountingNumber(existing.entityId);
+                updates.accountingNumber = nextAccountingNumber;
+
+                const linesToUse = updates.serviceLines !== undefined ? updates.serviceLines : existing.serviceLines || [];
+                const baseLines = linesToUse.map(line => ({
+                    ...line,
+                    accountingNumber: line.accountingNumber && String(line.accountingNumber).trim()
+                        ? line.accountingNumber
+                        : nextAccountingNumber
+                }));
+                updates.serviceLines = baseLines;
             }
 
             // Set status timestamps when flag transitions to true (never overwrite)
@@ -378,13 +420,16 @@ class InteractionController {
             }
 
             if (serviceLines !== undefined) {
+                const sharedAccountingNumber = updates.accountingNumber != null && String(updates.accountingNumber).trim() !== ''
+                    ? String(updates.accountingNumber).trim()
+                    : null;
                 updates.serviceLines = serviceLines.map(line => ({
                     serialNumber: line.serialNumber || 1,
                     service: line.service || '',
                     suffix: line.suffix || '',
                     diagnostic: line.diagnostic || '',
                     totalFee: parseFloat(line.totalFee) || 0,
-                    accountingNumber: line.accountingNumber || ''
+                    accountingNumber: sharedAccountingNumber || line.accountingNumber || ''
                 }));
             }
 

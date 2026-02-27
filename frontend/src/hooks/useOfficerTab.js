@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import api from '../services/api';
 import { reportService } from '../services/reportService';
+import { interactionService } from '../services/interactionService';
 import { useMasterData } from '../contexts/MasterDataContext';
 import { useToast } from '../contexts/ToastContext';
 import supabaseStorageService, { extractStoragePathFromSupabaseUrl } from '../services/supabaseService';
@@ -137,6 +138,10 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
     const [patientReports, setPatientReports] = useState([]);
     const [isLoadingReports, setIsLoadingReports] = useState(false);
     const [viewingMedia, setViewingMedia] = useState(null);
+    const [pastInteractionsForSidebar, setPastInteractionsForSidebar] = useState([]);
+    const [officerPatientDetailPastInteractions, setOfficerPatientDetailPastInteractions] = useState([]);
+    /** When the active ongoing interaction is missing from the filtered list (e.g. filter changed to Today), fetch it independently. */
+    const [overlayActiveInteraction, setOverlayActiveInteraction] = useState(null);
 
     // Form states
     const [ccReason, setCcReason] = useState('');
@@ -189,7 +194,69 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
     const activePatientVisitorId = useMemo(() => {
         if (!activeInteractionId) return null;
         const interaction = interactions.find(i => i.id === activeInteractionId);
-        return interaction?.visitorId;
+        if (interaction) return interaction.visitorId;
+        if (overlayActiveInteraction?.id === activeInteractionId) return overlayActiveInteraction.visitorId;
+        return null;
+    }, [activeInteractionId, interactions, overlayActiveInteraction]);
+
+    // Fetch past interactions for active patient (sidebar) — independent of time filter
+    useEffect(() => {
+        if (!activePatientVisitorId || !userData?.entityId) {
+            setPastInteractionsForSidebar([]);
+            return;
+        }
+        let cancelled = false;
+        interactionService.getByVisitor(userData.entityId, activePatientVisitorId).then((data) => {
+            if (cancelled) return;
+            const raw = data?.interactions ?? (Array.isArray(data) ? data : null);
+            const list = (Array.isArray(raw) ? raw : [])
+                .filter((i) => i.completed && i.id !== activeInteractionId)
+                .sort((a, b) => new Date(b.editedAt || b.createdAt) - new Date(a.editedAt || a.createdAt));
+            setPastInteractionsForSidebar(list);
+        }).catch(() => {
+            if (!cancelled) setPastInteractionsForSidebar([]);
+        });
+        return () => { cancelled = true; };
+    }, [activePatientVisitorId, activeInteractionId, userData?.entityId]);
+
+    // Fetch past interactions when opening patient detail modal (Officer tab) — independent of time filter
+    useEffect(() => {
+        if (!showPatientDetailModal || !selectedPatient?.id || !userData?.entityId) {
+            setOfficerPatientDetailPastInteractions([]);
+            return;
+        }
+        let cancelled = false;
+        interactionService.getByVisitor(userData.entityId, selectedPatient.id).then((data) => {
+            if (cancelled) return;
+            const list = (data?.interactions || []).filter((i) => i.completed);
+            setOfficerPatientDetailPastInteractions(list);
+        }).catch(() => {
+            if (!cancelled) setOfficerPatientDetailPastInteractions([]);
+        });
+        return () => { cancelled = true; };
+    }, [showPatientDetailModal, selectedPatient?.id, userData?.entityId]);
+
+    // When activeInteractionId is not in the current (filtered) list, fetch it so ongoing view still shows it
+    useEffect(() => {
+        if (!activeInteractionId) {
+            setOverlayActiveInteraction(null);
+            return;
+        }
+        const inList = interactions.some((i) => i.id === activeInteractionId);
+        if (inList) {
+            setOverlayActiveInteraction(null);
+            return;
+        }
+        let cancelled = false;
+        api.get(`/interactions/${activeInteractionId}`).then((res) => {
+            if (cancelled) return;
+            const raw = res?.data?.data ?? res?.data?.interaction ?? res?.data;
+            if (raw?.id === activeInteractionId) setOverlayActiveInteraction(raw);
+            else setOverlayActiveInteraction(null);
+        }).catch(() => {
+            if (!cancelled) setOverlayActiveInteraction(null);
+        });
+        return () => { cancelled = true; };
     }, [activeInteractionId, interactions]);
 
     // Fetch reports
@@ -213,9 +280,22 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
         loadReports();
     }, [activePatientVisitorId]);
 
-    const doctorInteractions = useMemo(
-        () => interactions.filter((i) => i.officerId === doctorId),
-        [interactions, doctorId]
+    const doctorInteractions = useMemo(() => {
+        const base = interactions.filter((i) => i.officerId === doctorId);
+        const hasActive = base.some((i) => i.id === activeInteractionId);
+        if (hasActive || !activeInteractionId) return base;
+        if (overlayActiveInteraction?.id === activeInteractionId && overlayActiveInteraction.officerId === doctorId) {
+            return [overlayActiveInteraction, ...base];
+        }
+        return base;
+    }, [interactions, doctorId, activeInteractionId, overlayActiveInteraction]);
+
+    /** Active interaction from list or overlay (when filter excludes it). */
+    const activeInteractionResolved = useMemo(
+        () =>
+            interactions.find((i) => i.id === activeInteractionId) ||
+            (overlayActiveInteraction?.id === activeInteractionId ? overlayActiveInteraction : null),
+        [interactions, activeInteractionId, overlayActiveInteraction]
     );
 
     /** Scheduled queue (in-person only): oldest first. Phone consults excluded – they appear in Phone consults tab. */
@@ -261,16 +341,10 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
 
     const completedInteractionsForPatient = useMemo(() => {
         if (!selectedPatient) return [];
-        return interactions
-            .filter(
-                (i) =>
-                    i.visitorId === selectedPatient.id &&
-                    i.completed
-            )
-            .sort(
-                (a, b) => new Date(b.editedAt || b.createdAt).getTime() - new Date(a.editedAt || a.createdAt).getTime()
-            );
-    }, [interactions, selectedPatient]);
+        return [...officerPatientDetailPastInteractions].sort(
+            (a, b) => new Date(b.editedAt || b.createdAt).getTime() - new Date(a.editedAt || a.createdAt).getTime()
+        );
+    }, [selectedPatient, officerPatientDetailPastInteractions]);
 
 
     const resetInteractionFields = () => {
@@ -416,8 +490,8 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
 
     // Recovery effect (restore draft when reopening an ongoing interaction; do not clear when editing a completed one)
     useEffect(() => {
-        if (!hasRecovered && activeInteractionId && interactions.length > 0 && services.length > 0 && diagnostics.length > 0 && !isEditingCompleted) {
-            const activeInt = interactions.find(i => i.id === activeInteractionId);
+        if (!hasRecovered && activeInteractionId && services.length > 0 && diagnostics.length > 0 && !isEditingCompleted) {
+            const activeInt = activeInteractionResolved;
             if (activeInt && !activeInt.completed) {
                 loadInteractionToState(activeInt);
                 setHasRecovered(true);
@@ -426,7 +500,7 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
                 setActiveViewTab('scheduled');
             }
         }
-    }, [interactions, activeInteractionId, services, diagnostics, hasRecovered, isEditingCompleted]);
+    }, [activeInteractionId, activeInteractionResolved, services, diagnostics, hasRecovered, isEditingCompleted]);
 
     // Auto-select ongoing interaction if activeInteractionId is null but an ongoing interaction exists
     useEffect(() => {
@@ -559,7 +633,7 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
             return;
         }
         const idToCancel = activeInteractionId;
-        const interaction = interactions.find((i) => i.id === idToCancel);
+        const interaction = activeInteractionResolved;
         const pathsToDelete = collectInteractionScratchpadPaths(interaction);
 
         // Optimistic UI: remove from ongoing immediately so it doesn’t stay visible until response
@@ -700,7 +774,7 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
     const saveInteractionData = async (statusOverride = {}) => {
         if (!activeInteractionId) return null;
 
-        const activeInteraction = interactions.find(i => i.id === activeInteractionId);
+        const activeInteraction = activeInteractionResolved;
         if (!activeInteraction) return null;
 
         const oldPaths = collectInteractionScratchpadPaths(activeInteraction);
@@ -769,7 +843,7 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
             followupRequired: {
                 required: followup.required || false,
                 date: followup.date || '',
-                followupInteractionId: (interactions.find(i => i.id === activeInteractionId)?.followupRequired?.followupInteractionId || interactions.find(i => i.id === activeInteractionId)?.followupInteractionId || ''),
+                followupInteractionId: (activeInteractionResolved?.followupRequired?.followupInteractionId || activeInteractionResolved?.followupInteractionId || ''),
                 intervalWeeks: followup.intervalWeeks != null ? followup.intervalWeeks : null,
                 intervalMonths: followup.intervalMonths != null ? followup.intervalMonths : null
             },
@@ -835,7 +909,7 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
 
     const handleSaveEdit = async () => {
         if (!activeInteractionId) return;
-        const interaction = interactions.find(i => i.id === activeInteractionId);
+        const interaction = activeInteractionResolved;
         if (!interaction) return;
         const prevEditCount = interaction.editCount ?? 0;
         const nextEditCount = prevEditCount + 1;
@@ -1053,6 +1127,7 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
         diagnostics,
         isSaving,
         activePatientVisitorId,
+        pastInteractionsForSidebar,
         scheduledInteractions,
         phoneConsultInteractions,
         incompleteInteractions,

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { getReasonForVisitLabel, formatTimeOnly, getAgeYearsMonthsDisplay, formatPhoneDisplay } from '../utils/formatUtils';
+import { getReasonForVisitLabel, formatTimeOnly, getAgeYearsMonthsDisplay, formatPhoneDisplay, getRegistrationDisplayId } from '../utils/formatUtils';
+import PatientHealthWarningTooltip from './PatientHealthWarningTooltip';
 
 /** Wait time from registration (createdAt) to now, in whole minutes. */
 const getWaitMinutesAgo = (createdAt, now) => {
@@ -81,6 +82,12 @@ const ScheduledInteractionsTable = ({
         return codes.map(c => c.toUpperCase()).join(', ');
     };
 
+    /** Red zone: allergies, drug reactions, or special notes. */
+    const hasRedZone = (v) =>
+        (v?.allergies && v.allergies !== 'N/A') ||
+        (v?.drugReactions && v.drugReactions !== 'N/A') ||
+        (v?.specialNotes && String(v.specialNotes || '').trim() && v.specialNotes !== '-');
+
     return (
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-6 flex flex-col flex-1 min-h-0">
             <div className="flex items-center justify-between mb-4 shrink-0">
@@ -99,7 +106,6 @@ const ScheduledInteractionsTable = ({
                             {showPhoneColumn && (
                                 <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-700 bg-slate-50 border-l border-slate-100">Phone</th>
                             )}
-                            <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-700 bg-slate-50 border-l border-slate-100">Special notes</th>
                             <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-700 bg-slate-50 border-l border-slate-100">Registration</th>
                             <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-700 bg-slate-50 border-l border-slate-100">Age</th>
                             <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-700 bg-slate-50 border-l border-slate-100">Reason of visit</th>
@@ -112,7 +118,7 @@ const ScheduledInteractionsTable = ({
                     <tbody>
                         {isLoading ? (
                             <tr>
-                                <td colSpan={showPhoneColumn ? 11 : 10} className="px-4 sm:px-6 py-16 text-center">
+                                <td colSpan={showPhoneColumn ? 10 : 9} className="px-4 sm:px-6 py-16 text-center">
                                     <div className="flex flex-col items-center justify-center gap-3">
                                         <svg className="animate-spin h-10 w-10 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -124,7 +130,7 @@ const ScheduledInteractionsTable = ({
                             </tr>
                         ) : scheduledInteractions.length === 0 ? (
                             <tr>
-                                <td colSpan={showPhoneColumn ? 11 : 10} className="px-4 sm:px-6 py-12 text-center text-slate-400 text-sm">
+                                <td colSpan={showPhoneColumn ? 10 : 9} className="px-4 sm:px-6 py-12 text-center text-slate-400 text-sm">
                                     {emptyMessage}
                                 </td>
                             </tr>
@@ -140,10 +146,12 @@ const ScheduledInteractionsTable = ({
                                 >
                                     <td className="w-9 px-1 py-3 align-middle text-center bg-slate-50/50">
                                         <span className="text-sm font-semibold text-blue-600">{queueIndex + 1}</span>
+                                        <span className="text-slate-500 text-xs block">({getRegistrationDisplayId(interaction)})</span>
                                     </td>
                                     <td className="px-3 sm:px-4 py-3 align-middle border-l border-slate-100" onClick={(e) => e.stopPropagation()}>
-                                        <button type="button" onClick={() => handleOpenPatientDetails(interaction.visitorId)} className="text-left hover:text-blue-700 transition-colors">
-                                            <div className="font-medium text-sm text-slate-900">{getVisitorName(interaction.visitorId)}</div>
+                                        <button type="button" onClick={() => handleOpenPatientDetails(interaction.visitorId)} className="text-left hover:text-blue-700 transition-colors inline-flex items-center gap-2 flex-wrap">
+                                            <span className="font-medium text-sm text-slate-900">{getVisitorName(interaction.visitorId)}</span>
+                                            {hasRedZone(visitor) && <PatientHealthWarningTooltip visitor={visitor} className="shrink-0" />}
                                         </button>
                                     </td>
                                     {showPhoneColumn && (
@@ -151,13 +159,6 @@ const ScheduledInteractionsTable = ({
                                             {formatPhoneDisplay(visitor?.phoneM || visitor?.phone) || '—'}
                                         </td>
                                     )}
-                                    <td className="px-3 sm:px-4 py-3 align-middle text-sm border-l border-slate-100">
-                                        {(visitor?.specialNotes && String(visitor.specialNotes).trim() && visitor.specialNotes !== '-') ? (
-                                            <span className="text-red-600 font-medium" title={String(visitor.specialNotes).trim()}>{String(visitor.specialNotes).trim()}</span>
-                                        ) : (
-                                            <span className="text-slate-400">—</span>
-                                        )}
-                                    </td>
                                     <td className="px-3 sm:px-4 py-3 align-middle text-sm text-slate-700 border-l border-slate-100">
                                         {formatTimeOnly(interaction.createdAt)}{!hideWaitingTime && waitMins !== null ? ` (${waitMins})` : ''}
                                     </td>
