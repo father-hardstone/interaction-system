@@ -78,6 +78,7 @@ const UserDashboard = () => {
     const [queueModalInteraction, setQueueModalInteraction] = useState(null);
     const [error, setError] = useState('');
     const [interactions, setInteractions] = useState([]);
+    const [allInteractions, setAllInteractions] = useState([]);
     const [lastVisits, setLastVisits] = useState({}); // visitorId -> last completed interaction (from backend, ignores time filter)
     const [isLoadingInteractions, setIsLoadingInteractions] = useState(true);
     const [officers, setOfficers] = useState([]);
@@ -89,7 +90,7 @@ const UserDashboard = () => {
     const [fieldErrors, setFieldErrors] = useState({});
 
     // Filter state
-    const [interactionFilter, setInteractionFilter] = useState('this_week');
+    const [interactionFilter, setInteractionFilter] = useState('today');
     const [receptionSubTab, setReceptionSubTab] = useState('patients');
 
     // Loading states
@@ -149,6 +150,13 @@ const UserDashboard = () => {
         loadInteractions(userData.entityId, interactionFilter);
     }, [userData?.entityId, interactionFilter]);
 
+    // 3b. Load all interactions for patient registration state (independent of time filter)
+    useEffect(() => {
+        if (!userData?.entityId) return;
+        if (activeTab !== 'reception' || receptionSubTab !== 'patients') return;
+        loadAllInteractions(userData.entityId);
+    }, [userData?.entityId, activeTab, receptionSubTab]);
+
     // 4. Fetch next visitor serial when modal opens
     useEffect(() => {
         const fetchNextSerial = async () => {
@@ -190,6 +198,16 @@ const UserDashboard = () => {
             setLastVisits({});
         } finally {
             setIsLoadingInteractions(false);
+        }
+    };
+
+    const loadAllInteractions = async (entityId) => {
+        try {
+            const data = await interactionService.getByEntity(entityId, 'all');
+            setAllInteractions(data?.interactions ?? data ?? []);
+        } catch (e) {
+            console.error('Failed to load all interactions (all filter):', e);
+            setAllInteractions([]);
         }
     };
 
@@ -431,8 +449,8 @@ const UserDashboard = () => {
             return;
         }
 
-        // Check if patient already has an active (incomplete) registration
-        const isAlreadyRegistered = interactions.some(i => i.visitorId === interaction.visitorId && !i.completed && i.id !== interaction.id);
+        // Check if patient already has an active (incomplete) registration (backend stillInService or fallback to filtered list)
+        const isAlreadyRegistered = visitor?.stillInService === true || interactions.some(i => i.visitorId === interaction.visitorId && !i.completed && i.id !== interaction.id);
         if (isAlreadyRegistered) {
             setRegisteringFollowupForId(null);
             showWarning(`${visitor.firstName} ${visitor.lastName} is already registered and hasn't completed their visit.`);
@@ -981,8 +999,10 @@ const UserDashboard = () => {
 
         const { reasonForVisit = '', visitMode = 'physical', parentInteractionId = '', reasonForVisitNotes = '', assignToOfficerId = '', assignOfficerSerial = '' } = options;
 
-        // Check if patient already has an active (incomplete) registration
-        const isAlreadyRegistered = interactions.some(i => i.visitorId === patient.id && !i.completed);
+        // Check if patient already has an active (incomplete) registration (backend stillInService or fallback to filtered list)
+        const isAlreadyRegistered =
+            patient.stillInService === true ||
+            allInteractions.some(i => i.visitorId === patient.id && !i.completed && !i.cancelled);
         if (isAlreadyRegistered) {
             showWarning(`${patient.firstName} ${patient.lastName} is already registered and hasn't completed their visit.`);
             return false;
@@ -1054,6 +1074,10 @@ const UserDashboard = () => {
 
             setPendingInteractions(prev => prev.filter(i => i.id !== tempId));
             await loadInteractions(userData.entityId, interactionFilter);
+            // Refresh full interaction set and visitors so stillInService flags and
+            // patient "In Service" status are immediately updated, independent of filters.
+            await loadAllInteractions(userData.entityId);
+            await loadVisitors(userData.entityId);
             return true;
         } catch (err) {
             console.error('Failed to create interaction:', err);
@@ -1089,6 +1113,8 @@ const UserDashboard = () => {
             }
 
             await loadInteractions(userData.entityId, interactionFilter);
+            await loadAllInteractions(userData.entityId);
+            await loadVisitors(userData.entityId);
             setShowDeleteRegistrationModal(false);
             setRegistrationToDelete(null);
         } catch (err) {
@@ -1105,6 +1131,8 @@ const UserDashboard = () => {
         try {
             await interactionService.cancel(registrationToCancel.id);
             await loadInteractions(userData.entityId, interactionFilter);
+            await loadAllInteractions(userData.entityId);
+            await loadVisitors(userData.entityId);
             setShowCancelRegistrationModal(false);
             setRegistrationToCancel(null);
         } catch (err) {
@@ -1240,9 +1268,16 @@ const UserDashboard = () => {
                             handlePatientDrop={handlePatientDrop}
                             warningMessage={warningMessage}
                             interactions={interactions}
+                            allInteractions={allInteractions}
+                            onInteractionUpdated={(updated) => {
+                                if (!updated?.id) return;
+                                setInteractions((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
+                                setAllInteractions((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
+                            }}
                             lastVisits={lastVisits}
                             officers={officers}
                             userData={userData}
+                            isLoadingInteractions={isLoadingInteractions}
                             draggedOverOfficer={draggedOverOfficer}
                             draggedOverUnassigned={draggedOverUnassigned}
                             setDraggedOverUnassigned={setDraggedOverUnassigned}
@@ -1299,6 +1334,8 @@ const UserDashboard = () => {
                             onRefreshInteractions={() => loadInteractions(userData.entityId, interactionFilter)}
                             onInteractionClick={handleInteractionClick}
                             handleRegisterPatient={handleRegisterPatient}
+                            interactionFilter={interactionFilter}
+                            setInteractionFilter={setInteractionFilter}
                         />
                     )}
                     </MasterDataProvider>

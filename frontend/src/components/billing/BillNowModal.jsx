@@ -4,6 +4,7 @@ import { BILLING_TYPES } from './constants';
 import {
     getVisitorName,
     getVisitorSerial,
+    getVisitorSerialDisplay,
     getOfficerName,
     getOfficerSerial,
     calculateAge,
@@ -12,12 +13,7 @@ import {
 } from './utils';
 import { formatDateMMDDYYYY } from '../../utils/formatUtils';
 
-const formatAccountingNumber = (v) => {
-    const d = (v || '').replace(/\D/g, '').slice(0, 6);
-    if (d.length <= 2) return d;
-    if (d.length <= 4) return `${d.slice(0, 2)}-${d.slice(2)}`;
-    return `${d.slice(0, 2)}-${d.slice(2, 4)}-${d.slice(4)}`;
-};
+const formatAccountingNumber = (v) => (v || '').replace(/\D/g, '').slice(0, 6);
 const parseAccountingNumber = (v) => (v || '').replace(/\D/g, '').slice(0, 6);
 
 const getSuffixFromBillingCode = (code) => {
@@ -43,6 +39,8 @@ const BillNowModal = ({
     onSave
 }) => {
     const [billingType, setBillingType] = useState('hcp');
+    const [isBilling, setIsBilling] = useState(false);
+    const [billError, setBillError] = useState('');
     const [showBillingDropdown, setShowBillingDropdown] = useState(null);
     const [showDiagnosticDropdown, setShowDiagnosticDropdown] = useState(null);
     const [billingDropdownRect, setBillingDropdownRect] = useState(null);
@@ -52,6 +50,7 @@ const BillNowModal = ({
     const [billingLines, setBillingLines] = useState([]);
 
     const visitor = visitors.find((v) => v.id === interaction?.visitorId);
+    const doctor = officers.find((o) => o.id === interaction?.officerId);
 
     const getFeeForService = useCallback((serviceCode, feeType) => {
         const svc = services.find((s) => (s.code || '').toUpperCase() === (serviceCode || '').toUpperCase());
@@ -73,14 +72,16 @@ const BillNowModal = ({
 
     useEffect(() => {
         if (isOpen && interaction) {
+            setIsBilling(false);
+            setBillError('');
             setBillingType('hcp');
-            setCpsocode('');
             const lines = interaction.serviceLines || [];
-            const topAcct = parseAccountingNumber(interaction.accountingNumber ?? '');
-            setAccountingNumber(topAcct);
-            // Pre-fill billing code from doctor's entry (billingCode or service) in interaction
+            const interactionAcct = String(interaction.accountingNumber ?? '').trim();
+            const docCpso = String(doctor?.cpsoNumber ?? '').trim();
+            setCpsocode(docCpso);
+            setAccountingNumber(interactionAcct);
             const rawLines = lines.length === 0
-                ? [{ serialNumber: 1, suffix: '', service: '', diagnostic: '', accountingNumber: topAcct, totalFee: '' }]
+                ? [{ serialNumber: 1, suffix: '', service: '', diagnostic: '', accountingNumber: interactionAcct, totalFee: '' }]
                 : lines.map((l) => {
                     const service = (l.billingCode || l.service || '').trim();
                     return {
@@ -88,7 +89,7 @@ const BillNowModal = ({
                         suffix: getSuffixFromBillingCode(service),
                         service,
                         diagnostic: l.diagnostic || '',
-                        accountingNumber: parseAccountingNumber(l.accountingNumber ?? topAcct),
+                        accountingNumber: parseAccountingNumber(l.accountingNumber ?? interactionAcct),
                         totalFee: l.totalFee ?? ''
                     };
                 });
@@ -99,7 +100,9 @@ const BillNowModal = ({
             });
             setBillingLines(withFees);
         }
-    }, [isOpen, interaction, getFeeForService]);
+    }, [isOpen, interaction, getFeeForService, doctor?.billingNumber, doctor?.cpsoNumber]);
+    const displayAccountingNumber = String(interaction?.accountingNumber ?? accountingNumber ?? '').trim() || '';
+    const displayBillingCode = (doctor?.billingNumber ?? '').toString().replace(/\D/g, '').slice(0, 6) || '';
 
     // When billing type changes, recalculate fees for lines with a service selected
     useEffect(() => {
@@ -119,7 +122,7 @@ const BillNowModal = ({
     const healthExpiry = visitor?.healthCardExpiryDate ? formatDateMMDDYYYY(visitor.healthCardExpiryDate) : '-';
     const gender = visitor?.gender || '-';
     const dob = visitor?.dateOfBirth ? formatDateMMDDYYYY(visitor.dateOfBirth) : '-';
-    const interactionDate = formatDate(interaction.editedAt || interaction.createdAt, false);
+    const interactionDate = formatDate(interaction.completedAt || interaction.editedAt || interaction.createdAt, false);
 
     const updateBillingLine = (index, field, value) => {
         setBillingLines((prev) => {
@@ -169,18 +172,37 @@ const BillNowModal = ({
 
     const totalFee = billingLines.reduce((sum, l) => sum + parseFloat(l.totalFee || 0), 0);
 
-    const handleSave = () => {
-        onSave?.({ billingType, cpsocode, accountingNumber, billingLines });
-        onClose();
+    const handleBill = async () => {
+        if (isBilling) return;
+        setBillError('');
+        setIsBilling(true);
+        try {
+            const updated = await onSave?.({ interactionId: interaction.id, billingType, cpsocode, accountingNumber, billingLines });
+            if (updated) onClose();
+        } catch (e) {
+            const msg = e?.response?.data?.error || e?.message || 'Failed to bill.';
+            setBillError(msg);
+        } finally {
+            setIsBilling(false);
+        }
     };
 
     return (
-        <div className="fixed inset-0 bg-black/50 flex justify-center items-center px-4 pb-4 pt-0 !mt-0 z-[1000]" onClick={onClose}>
+        <div
+            className="fixed inset-0 bg-black/50 flex justify-center items-center px-4 pb-4 pt-0 !mt-0 z-[1000]"
+            onClick={isBilling ? undefined : onClose}
+        >
             <div
                 className="bg-white w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl shadow-xl p-6"
                 onClick={(e) => e.stopPropagation()}
             >
-                <h2 className="text-xl font-semibold text-slate-900 mb-6">Bill Now</h2>
+                <div className="flex items-start justify-between gap-4 mb-6">
+                    <h2 className="text-xl font-semibold text-slate-900">Bill Now</h2>
+                    <div className="shrink-0 text-right">
+                        <span className="text-xs font-semibold text-slate-400 normal-case tracking-wide block">Accounting #</span>
+                        <span className="text-sm font-mono font-semibold text-slate-800">{displayAccountingNumber || '—'}</span>
+                    </div>
+                </div>
 
                 {/* Doctor - single line, bordered */}
                 <div className="flex flex-wrap items-end gap-4 p-4 mb-4 border border-slate-200 rounded-xl bg-slate-50/30">
@@ -197,9 +219,19 @@ const BillNowModal = ({
                         <input
                             type="text"
                             value={cpsocode}
-                            onChange={(e) => setCpsocode(e.target.value)}
-                            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
-                            placeholder="CPSO"
+                            readOnly
+                            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-50 text-slate-700 cursor-not-allowed"
+                            placeholder="—"
+                        />
+                    </div>
+                    <div className="min-w-[120px]">
+                        <label className="text-xs font-semibold text-slate-400 normal-case tracking-wide block mb-1">Billing Code</label>
+                        <input
+                            type="text"
+                            value={displayBillingCode}
+                            readOnly
+                            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-50 text-slate-700 cursor-not-allowed"
+                            placeholder="—"
                         />
                     </div>
                 </div>
@@ -264,6 +296,12 @@ const BillNowModal = ({
                     </div>
                 </div>
 
+                {billError ? (
+                    <div className="mb-4 px-4 py-3 rounded-lg border border-red-200 bg-red-50 text-sm text-red-700">
+                        {billError}
+                    </div>
+                ) : null}
+
                 {/* Billing lines - editable */}
                 <div className="mb-6">
                     <div className="flex justify-between items-center mb-2">
@@ -281,8 +319,8 @@ const BillNowModal = ({
                             <thead className="bg-slate-50">
                                 <tr>
                                     <th className="px-3 py-2 text-left text-xs font-semibold text-slate-400 normal-case w-10">#</th>
-                                    <th className="px-3 py-2 text-left text-xs font-semibold text-slate-400 normal-case w-20">Suffix</th>
                                     <th className="px-3 py-2 text-left text-xs font-semibold text-slate-400 normal-case">Billing</th>
+                                    <th className="px-3 py-2 text-left text-xs font-semibold text-slate-400 normal-case w-20">Suffix</th>
                                     <th className="px-3 py-2 text-left text-xs font-semibold text-slate-400 normal-case">Diagnostic</th>
                                     <th className="px-3 py-2 text-left text-xs font-semibold text-slate-400 normal-case w-24">Fee</th>
                                     <th className="px-3 py-2 w-10"></th>
@@ -294,11 +332,6 @@ const BillNowModal = ({
                                         <td className="px-3 py-2">
                                             <div className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-xs font-semibold text-slate-600">
                                                 {line.serialNumber || idx + 1}
-                                            </div>
-                                        </td>
-                                        <td className="px-3 py-2">
-                                            <div className="w-8 h-8 flex items-center justify-center rounded bg-slate-50 border border-slate-200 text-sm font-semibold text-slate-700">
-                                                {getSuffixFromBillingCode(line.service) || '—'}
                                             </div>
                                         </td>
                                         <td className="px-3 py-2 relative">
@@ -340,6 +373,11 @@ const BillNowModal = ({
                                                     className="flex-1 min-w-0 max-w-[100px] px-2 py-1.5 text-sm text-slate-500 bg-slate-50 border-0 cursor-default truncate"
                                                     placeholder="—"
                                                 />
+                                            </div>
+                                        </td>
+                                        <td className="px-3 py-2">
+                                            <div className="w-8 h-8 flex items-center justify-center rounded bg-slate-50 border border-slate-200 text-sm font-semibold text-slate-700">
+                                                {getSuffixFromBillingCode(line.service) || '—'}
                                             </div>
                                         </td>
                                         <td className="px-3 py-2 relative">
@@ -396,7 +434,7 @@ const BillNowModal = ({
                             </tbody>
                             <tfoot className="bg-slate-50 border-t border-slate-200">
                                 <tr>
-                                    <td colSpan={5} className="px-3 py-2 text-right font-semibold text-slate-600">Total</td>
+                                    <td colSpan={4} className="px-3 py-2 text-right font-semibold text-slate-600">Total</td>
                                     <td className="px-3 py-2 text-right font-semibold text-slate-900">${totalFee.toFixed(2)}</td>
                                     <td></td>
                                 </tr>
@@ -463,16 +501,28 @@ const BillNowModal = ({
                     <button
                         type="button"
                         onClick={onClose}
-                        className="px-5 py-2.5 bg-slate-200 text-slate-800 rounded-xl font-semibold text-sm hover:bg-slate-300 transition-colors"
+                        disabled={isBilling}
+                        className="px-5 py-2.5 bg-slate-200 text-slate-800 rounded-xl font-semibold text-sm hover:bg-slate-300 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
                     >
                         Cancel
                     </button>
                     <button
                         type="button"
-                        onClick={handleSave}
-                        className="px-5 py-2.5 bg-blue-600 text-white rounded-xl font-semibold text-sm hover:bg-blue-700 transition-colors"
+                        onClick={handleBill}
+                        disabled={isBilling}
+                        className="px-5 py-2.5 bg-blue-600 text-white rounded-xl font-semibold text-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-2"
                     >
-                        Save
+                        {isBilling ? (
+                            <>
+                                <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                </svg>
+                                Billing…
+                            </>
+                        ) : (
+                            'Bill'
+                        )}
                     </button>
                 </div>
             </div>

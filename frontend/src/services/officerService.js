@@ -29,6 +29,17 @@ export const officerService = {
     login: async (credentials) => {
         const response = await api.post('/officers/login', credentials);
         return response.data;
+    },
+
+    // Current internal user profile (officer or receptionist)
+    getMe: async () => {
+        const response = await api.get('/officers/me');
+        return response.data;
+    },
+
+    updateMe: async (data) => {
+        const response = await api.put('/officers/me', data);
+        return response.data;
     }
 };
 
