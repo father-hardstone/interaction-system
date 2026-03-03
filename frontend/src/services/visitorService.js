@@ -6,6 +6,12 @@ export const visitorService = {
         return response.data;
     },
 
+    /** Get patient count only (efficient - no full array fetch). */
+    getCount: async (entityId) => {
+        const response = await api.get(`/visitors/entity/${entityId}/count`);
+        return response.data?.count ?? 0;
+    },
+
     create: async (data) => {
         const response = await api.post('/visitors', data);
         return response.data;

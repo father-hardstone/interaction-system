@@ -9,6 +9,9 @@ router.use(authenticateToken, requireRoles(['entity', 'officer', 'receptionist']
 // Get next serial for an entity (must be before /entity/:entityId)
 router.get('/entity/:entityId/next-serial', VisitorController.getNextSerial);
 
+// Get patient count for an entity (must be before generic /entity/:entityId)
+router.get('/entity/:entityId/count', VisitorController.getCountByEntity);
+
 // Get all visitors for an entity
 router.get('/entity/:entityId', VisitorController.getVisitorsByEntity);
 

@@ -44,6 +44,69 @@ class InteractionService {
         return interactions.map(i => i.toObject());
     }
 
+    /** Get status counts for entity dashboard pie chart (efficient - no document fetch).
+     * @param {string} entityId
+     * @param {number} [days] - If provided, only count interactions created in the last N days.
+     */
+    async getStatusCountsByEntity(entityId, days = null) {
+        const base = { entityId, deletedAt: '' };
+        if (days != null && days > 0) {
+            const now = new Date();
+            const start = new Date(now);
+            start.setDate(start.getDate() - (days - 1));
+            start.setUTCHours(0, 0, 0, 0);
+            const startStr = start.toISOString().slice(0, 10);
+            base.createdAt = { $gte: startStr, $lte: now.toISOString() };
+        }
+        const notBilled = { billed: { $nin: [true, 'true'] } };
+        const closedQuery = {
+            ...base,
+            ...notBilled,
+            $or: [
+                { closed: true },
+                { closed: 'true' },
+                { interactionStatus: 'closed' },
+            ],
+        };
+        const [total, cancelled, billed, closedNotBilled] = await Promise.all([
+            Interaction.countDocuments(base),
+            Interaction.countDocuments({ ...base, cancelled: { $in: [true, 'true'] } }),
+            Interaction.countDocuments({ ...base, billed: { $in: [true, 'true'] } }),
+            Interaction.countDocuments(closedQuery),
+        ]);
+        const active = Math.max(0, total - cancelled - billed - closedNotBilled);
+        return { total, cancelled, billed, closed: closedNotBilled, active };
+    }
+
+    /** Get revenue (sum of serviceLines.totalFee) for billed interactions in the last N days.
+     * @param {string} entityId
+     * @param {number} days - e.g. 7 for last 7 days including today
+     */
+    async getRevenueByEntity(entityId, days = 7) {
+        const now = new Date();
+        const start = new Date(now);
+        start.setDate(start.getDate() - (days - 1));
+        start.setUTCHours(0, 0, 0, 0);
+        const startStr = start.toISOString().slice(0, 10);
+        const docs = await Interaction.find({
+            entityId,
+            deletedAt: '',
+            billed: true,
+            billedAt: { $exists: true, $ne: '', $gte: startStr, $lte: now.toISOString() },
+        })
+            .select('serviceLines')
+            .lean();
+        let total = 0;
+        for (const doc of docs) {
+            if (Array.isArray(doc.serviceLines)) {
+                for (const line of doc.serviceLines) {
+                    total += parseFloat(line.totalFee) || 0;
+                }
+            }
+        }
+        return Math.round(total * 100) / 100;
+    }
+
     async update(id, updates) {
         updates.editedAt = new Date().toISOString();
         const interaction = await Interaction.findOneAndUpdate(
@@ -132,6 +195,56 @@ class InteractionService {
         docs.forEach(doc => {
             result[doc.visitorId] = doc;
         });
+        return result;
+    }
+
+    /**
+     * Get daily counts of registered and completed interactions for the last N days.
+     * Returns only aggregated numbers (no full documents).
+     * @param {string} entityId
+     * @param {number} days - e.g. 7 for last 7 days including today
+     * @returns {Promise<Array<{ date: string, registered: number, completed: number }>>}
+     */
+    async getDailyStats(entityId, days = 7) {
+        const now = new Date();
+        const start = new Date(now);
+        start.setDate(start.getDate() - (days - 1));
+        start.setUTCHours(0, 0, 0, 0);
+        const startStr = start.toISOString().slice(0, 10); // YYYY-MM-DD
+
+        const matchBase = { entityId, deletedAt: '' };
+
+        // Registered: count by createdAt date (only documents created in range)
+        const registeredAgg = await Interaction.aggregate([
+            { $match: { ...matchBase, createdAt: { $gte: startStr, $lte: now.toISOString() } } },
+            { $project: { date: { $substr: ['$createdAt', 0, 10] } } },
+            { $group: { _id: '$date', count: { $sum: 1 } } },
+        ]);
+        const registeredByDate = {};
+        registeredAgg.forEach((r) => { registeredByDate[r._id] = r.count; });
+
+        // Completed: count by completedAt date (only completed in range)
+        const completedAgg = await Interaction.aggregate([
+            { $match: { ...matchBase, completed: true, completedAt: { $exists: true, $ne: '' } } },
+            { $match: { completedAt: { $gte: startStr, $lte: now.toISOString() } } },
+            { $project: { date: { $substr: ['$completedAt', 0, 10] } } },
+            { $group: { _id: '$date', count: { $sum: 1 } } },
+        ]);
+        const completedByDate = {};
+        completedAgg.forEach((r) => { completedByDate[r._id] = r.count; });
+
+        // Build ordered list of dates (last N days)
+        const result = [];
+        for (let i = days - 1; i >= 0; i--) {
+            const d = new Date(now);
+            d.setDate(d.getDate() - i);
+            const dateStr = d.toISOString().slice(0, 10);
+            result.push({
+                date: dateStr,
+                registered: registeredByDate[dateStr] || 0,
+                completed: completedByDate[dateStr] || 0,
+            });
+        }
         return result;
     }
 
