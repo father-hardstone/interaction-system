@@ -1,8 +1,9 @@
-import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import Login from './pages/Login';
 import PublicOnlyRoute from './components/PublicOnlyRoute';
 import EntityProtectedRoute from './components/EntityProtectedRoute';
+import EntityLayout from './pages/EntityLayout';
 import EntityDashboard from './pages/EntityDashboard';
 import EntitySettings from './pages/EntitySettings';
 import InternalLogin from './pages/InternalLogin';
@@ -21,8 +22,10 @@ import supabaseStorageService from './services/supabaseService';
 
 const NavBar = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const token = localStorage.getItem('token');
   const [entityIconUrl, setEntityIconUrl] = useState(null);
+  const [entityUserDropdownOpen, setEntityUserDropdownOpen] = useState(false);
   const [userInfo, setUserInfo] = useState({
     displayName: "Medical Interaction System",
     isAuthed: false,
@@ -209,10 +212,22 @@ const NavBar = () => {
     );
   }
 
+  const showEntityTopBar = isEntityRoute && userInfo.isAuthed && userInfo.isEntity;
+  const handleEntityLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('entityName');
+    localStorage.removeItem('userRole');
+    localStorage.removeItem('userName');
+    localStorage.removeItem('entityId');
+    localStorage.removeItem('entitySerial');
+    setEntityUserDropdownOpen(false);
+    navigate('/entity/login');
+  };
+
   // Default layout (entity, login, etc.)
   return (
-    <nav className="flex justify-between items-center h-16 px-6 bg-white/80 backdrop-blur-lg sticky top-0 z-[100] border-b border-slate-200 w-full font-inherit">
-      <div className="flex items-center gap-3">
+    <nav className="fixed top-0 left-0 right-0 flex justify-between items-center h-16 px-6 bg-white/80 backdrop-blur-lg z-[100] border-b border-slate-200 w-full font-inherit">
+      <div className="flex items-center gap-3 shrink-0">
         <Link to="/" className="flex items-center group">
           {userInfo.isAuthed && isDashboardRoute && shouldShowIcon ? (
             entityIconUrl ? (
@@ -248,7 +263,66 @@ const NavBar = () => {
           )}
         </Link>
       </div>
-      <div className="flex items-center gap-4" />
+
+      {showEntityTopBar && (
+        <>
+          {!location.pathname.endsWith('/settings') ? (
+            <div className="flex-1 max-w-xl mx-6 hidden sm:block min-w-0">
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                </span>
+                <input
+                  type="text"
+                  placeholder="Search for patients, doctors and etc."
+                  className="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 placeholder-slate-400 text-sm focus:outline-none focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20"
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="flex-1 min-w-0" aria-hidden="true" />
+          )}
+          <div className="flex items-center gap-2 shrink-0">
+            <button type="button" className="p-2 rounded-lg hover:bg-slate-100 text-slate-600" aria-label="Notifications">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+              </svg>
+            </button>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setEntityUserDropdownOpen((v) => !v)}
+                className="flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-xl hover:bg-slate-100"
+              >
+                <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-semibold text-sm">
+                  {(userInfo.displayName || 'E').charAt(0)}
+                </div>
+                <span className="text-sm font-medium text-slate-700 hidden sm:inline max-w-[120px] truncate">{userInfo.displayName}</span>
+                <svg className="w-4 h-4 text-slate-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {entityUserDropdownOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setEntityUserDropdownOpen(false)} aria-hidden="true" />
+                  <div className="absolute right-0 mt-1 w-48 py-1 bg-white rounded-xl shadow-lg border border-slate-200 z-20">
+                    <button
+                      onClick={handleEntityLogout}
+                      className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                    >
+                      Logout
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
+      {!showEntityTopBar && <div className="flex items-center gap-4" />}
     </nav>
   );
 };
@@ -261,7 +335,7 @@ function App() {
           <ToastProvider>
           <div className="w-full min-h-screen flex flex-col overflow-x-hidden">
             <NavBar />
-
+            <div className="flex-1 flex flex-col pt-16">
           <Routes>
           {/* Public-only Routes (if logged in, redirect to correct dashboard) */}
           <Route element={<PublicOnlyRoute />}>
@@ -282,10 +356,12 @@ function App() {
             } />
           </Route>
 
-          {/* Entity Protected Routes */}
+          {/* Entity Protected Routes - shared layout (sidebar) for dashboard and settings */}
           <Route element={<EntityProtectedRoute />}>
-            <Route path="/entity/:serial/dashboard" element={<EntityDashboard />} />
-            <Route path="/entity/:serial/settings" element={<EntitySettings />} />
+            <Route path="/entity/:serial" element={<EntityLayout />}>
+              <Route path="dashboard" element={<EntityDashboard />} />
+              <Route path="settings" element={<EntitySettings />} />
+            </Route>
           </Route>
 
           {/* Internal User (Officer) Protected Routes */}
@@ -299,6 +375,7 @@ function App() {
           {/* 404 - Catch-all for unknown routes */}
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
+            </div>
         </div>
           </ToastProvider>
         </UserDashboardNavProvider>

@@ -1,0 +1,13 @@
+export { default as EntityDashboardTopBar } from './EntityDashboardTopBar';
+export { default as EntityDashboardSidebar } from './EntityDashboardSidebar';
+export { default as EntityDashboardContent } from './EntityDashboardContent';
+export { default as EntityDashboardKPICards } from './EntityDashboardKPICards';
+export { default as EntityDashboardChart } from './EntityDashboardChart';
+export { default as EntityDashboardCalendar } from './EntityDashboardCalendar';
+export { default as EntityDashboardAppointmentsTable } from './EntityDashboardAppointmentsTable';
+export { default as EntityDashboardDoctorsTable } from './EntityDashboardDoctorsTable';
+export { default as EntityDashboardEmployeesTable } from './EntityDashboardEmployeesTable';
+export { default as AddOfficerModal } from './AddOfficerModal';
+export { default as AddReceptionistModal } from './AddReceptionistModal';
+export { default as EntityPatientsSection } from './EntityPatientsSection';
+export { default as EntityInteractionsSection } from './EntityInteractionsSection';

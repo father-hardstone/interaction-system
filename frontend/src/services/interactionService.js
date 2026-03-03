@@ -6,6 +6,27 @@ export const interactionService = {
         return response.data;
     },
 
+    /** Get daily stats (counts only) for dashboard chart. Returns [{ date, registered, completed }, ...]. */
+    getDailyStats: async (entityId, days = 7) => {
+        const response = await api.get(`/interactions/entity/${entityId}/daily-stats?days=${days}`);
+        return Array.isArray(response.data) ? response.data : [];
+    },
+
+    /** Get status counts for pie chart. Returns { total, cancelled, closed, billed, active }. */
+    getStatusCounts: async (entityId, days = null) => {
+        const url = days != null
+            ? `/interactions/entity/${entityId}/status-counts?days=${days}`
+            : `/interactions/entity/${entityId}/status-counts`;
+        const response = await api.get(url);
+        return response.data || {};
+    },
+
+    /** Get revenue for entity dashboard (sum of billed serviceLines in period). */
+    getRevenue: async (entityId, days = 7) => {
+        const response = await api.get(`/interactions/entity/${entityId}/revenue?days=${days}`);
+        return response.data?.revenue ?? 0;
+    },
+
     /** Get all interactions for a visitor (no time filter; for patient history). */
     getByVisitor: async (entityId, visitorId) => {
         const response = await api.get(`/interactions/entity/${entityId}/visitor/${visitorId}`);

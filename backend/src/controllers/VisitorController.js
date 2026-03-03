@@ -4,6 +4,18 @@ const { v4: uuidv4 } = require('uuid');
 const EntityService = require('../services/EntityService');
 
 class VisitorController {
+    // Get patient count for an entity (efficient - no full document fetch)
+    async getCountByEntity(req, res) {
+        try {
+            const { entityId } = req.params;
+            const count = await VisitorService.getCountByEntity(entityId);
+            res.json({ count });
+        } catch (e) {
+            console.error('getCountByEntity error:', e);
+            res.status(500).json({ error: e.message });
+        }
+    }
+
     // Get all visitors for a specific entity (each visitor includes stillInService: true if they have an active/incomplete interaction)
     async getVisitorsByEntity(req, res) {
         try {

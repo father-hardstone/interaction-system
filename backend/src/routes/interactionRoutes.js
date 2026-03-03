@@ -6,6 +6,15 @@ const { authenticateToken, requireRoles } = require('../middleware/auth');
 // Interactions are used by entity + internal users (officer/receptionist)
 router.use(authenticateToken, requireRoles(['entity', 'officer', 'receptionist']));
 
+// Get daily stats (counts only) for entity dashboard chart (must be before generic entity route)
+router.get('/entity/:entityId/daily-stats', InteractionController.getDailyStats);
+
+// Get status counts for pie chart (must be before generic entity route)
+router.get('/entity/:entityId/status-counts', InteractionController.getStatusCounts);
+
+// Get revenue for entity dashboard (must be before generic entity route)
+router.get('/entity/:entityId/revenue', InteractionController.getRevenue);
+
 // Get all interactions for an entity
 router.get('/entity/:entityId', InteractionController.getInteractionsByEntity);
 
