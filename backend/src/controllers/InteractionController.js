@@ -39,6 +39,45 @@ class InteractionController {
         }
     }
 
+    // Get status counts for pie chart (total, cancelled, closed, billed, active) - no full documents
+    async getStatusCounts(req, res) {
+        try {
+            const { entityId } = req.params;
+            const days = req.query.days ? Math.min(365, Math.max(1, parseInt(req.query.days, 10))) : null;
+            const data = await InteractionService.getStatusCountsByEntity(entityId, days);
+            res.json(data);
+        } catch (e) {
+            console.error('getStatusCounts error:', e);
+            res.status(500).json({ error: e.message });
+        }
+    }
+
+    // Get revenue for entity dashboard (sum of serviceLines.totalFee for billed in period)
+    async getRevenue(req, res) {
+        try {
+            const { entityId } = req.params;
+            const days = Math.min(365, Math.max(1, parseInt(req.query.days, 10) || 7));
+            const revenue = await InteractionService.getRevenueByEntity(entityId, days);
+            res.json({ revenue });
+        } catch (e) {
+            console.error('getRevenue error:', e);
+            res.status(500).json({ error: e.message });
+        }
+    }
+
+    // Get daily stats (registered vs completed counts) for chart - no full documents
+    async getDailyStats(req, res) {
+        try {
+            const { entityId } = req.params;
+            const days = Math.min(365, Math.max(1, parseInt(req.query.days, 10) || 7));
+            const data = await InteractionService.getDailyStats(entityId, days);
+            res.json(data);
+        } catch (e) {
+            console.error('getDailyStats error:', e);
+            res.status(500).json({ error: e.message });
+        }
+    }
+
     // Get all interactions for a specific visitor (no time filter; for patient history / past interactions)
     async getInteractionsByVisitor(req, res) {
         try {

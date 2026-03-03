@@ -55,6 +55,11 @@ class VisitorService {
         return visitor ? visitor.toObject() : null;
     }
 
+    /** Get count of patients for an entity (efficient - no document fetch). */
+    async getCountByEntity(entityId) {
+        return Visitor.countDocuments({ entityId, deletedAt: '' });
+    }
+
     async getByEntity(entityId) {
         const visitors = await Visitor.find({ entityId, deletedAt: '' });
         return visitors.map(v => v.toObject());
