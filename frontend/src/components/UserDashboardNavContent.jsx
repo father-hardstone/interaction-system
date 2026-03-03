@@ -37,7 +37,7 @@ const UserDashboardNavContent = ({ navState, entityIconUrl, userInfo }) => {
     const isSettingsPage = location.pathname === settingsPath;
 
     return (
-        <nav className="flex justify-between items-center h-16 px-6 bg-white/80 backdrop-blur-lg sticky top-0 z-[100] border-b border-slate-200 w-full font-inherit">
+        <nav className="fixed top-0 left-0 right-0 flex justify-between items-center h-16 px-6 bg-white/80 backdrop-blur-lg z-[100] border-b border-slate-200 w-full font-inherit">
             {/* Left: Entity logo */}
             <div className="w-1/3 flex justify-start min-w-0">
                 <div className="flex items-center gap-3 min-w-0">

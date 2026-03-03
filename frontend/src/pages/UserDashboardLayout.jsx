@@ -57,7 +57,7 @@ const UserDashboardLayout = () => {
     }
 
     return (
-        <>
+        <div className="pt-16">
             <Outlet />
             {showLogoutModal && (
                 <div className="fixed inset-0 bg-black/50 flex justify-center items-center px-4 pb-4 pt-0 !mt-0 z-[2000]" onClick={() => setShowLogoutModal(false)}>
@@ -92,7 +92,7 @@ const UserDashboardLayout = () => {
                     </div>
                 </div>
             )}
-        </>
+        </div>
     );
 };
 
