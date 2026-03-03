@@ -327,6 +327,17 @@ const NavBar = () => {
   );
 };
 
+/** Reserves top space for the fixed nav bar (h-16). Applied only when not on user dashboard; user layout adds its own. */
+function MainContentWithOptionalPadding({ children }) {
+  const location = useLocation();
+  const isUserDashboard = location.pathname.includes('/user/dashboard');
+  return (
+    <div className={`flex-1 flex flex-col ${isUserDashboard ? '' : 'pt-16'}`}>
+      {children}
+    </div>
+  );
+}
+
 function App() {
   return (
     <ErrorBoundary>
@@ -335,7 +346,7 @@ function App() {
           <ToastProvider>
           <div className="w-full min-h-screen flex flex-col overflow-x-hidden">
             <NavBar />
-            <div className="flex-1 flex flex-col pt-16">
+            <MainContentWithOptionalPadding>
           <Routes>
           {/* Public-only Routes (if logged in, redirect to correct dashboard) */}
           <Route element={<PublicOnlyRoute />}>
@@ -375,7 +386,7 @@ function App() {
           {/* 404 - Catch-all for unknown routes */}
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
-            </div>
+            </MainContentWithOptionalPadding>
         </div>
           </ToastProvider>
         </UserDashboardNavProvider>
