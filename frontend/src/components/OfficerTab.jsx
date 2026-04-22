@@ -92,6 +92,11 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
 
     const [showPatientHistoryOverlay, setShowPatientHistoryOverlay] = useState(false);
 
+    // Closed interactions tab is temporarily hidden (code kept, UI removed).
+    useEffect(() => {
+        if (activeViewTab === 'closed') setActiveViewTab('completed');
+    }, [activeViewTab, setActiveViewTab]);
+
     const handleOpenLabRequisition = useCallback(
         (interaction) => {
             if (!interaction?.id) return;
@@ -104,6 +109,34 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
         },
         []
     );
+
+    const handleOpenReferralForm = useCallback((interaction, referralType) => {
+        if (!interaction?.id) return;
+        const type = String(referralType || '').trim();
+        const currentPath = window.location.pathname || '';
+        const parts = currentPath.split('/').filter(Boolean);
+        const serialFromPath = parts[0] || '';
+        if (!serialFromPath) return;
+
+        if (type === 'lab') {
+            const url = `/${serialFromPath}/user/dashboard/lab-requisition/${interaction.id}`;
+            window.open(url, '_blank', 'noopener,noreferrer');
+            return;
+        }
+
+        const slug =
+            type === 'general_services_claim'
+                ? 'general-services-claim'
+                : type === 'diagnostic'
+                  ? 'diagnostic'
+                  : type === 'cardio_health'
+                    ? 'cardio-health'
+                    : '';
+
+        if (!slug) return;
+        const url = `/${serialFromPath}/user/dashboard/forms/${slug}/${interaction.id}`;
+        window.open(url, '_blank', 'noopener,noreferrer');
+    }, []);
 
     /** When starting from Phone consults tab, switch to Interactions main tab so the ongoing panel is visible. */
     const handleStartInteractionFromUI = useCallback((interactionId) => {
@@ -324,6 +357,8 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
                     </svg>
                     Completed ({completedInteractions.length})
                 </button>
+                {/*
+                // Closed tab hidden for now (kept for later use)
                 <button
                     onClick={() => setActiveViewTab('closed')}
                     className={`flex items-center gap-1.5 min-w-0 px-2 py-1 rounded text-xs font-medium transition-all shrink-0 ${activeViewTab === 'closed' ? 'bg-white text-primary shadow-sm' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}`}
@@ -333,6 +368,7 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
                     </svg>
                     Closed ({closedInteractions.length})
                 </button>
+                */}
             </div>
 
             {/* Scheduled Tab */}
@@ -379,7 +415,8 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
                 </div>
             )}
 
-            {/* Closed Tab */}
+            {/*
+            // Closed tab panel hidden for now (kept for later use)
             {activeViewTab === 'closed' && (
                 <div className="flex flex-col flex-1 min-h-0">
                     <CompletedInteractionsTable
@@ -401,6 +438,7 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
                     />
                 </div>
             )}
+            */}
 
             {/* Incomplete Tab */}
             {activeViewTab === 'incomplete' && (
@@ -499,6 +537,7 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
                             interactions={interactions}
                             doctorName={userData?.name || ''}
                             onOpenLabRequisition={handleOpenLabRequisition}
+                            onOpenReferralForm={handleOpenReferralForm}
                         />
                     </div>
                     {/* Patient History - sidebar on xl+, overlay on smaller screens */}

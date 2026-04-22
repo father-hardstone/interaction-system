@@ -4,6 +4,7 @@ import {
   IconAppointments,
   IconPayments,
   IconMessages,
+  IconInstitutes,
   IconDoctors,
   IconEmployees,
   IconSettings,
@@ -14,6 +15,7 @@ const SECTIONS = [
   { id: 'dashboard', label: 'Dashboard', Icon: IconDashboard },
   { id: 'patients', label: 'Patients', Icon: IconPatients },
   { id: 'interactions', label: 'Interactions', Icon: IconAppointments },
+  { id: 'institutes', label: 'Institutes', Icon: IconInstitutes },
   { id: 'payments', label: 'Payments', Icon: IconPayments },
   { id: 'messages', label: 'Messages', Icon: IconMessages, badge: 5 },
 ];

@@ -1,11 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 const SECTION_LABEL_CLASS =
   'text-xs font-semibold text-slate-500 tracking-[0.18em] uppercase mb-2 block';
 
 const FIELD_LABEL_CLASS = 'text-xs font-medium text-slate-500 mb-1 block';
 
-export default function LabRequisitionForm({ onSave }) {
+export default function LabRequisitionForm({ prefill, onDraftChange, onGenerate }) {
   const [form, setForm] = useState({
     clinicianName: '',
     clinicName: '',
@@ -19,6 +19,21 @@ export default function LabRequisitionForm({ onSave }) {
     patientAddress: '',
     notes: '',
   });
+
+  useEffect(() => {
+    if (!prefill) return;
+    setForm((prev) => {
+      const next = { ...prev };
+      for (const [k, v] of Object.entries(prefill)) {
+        if (!(k in next)) continue;
+        const cur = next[k];
+        const curEmpty = cur == null || String(cur).trim() === '';
+        const incomingEmpty = v == null || String(v).trim() === '';
+        if (curEmpty && !incomingEmpty) next[k] = v;
+      }
+      return next;
+    });
+  }, [prefill]);
 
   const [selectedTests, setSelectedTests] = useState({
     // Biochemistry
@@ -38,41 +53,35 @@ export default function LabRequisitionForm({ onSave }) {
     otherTest: '',
   });
 
+  const payload = useMemo(() => ({ ...form, tests: selectedTests }), [form, selectedTests]);
+
   const handleFieldChange = (field) => (e) => {
-    setForm((prev) => ({ ...prev, [field]: e.target.value }));
+    setForm((prev) => {
+      const next = { ...prev, [field]: e.target.value };
+      onDraftChange?.({ ...next, tests: selectedTests });
+      return next;
+    });
   };
 
   const handleTestToggle = (field) => (e) => {
-    setSelectedTests((prev) => ({ ...prev, [field]: e.target.checked }));
+    setSelectedTests((prev) => {
+      const next = { ...prev, [field]: e.target.checked };
+      onDraftChange?.({ ...form, tests: next });
+      return next;
+    });
   };
 
   const handleOtherTestChange = (e) => {
     const value = e.target.value;
-    setSelectedTests((prev) => ({ ...prev, otherTest: value }));
-  };
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    const payload = {
-      ...form,
-      tests: selectedTests,
-    };
-    if (onSave) {
-      onSave(payload);
-    } else {
-      // Temporary behaviour until backend is wired
-      // eslint-disable-next-line no-alert
-      alert('Lab requisition saved (stub only, not persisted yet).');
-      // eslint-disable-next-line no-console
-      console.log('Lab requisition payload', payload);
-    }
+    setSelectedTests((prev) => {
+      const next = { ...prev, otherTest: value };
+      onDraftChange?.({ ...form, tests: next });
+      return next;
+    });
   };
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="w-full max-w-5xl mx-auto bg-white rounded-3xl shadow-lg border border-slate-200 p-4 sm:p-6 lg:p-8 space-y-6"
-    >
+    <div className="w-full max-w-5xl mx-auto bg-white rounded-3xl shadow-lg border border-slate-200 p-4 sm:p-6 lg:p-8 space-y-6">
       <div className="flex flex-col gap-1 mb-2">
         <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">
           Laboratory Requisition
@@ -325,13 +334,14 @@ export default function LabRequisitionForm({ onSave }) {
       {/* Actions */}
       <div className="flex justify-end pt-4 border-t border-slate-200 mt-4">
         <button
-          type="submit"
+          type="button"
+          onClick={() => onGenerate?.(payload)}
           className="inline-flex items-center justify-center px-5 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold shadow-sm hover:bg-blue-700 transition-colors"
         >
-          Save requisition
+          Generate referral
         </button>
       </div>
-    </form>
+    </div>
   );
 }
 

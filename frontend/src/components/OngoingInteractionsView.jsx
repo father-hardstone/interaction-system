@@ -76,6 +76,7 @@ const OngoingInteractionsView = ({
     onClearInitialSubTab,
     doctorName = '',
     onOpenLabRequisition,
+    onOpenReferralForm,
 }) => {
     const [activeTab, setActiveTab] = useState('cc');
 
@@ -195,6 +196,7 @@ const OngoingInteractionsView = ({
                 return (
                     <MedicationBlock
                         visitor={visitors.find((v) => v.id === interaction.visitorId)}
+                        interactionId={interaction.id}
                         medications={medications}
                         addMedication={addMedication}
                         updateMedication={updateMedication}
@@ -208,9 +210,9 @@ const OngoingInteractionsView = ({
                     <ReferralBlock
                         referral={referral}
                         setReferral={setReferral}
-                        onOpenLabRequisition={
-                            onOpenLabRequisition
-                                ? () => onOpenLabRequisition(interaction)
+                        onOpenReferralForm={
+                            onOpenReferralForm
+                                ? () => onOpenReferralForm(interaction, referral?.type)
                                 : undefined
                         }
                     />

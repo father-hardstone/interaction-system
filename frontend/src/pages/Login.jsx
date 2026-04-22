@@ -10,7 +10,7 @@ import { hashPassword } from '../utils/crypto';
 import { validateEmail } from '../utils/crypto';
 import { jwtDecode } from 'jwt-decode';
 
-const Login = ({ type = 'admin' }) => {
+const Login = ({ type = 'admin', embedded = false }) => {
     const isEntity = type === 'entity';
     const [step, setStep] = useState(1);
     const [phoneData, setPhoneData] = useState({ fullNumber: '', valid: false });
@@ -148,100 +148,48 @@ const Login = ({ type = 'admin' }) => {
         }
     }
 
-    return (
-        <div className="flex-1 flex items-center justify-center p-8 w-full">
-            <div className={`bg-white w-full ${isEntity ? 'max-w-[520px]' : 'max-w-[440px]'} p-12 rounded-3xl shadow-lg animate-[slideUp_0.4s_ease-out] mx-auto`}>
-                <h2 className="m-0 mb-8 text-3xl font-semibold text-center text-slate-900 tracking-tight">
-                    {isEntity ? 'Entity Portal' : 'Admin Portal'}
-                </h2>
-                {error && <p className="bg-red-50 border border-red-200 text-error py-3 px-4 rounded-xl text-sm text-center mb-4">{error}</p>}
+    const content = (
+        <>
+            {error && <p className="bg-red-50 border border-red-200 text-error py-3 px-4 rounded-xl text-sm text-center mb-4">{error}</p>}
 
-                {step === 1 ? (
-                    <>
-                        <form onSubmit={handleLogin} className="flex flex-col gap-5">
-                            {isEntity && (
-                                <div className="flex flex-col gap-2">
-                                    <label className="text-sm font-semibold text-slate-900">Email Address <span className="text-error">*</span></label>
-                                    <input
-                                        type="email"
-                                        placeholder="Enter your email address"
-                                        value={email}
-                                        onChange={handleEmailChange}
-                                        required
-                                        className={`w-full py-3.5 px-4 border rounded-xl font-inherit text-base transition-all text-slate-900 ${emailError ? 'border-error bg-red-50 focus:border-error focus:bg-white focus:outline-none focus:ring-4 focus:ring-red-100' : 'border-slate-200 bg-slate-50 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100'}`}
-                                    />
-                                    {emailError && <span className="text-error text-sm">{emailError}</span>}
-                                </div>
-                            )}
-
-                            {!isEntity && (
-                                <div className="flex flex-col gap-2">
-                                    <label className="text-sm font-semibold text-slate-900">Phone Number <span className="text-error">*</span></label>
-                                    <PhoneInput
-                                        onChange={setPhoneData}
-                                        required
-                                    />
-                                </div>
-                            )}
-
+            {step === 1 ? (
+                <>
+                    <form onSubmit={handleLogin} className="flex flex-col gap-5">
+                        {isEntity && (
                             <div className="flex flex-col gap-2">
-                                <label className="text-sm font-semibold text-slate-900">Password <span className="text-error">*</span></label>
-                                <PasswordInput
-                                    placeholder="Enter your password"
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
+                                <label className="text-sm font-semibold text-slate-900">Email Address <span className="text-error">*</span></label>
+                                <input
+                                    type="email"
+                                    placeholder="Enter your email address"
+                                    value={email}
+                                    onChange={handleEmailChange}
+                                    required
+                                    className={`w-full py-3.5 px-4 border rounded-xl font-inherit text-base transition-all text-slate-900 ${emailError ? 'border-error bg-red-50 focus:border-error focus:bg-white focus:outline-none focus:ring-4 focus:ring-red-100' : 'border-slate-200 bg-slate-50 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100'}`}
+                                />
+                                {emailError && <span className="text-error text-sm">{emailError}</span>}
+                            </div>
+                        )}
+
+                        {!isEntity && (
+                            <div className="flex flex-col gap-2">
+                                <label className="text-sm font-semibold text-slate-900">Phone Number <span className="text-error">*</span></label>
+                                <PhoneInput
+                                    onChange={setPhoneData}
                                     required
                                 />
                             </div>
-
-                            <button
-                                type="submit"
-                                disabled={isSubmitting}
-                                className="mt-4 py-4 px-4 bg-primary text-white border-none rounded-xl font-semibold text-base cursor-pointer transition-all shadow-lg shadow-blue-300/30 hover:bg-primary-dark hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-400/40 disabled:opacity-60 disabled:cursor-not-allowed"
-                            >
-                                {isSubmitting ? (
-                                    <span className="flex items-center justify-center gap-2">
-                                        <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                        </svg>
-                                        Signing in...
-                                    </span>
-                                ) : (
-                                    'Login'
-                                )}
-                            </button>
-                        </form>
-
-                        {!isEntity && (
-                            <div className="mt-6 text-center text-sm">
-                                <span className="text-slate-500">Don't have an account? </span>
-                                <Link to="/register" className="text-primary font-semibold no-underline">
-                                    Register here
-                                </Link>
-                            </div>
                         )}
-                        {/* 
-                           Note: Entities usually register themselves via a different flow or also use /register? 
-                           The current /register page creates Admins. 
-                           The prompt implies a general register link. 
-                           If Entity registration is needed publicly, we might need a separate page or toggle.
-                           For now, the prompt asked to add the link. Since /register creates Admins, I'll only show it for Admin login or clarify it.
-                           Actually, the user said "create a admin login and register flow" initially. 
-                           Later "create another login and sign in route for entity... controls for creating... entities on admin dashboard".
-                           But also "if an entity is created by themselves, i.e. registered".
-                           So Entity Registration page is needed?
-                           Let's assume /register is for Admins for now as built previously. 
-                           If the user is on Entity login, maybe they shouldn't see Admin register? 
-                           I'll hide it for Entity for now unless requested to separate Entity Registration page.
-                        */}
-                    </>
-                ) : (
-                    <form onSubmit={handleVerify} className="flex flex-col gap-5">
-                        <p className="text-center text-slate-500 text-sm leading-relaxed">Enter the 6-digit code sent to your device.</p>
+
                         <div className="flex flex-col gap-2">
-                            <OtpInput onChange={setOtp} />
+                            <label className="text-sm font-semibold text-slate-900">Password <span className="text-error">*</span></label>
+                            <PasswordInput
+                                placeholder="Enter your password"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                required
+                            />
                         </div>
+
                         <button
                             type="submit"
                             disabled={isSubmitting}
@@ -253,14 +201,61 @@ const Login = ({ type = 'admin' }) => {
                                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                     </svg>
-                                    Verifying...
+                                    Signing in...
                                 </span>
                             ) : (
-                                'Verify Access'
+                                'Login'
                             )}
                         </button>
                     </form>
-                )}
+
+                    {!isEntity && (
+                        <div className="mt-6 text-center text-sm">
+                            <span className="text-slate-500">Don't have an account? </span>
+                            <Link to="/register" className="text-primary font-semibold no-underline">
+                                Register here
+                            </Link>
+                        </div>
+                    )}
+                </>
+            ) : (
+                <form onSubmit={handleVerify} className="flex flex-col gap-5">
+                    <p className="text-center text-slate-500 text-sm leading-relaxed">Enter the 6-digit code sent to your device.</p>
+                    <div className="flex flex-col gap-2">
+                        <OtpInput onChange={setOtp} />
+                    </div>
+                    <button
+                        type="submit"
+                        disabled={isSubmitting}
+                        className="mt-4 py-4 px-4 bg-primary text-white border-none rounded-xl font-semibold text-base cursor-pointer transition-all shadow-lg shadow-blue-300/30 hover:bg-primary-dark hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-400/40 disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                        {isSubmitting ? (
+                            <span className="flex items-center justify-center gap-2">
+                                <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Verifying...
+                            </span>
+                        ) : (
+                            'Verify Access'
+                        )}
+                    </button>
+                </form>
+            )}
+        </>
+    );
+
+    if (embedded) return content;
+
+    return (
+        <div className="flex-1 flex items-center justify-center p-8 w-full">
+            <div className={`bg-white w-full ${isEntity ? 'max-w-[520px]' : 'max-w-[440px]'} p-12 rounded-3xl shadow-lg animate-[slideUp_0.4s_ease-out] mx-auto`}>
+                <h2 className="m-0 mb-8 text-3xl font-semibold text-center text-slate-900 tracking-tight">
+                    {isEntity ? 'Entity Portal' : 'Admin Portal'}
+                </h2>
+
+                {content}
 
                 {isEntity && (
                     <div className="mt-6 text-center text-sm">
