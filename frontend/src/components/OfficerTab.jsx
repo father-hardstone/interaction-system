@@ -92,6 +92,19 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
 
     const [showPatientHistoryOverlay, setShowPatientHistoryOverlay] = useState(false);
 
+    const handleOpenLabRequisition = useCallback(
+        (interaction) => {
+            if (!interaction?.id) return;
+            const currentPath = window.location.pathname || '';
+            const parts = currentPath.split('/').filter(Boolean);
+            const serialFromPath = parts[0] || '';
+            if (!serialFromPath) return;
+            const url = `/${serialFromPath}/user/dashboard/lab-requisition/${interaction.id}`;
+            window.open(url, '_blank', 'noopener,noreferrer');
+        },
+        []
+    );
+
     /** When starting from Phone consults tab, switch to Interactions main tab so the ongoing panel is visible. */
     const handleStartInteractionFromUI = useCallback((interactionId) => {
         if (activeMainTab === OFFICER_MAIN_TABS.PHONE_CONSULTS) {
@@ -485,6 +498,7 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
                             onInteractionClick={onInteractionClick}
                             interactions={interactions}
                             doctorName={userData?.name || ''}
+                            onOpenLabRequisition={handleOpenLabRequisition}
                         />
                     </div>
                     {/* Patient History - sidebar on xl+, overlay on smaller screens */}

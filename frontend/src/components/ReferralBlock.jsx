@@ -1,13 +1,13 @@
 import React from 'react';
 
-const ReferralBlock = ({ referral, setReferral }) => {
+const ReferralBlock = ({ referral, setReferral, onOpenLabRequisition }) => {
     const handleChange = (field, value) => {
         setReferral(prev => ({ ...prev, [field]: value }));
     };
 
     return (
         <div className="space-y-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative group transition-all hover:shadow-md">
-            <div className="flex justify-between items-center mb-1">
+            <div className="flex justify-between items-center mb-1 gap-3">
                 <div className="flex items-center gap-3 flex-wrap">
                     <div className="w-1 h-8 rounded-full bg-blue-500 shadow-sm shadow-blue-200"></div>
                     <div className="text-lg font-bold text-slate-900 normal-case">Referral/Requisition</div>
@@ -15,6 +15,16 @@ const ReferralBlock = ({ referral, setReferral }) => {
                         <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">Added later</span>
                     )}
                 </div>
+                {referral?.type === 'lab' && (
+                    <button
+                        type="button"
+                        onClick={onOpenLabRequisition}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition-colors"
+                    >
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                        Lab requisition form
+                    </button>
+                )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

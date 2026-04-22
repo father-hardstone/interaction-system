@@ -11,6 +11,7 @@ import UserProtectedRoute from './components/UserProtectedRoute';
 import UserDashboard from './pages/UserDashboard';
 import UserDashboardLayout from './pages/UserDashboardLayout';
 import UserSettings from './pages/UserSettings';
+import LabRequisitionPage from './pages/LabRequisitionPage';
 import NotFoundPage from './pages/NotFoundPage';
 import ErrorBoundary from './components/ErrorBoundary';
 import { UserDashboardNavProvider, useUserDashboardNav } from './contexts/UserDashboardNavContext';
@@ -380,6 +381,7 @@ function App() {
             <Route path="/:serial/user/dashboard" element={<UserDashboardLayout />}>
               <Route index element={<UserDashboard />} />
               <Route path="settings" element={<UserSettings />} />
+              <Route path="lab-requisition/:interactionId" element={<LabRequisitionPage />} />
             </Route>
           </Route>
 

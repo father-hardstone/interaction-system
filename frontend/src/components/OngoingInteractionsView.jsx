@@ -74,7 +74,8 @@ const OngoingInteractionsView = ({
     handleOpenPatientDetails,
     initialSubTab,
     onClearInitialSubTab,
-    doctorName = ''
+    doctorName = '',
+    onOpenLabRequisition,
 }) => {
     const [activeTab, setActiveTab] = useState('cc');
 
@@ -203,7 +204,17 @@ const OngoingInteractionsView = ({
                     />
                 );
             case 'referral':
-                return <ReferralBlock referral={referral} setReferral={setReferral} />;
+                return (
+                    <ReferralBlock
+                        referral={referral}
+                        setReferral={setReferral}
+                        onOpenLabRequisition={
+                            onOpenLabRequisition
+                                ? () => onOpenLabRequisition(interaction)
+                                : undefined
+                        }
+                    />
+                );
             case 'notes':
                 return (
                     <AdditionalNotesBlock
