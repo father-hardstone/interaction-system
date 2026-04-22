@@ -11,3 +11,4 @@ export { default as AddOfficerModal } from './AddOfficerModal';
 export { default as AddReceptionistModal } from './AddReceptionistModal';
 export { default as EntityPatientsSection } from './EntityPatientsSection';
 export { default as EntityInteractionsSection } from './EntityInteractionsSection';
+export { default as EntityInstitutesSection } from './EntityInstitutesSection';

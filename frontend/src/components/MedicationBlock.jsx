@@ -1,5 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { DeleteOutlined } from '@ant-design/icons';
 import { generatePrescriptionImage } from '../utils/prescriptionImage';
+import PrescriptionActionModal from './PrescriptionActionModal';
+
+const FREQUENCY_OPTIONS = ['OD', 'BID', 'TID', 'QID', 'As Directed'];
+const DURATION_OPTIONS = ['7 days', '10 days', '14 days', '1 month', '2 months', '3 months'];
 
 /** At least one med with name and (strength or frequency) filled. */
 const hasValidMedLine = (medications) =>
@@ -9,13 +14,14 @@ const hasValidMedLine = (medications) =>
             ((m?.strength ?? '').trim() !== '' || (m?.frequency ?? '').trim() !== '')
     );
 
-const MedicationBlock = ({ visitor, medications, addMedication, updateMedication, removeMedication, patientName = '', doctorName = '' }) => {
+const MedicationBlock = ({ visitor, medications, addMedication, updateMedication, removeMedication, patientName = '', doctorName = '', interactionId = '' }) => {
+    const [prescriptionModalOpen, setPrescriptionModalOpen] = useState(false);
     const hasRedZone =
         (visitor?.allergies && visitor.allergies !== 'N/A') ||
         (visitor?.drugReactions && visitor.drugReactions !== 'N/A') ||
         (visitor?.specialNotes && visitor.specialNotes !== '-');
     const pastMedicalKeys = [
-        { key: 'highBloodPressure', label: 'High blood pressure' },
+        { key: 'highBloodPressure', label: 'High BP' },
         { key: 'heartDisease', label: 'Heart disease' },
         { key: 'diabetes', label: 'Diabetes' },
         { key: 'cholesterol', label: 'Cholesterol' },
@@ -32,19 +38,7 @@ const MedicationBlock = ({ visitor, medications, addMedication, updateMedication
                 <div className="flex items-center gap-2 shrink-0">
                     <button
                         type="button"
-                        onClick={async () => {
-                            const dataUrl = await generatePrescriptionImage({
-                                doctorName,
-                                patientName: patientName || (visitor && (visitor.name || visitor.fullName || visitor.firstName) ? [visitor.firstName, visitor.lastName].filter(Boolean).join(' ') : ''),
-                                medications,
-                                date: new Date().toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })
-                            });
-                            const w = window.open('', '_blank');
-                            if (w) {
-                                w.document.write(`<html><head><title>Prescription</title></head><body style="margin:0;background:#ccc;"><img src="${dataUrl}" alt="Prescription" style="display:block;max-width:100%;height:auto;" /></body></html>`);
-                                w.document.close();
-                            }
-                        }}
+                        onClick={() => setPrescriptionModalOpen(true)}
                         disabled={!hasValidMedLine(medications)}
                         className="text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors flex items-center gap-1.5 border normal-case shrink-0 disabled:opacity-50 disabled:cursor-not-allowed bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200"
                     >
@@ -115,11 +109,11 @@ const MedicationBlock = ({ visitor, medications, addMedication, updateMedication
                     <thead>
                         <tr className="bg-slate-50 border-b border-slate-200">
                             <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 normal-case tracking-wider w-10">#</th>
-                            <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 normal-case tracking-wider min-w-[140px]">Name</th>
+                            <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 normal-case tracking-wider min-w-[120px]">Name</th>
                             <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 normal-case tracking-wider w-[100px]">Strength</th>
-                            <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 normal-case tracking-wider w-[100px]">Frequency</th>
-                            <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 normal-case tracking-wider w-[90px]">Duration</th>
-                            <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 normal-case tracking-wider w-[72px]">Repeat</th>
+                            <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 normal-case tracking-wider w-[140px]">Frequency</th>
+                            <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 normal-case tracking-wider w-[140px]">Duration</th>
+                            <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 normal-case tracking-wider w-[90px]">Repeat</th>
                             <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 normal-case tracking-wider w-20">Actions</th>
                         </tr>
                     </thead>
@@ -156,42 +150,60 @@ const MedicationBlock = ({ visitor, medications, addMedication, updateMedication
                                     <input
                                         type="text"
                                         className="w-full px-2 py-2 text-sm border border-slate-200 rounded-lg bg-white focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 placeholder:text-slate-300"
-                                        placeholder="e.g. BID"
+                                        placeholder="Frequency"
+                                        list={`freq-options-${index}`}
                                         value={med.frequency ?? ''}
                                         onChange={(e) => updateMedication(index, 'frequency', e.target.value)}
                                     />
+                                    <datalist id={`freq-options-${index}`}>
+                                        {FREQUENCY_OPTIONS.map((opt) => (
+                                            <option key={opt} value={opt} />
+                                        ))}
+                                    </datalist>
                                 </td>
                                 <td className="px-3 py-2 align-middle">
                                     <input
                                         type="text"
                                         className="w-full px-2 py-2 text-sm border border-slate-200 rounded-lg bg-white focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 placeholder:text-slate-300"
-                                        placeholder="e.g. 7 days"
+                                        placeholder="Duration"
+                                        list={`duration-options-${index}`}
                                         value={med.duration ?? ''}
                                         onChange={(e) => updateMedication(index, 'duration', e.target.value)}
                                     />
+                                    <datalist id={`duration-options-${index}`}>
+                                        {DURATION_OPTIONS.map((opt) => (
+                                            <option key={opt} value={opt} />
+                                        ))}
+                                    </datalist>
                                 </td>
                                 <td className="px-3 py-2 align-middle">
                                     <input
-                                        type="number"
-                                        min={0}
+                                        type="text"
+                                        inputMode="numeric"
+                                        autoComplete="off"
                                         className="w-full px-2 py-2 text-sm border border-slate-200 rounded-lg bg-white focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 tabular-nums"
-                                        value={med.repeat ?? 0}
+                                        placeholder="0"
+                                        value={med.repeat ?? ''}
+                                        list={`repeat-options-${index}`}
                                         onChange={(e) => {
-                                            const v = e.target.value;
-                                            updateMedication(index, 'repeat', v === '' ? 0 : Math.max(0, parseInt(v, 10) || 0));
+                                            updateMedication(index, 'repeat', e.target.value);
                                         }}
                                     />
+                                    <datalist id={`repeat-options-${index}`}>
+                                        {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+                                            <option key={n} value={n} />
+                                        ))}
+                                    </datalist>
                                 </td>
                                 <td className="px-3 py-2 align-middle">
                                     <button
                                         type="button"
                                         onClick={() => removeMedication(index)}
-                                        className="p-1.5 text-slate-300 hover:text-red-500 transition-colors rounded"
-                                        title="Remove row"
+                                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors rounded-lg"
+                                        title="Delete row"
+                                        aria-label="Delete row"
                                     >
-                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                        </svg>
+                                        <DeleteOutlined style={{ fontSize: 18 }} />
                                     </button>
                                 </td>
                             </tr>
@@ -204,6 +216,16 @@ const MedicationBlock = ({ visitor, medications, addMedication, updateMedication
                     No medications listed. Click &quot;Add medicine&quot; to add one.
                 </div>
             )}
+
+            <PrescriptionActionModal
+                open={prescriptionModalOpen}
+                onClose={() => setPrescriptionModalOpen(false)}
+                visitor={visitor}
+                interactionId={interactionId}
+                doctorName={doctorName}
+                patientName={patientName}
+                medications={medications}
+            />
         </div>
     );
 };

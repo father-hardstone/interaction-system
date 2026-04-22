@@ -325,6 +325,74 @@ class SupabaseStorageService {
             throw error;
         }
     }
+
+    /**
+     * Upload a prescription image (generated from canvas) to Supabase Storage.
+     * @param {string} base64Data - Base64 image data (data:image/png;base64,...)
+     * @param {string} entityId
+     * @param {string} patientId
+     * @param {string} interactionId
+     * @param {string} doctorId
+     * @param {string} outgoingLogId
+     * @returns {Promise<string>} File path to store in database
+     */
+    async uploadPrescription(base64Data, entityId, patientId, interactionId, doctorId, outgoingLogId) {
+        try {
+            const base64Response = await fetch(base64Data);
+            const blob = await base64Response.blob();
+            const file = new File([blob], `prescription-${outgoingLogId}.png`, { type: 'image/png' });
+
+            // Path structure: {entityId}/prescriptions/{patientId}/{interactionId}/{doctorId}/{outgoingLogId}.png
+            const safeDoctor = doctorId || 'unknown-doctor';
+            const safeInteraction = interactionId || 'no-interaction';
+            const path = `${entityId}/prescriptions/${patientId}/${safeInteraction}/${safeDoctor}/${outgoingLogId}.png`;
+
+            const result = await this.uploadFile(file, 'CRM testing', path, {
+                upsert: false,
+                contentType: 'image/png'
+            });
+
+            return result.path;
+        } catch (error) {
+            console.error('Error uploading prescription to Supabase:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Upload a referral/requisition image (generated from canvas) to Supabase Storage.
+     * @param {string} base64Data - Base64 image data (data:image/png;base64,...)
+     * @param {string} entityId
+     * @param {string} patientId
+     * @param {string} interactionId
+     * @param {string} doctorId
+     * @param {string} outgoingLogId
+     * @param {string} formType - e.g. 'lab_requisition'
+     * @returns {Promise<string>} File path to store in database
+     */
+    async uploadReferralForm(base64Data, entityId, patientId, interactionId, doctorId, outgoingLogId, formType = 'referral') {
+        try {
+            const base64Response = await fetch(base64Data);
+            const blob = await base64Response.blob();
+            const safeType = (formType && String(formType).trim()) ? String(formType).trim() : 'referral';
+            const file = new File([blob], `${safeType}-${outgoingLogId}.png`, { type: 'image/png' });
+
+            // Path structure: {entityId}/referrals/{patientId}/{interactionId}/{doctorId}/{formType}/{outgoingLogId}.png
+            const safeDoctor = doctorId || 'unknown-doctor';
+            const safeInteraction = interactionId || 'no-interaction';
+            const path = `${entityId}/referrals/${patientId}/${safeInteraction}/${safeDoctor}/${safeType}/${outgoingLogId}.png`;
+
+            const result = await this.uploadFile(file, 'CRM testing', path, {
+                upsert: false,
+                contentType: 'image/png'
+            });
+
+            return result.path;
+        } catch (error) {
+            console.error('Error uploading referral form to Supabase:', error);
+            throw error;
+        }
+    }
 }
 
 export default new SupabaseStorageService();

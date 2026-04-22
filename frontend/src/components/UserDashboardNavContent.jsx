@@ -35,6 +35,8 @@ const UserDashboardNavContent = ({ navState, entityIconUrl, userInfo }) => {
     const displayPictureUrl = userData?.avatar || userData?.profilePicture || userData?.picture;
     const settingsPath = serial ? `/${serial}/user/dashboard/settings` : '#';
     const isSettingsPage = location.pathname === settingsPath;
+    const isLabRequisitionPage = location.pathname.includes('/user/dashboard/lab-requisition/');
+    const isStandaloneFormPage = location.pathname.includes('/user/dashboard/forms/');
 
     return (
         <nav className="fixed top-0 left-0 right-0 flex justify-between items-center h-16 px-6 bg-white/80 backdrop-blur-lg z-[100] border-b border-slate-200 w-full font-inherit">
@@ -59,7 +61,7 @@ const UserDashboardNavContent = ({ navState, entityIconUrl, userInfo }) => {
 
             {/* Center: Operations | Physician tabs */}
             <div className="w-1/3 flex justify-center shrink-0">
-                {isSettingsPage ? null : (
+                {isSettingsPage || isLabRequisitionPage || isStandaloneFormPage ? null : (
                     <>
                         {/* Mobile: dropdown */}
                         <div className="md:hidden relative" ref={tabDropdownRef}>

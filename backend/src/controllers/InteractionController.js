@@ -327,7 +327,8 @@ class InteractionController {
                 completed,
                 closed,
                 billed,
-                billingType
+                billingType,
+                ministryClaimFiled
             } = req.body;
 
             // Validate interaction exists
@@ -388,14 +389,17 @@ class InteractionController {
             } else if (billed === false) {
                 updates.billed = false;
                 if (existing.billed) updates.billedAt = '';
+                updates.ministryClaimFiled = false;
             } else if (billed !== undefined) {
                 updates.billed = billed === true;
-            } else {
-                updates.billed = false;
             }
 
             if (billingType !== undefined) {
                 updates.billingType = billingType || '';
+            }
+
+            if (ministryClaimFiled !== undefined) {
+                updates.ministryClaimFiled = ministryClaimFiled === true;
             }
 
             // Assign accounting number at billing time (when billed is true) if missing.

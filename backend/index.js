@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const dns = require('node:dns');
 require('dotenv').config();
 
 const connectDB = require('./src/config/database');
@@ -9,6 +10,13 @@ const connectDB = require('./src/config/database');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+// Force MongoDB Atlas SRV/TXT lookups through known DNS servers.
+// This must run before mongoose initiates any DNS queries.
+dns.setServers(['8.8.8.8', '8.8.4.4']);
+if (typeof dns.setDefaultResultOrder === 'function') {
+    dns.setDefaultResultOrder('ipv4first');
+}
 
 // Connect to MongoDB
 connectDB();
@@ -37,6 +45,8 @@ const serviceRoutes = require('./src/routes/serviceRoutes');
 const diagnosticRoutes = require('./src/routes/diagnosticRoutes');
 const imageRoutes = require('./src/routes/imageRoutes');
 const reportRoutes = require('./src/routes/reportRoutes');
+const instituteRoutes = require('./src/routes/instituteRoutes');
+const outgoingLogRoutes = require('./src/routes/outgoingLogRoutes');
 
 app.use(cors());
 app.use(express.json({ limit: '50mb' })); // Increase limit for image uploads
@@ -60,6 +70,8 @@ app.use('/api/services', serviceRoutes);
 app.use('/api/diagnostics', diagnosticRoutes);
 app.use('/api/images', imageRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/institutes', instituteRoutes);
+app.use('/api/outgoing-logs', outgoingLogRoutes);
 
 app.get('/', (req, res) => {
     res.send('Backend is running!');

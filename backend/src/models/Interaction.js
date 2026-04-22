@@ -171,6 +171,11 @@ const interactionSchema = new mongoose.Schema({
         type: String,
         default: ''
     },
+    /** When true, billed claim has been submitted/filed for ministry (shown under Filed Claims). */
+    ministryClaimFiled: {
+        type: Boolean,
+        default: false
+    },
     /** Queue number for the day (resets at 8 AM). Deprecated: serial is now derived from queue order at display time. */
     temporarySerial: {
         type: Number,
