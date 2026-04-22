@@ -7,6 +7,7 @@ import EntityDashboardEmployeesTable from './EntityDashboardEmployeesTable';
 import EntityPatientsSection from './EntityPatientsSection';
 import EntityInteractionsSection from './EntityInteractionsSection';
 import EntityDashboardTodayInteractions from './EntityDashboardTodayInteractions';
+import EntityInstitutesSection from './EntityInstitutesSection';
 
 function DashboardHome({
   entityId,
@@ -75,6 +76,7 @@ function PlaceholderSection({ title }) {
 const SECTION_TITLES = {
   patients: 'Patients',
   interactions: 'Interactions',
+  institutes: 'Institutes',
   payments: 'Payments',
   messages: 'Messages',
   help: 'Help Center',
@@ -172,6 +174,15 @@ export default function EntityDashboardContent({
     return (
       <EntityInteractionsSection
         entityId={entityId}
+      />
+    );
+  }
+
+  if (activeSection === 'institutes') {
+    return (
+      <EntityInstitutesSection
+        entityId={entityId}
+        entityName={entityName}
       />
     );
   }

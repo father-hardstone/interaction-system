@@ -194,7 +194,7 @@ const PatientDetailsModal = ({
                         </div>
 
                         <div className="mt-1.5 p-2 bg-red-50 border-2 border-red-200 rounded-xl">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-1">
                                 <div className="space-y-0.5">
                                     <label className="text-sm font-semibold text-red-900 normal-case tracking-wide block">Allergies</label>
                                     <div className="text-sm font-semibold text-slate-700 normal-case tracking-tight">{selectedPatient.allergies || 'N/A'}</div>
@@ -213,9 +213,9 @@ const PatientDetailsModal = ({
                         {/* Past medical history */}
                         <div className="mt-1.5 p-2 bg-slate-50 border border-slate-200 rounded-xl">
                             <label className="text-sm font-semibold text-slate-800 normal-case tracking-wide block mb-1.5">Past medical history</label>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-1">
+                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-x-6 gap-y-1">
                                 {[
-                                    { key: 'highBloodPressure', label: 'High blood pressure' },
+                                    { key: 'highBloodPressure', label: 'High BP' },
                                     { key: 'heartDisease', label: 'Heart disease' },
                                     { key: 'diabetes', label: 'Diabetes' },
                                     { key: 'cholesterol', label: 'Cholesterol' },

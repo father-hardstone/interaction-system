@@ -8,6 +8,8 @@ const Interaction = require('./Interaction');
 const Service = require('./Service');
 const Diagnostic = require('./Diagnostic');
 const Report = require('./Report');
+const Institute = require('./Institute');
+const OutgoingLog = require('./OutgoingLog');
 
 module.exports = {
     Admin,
@@ -18,5 +20,7 @@ module.exports = {
     Interaction,
     Service,
     Diagnostic,
-    Report
+    Report,
+    Institute,
+    OutgoingLog
 };

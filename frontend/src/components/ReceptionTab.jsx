@@ -11,6 +11,7 @@ import IncompleteInteractionsTable from './IncompleteInteractionsTable';
 import UnbilledInteractionsTable from './UnbilledInteractionsTable';
 import FollowupInteractionsTable from './FollowupInteractionsTable';
 import { BillingSection } from './billing';
+import OutgoingLogTab from './operations/OutgoingLogTab';
 
 const PlaceholderSection = ({ title, description }) => (
     <div className="flex flex-col items-center justify-center p-12 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50 min-h-[400px]">
@@ -195,16 +196,25 @@ const ReceptionTab = ({
     const tabCounts = useMemo(() => {
         const nonCancelled = interactions.filter((i) => !i.cancelled);
 
-        // Billings: unbilled + billed interactions (same logic as BillingSection)
+        // Billings: Completed + Daily sheet + Detail claim + Filed (same buckets as BillingSection)
+        const ministryFiled = (i) => i?.ministryClaimFiled === true || i?.ministryClaimFiled === 'true';
+        let completedOpen = 0;
         let unbilled = 0;
-        let billed = 0;
+        let detailClaim = 0;
+        let filedClaims = 0;
         for (const i of interactions) {
+            if (i.cancelled) continue;
+            if (i.completed && !i.closed) completedOpen++;
             if (!i.completed) continue;
             const hasBeenBilled = i.billed === true;
             const hasBillingInfo = i.serviceLines?.length > 0 && i.serviceLines.some((l) => (l.totalFee && l.totalFee > 0) || l.accountingNumber);
             const isClosed = i.closed || hasBillingInfo;
-            if (hasBeenBilled) billed++;
-            else if (isClosed) unbilled++;
+            if (hasBeenBilled) {
+                if (ministryFiled(i)) filedClaims++;
+                else detailClaim++;
+            } else if (isClosed) {
+                unbilled++;
+            }
         }
 
         // Registrations tab: unassigned registrations + queued/scheduled registrations (non-cancelled)
@@ -240,7 +250,8 @@ const ReceptionTab = ({
             registrations: registrationInteractions.length,
             interactions: interactionIds.size,
             reports: visitors.length,
-            billings: unbilled + billed
+            billings: completedOpen + unbilled + detailClaim + filedClaims,
+            outgoing: 0
         };
     }, [visitors, interactions]);
 
@@ -323,6 +334,18 @@ const ReceptionTab = ({
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2h-2m-4-1V7a2 2 0 012-2h2a2 2 0 012 2v1m-4 1v6" />
                         </svg>
                         Billings ({tabCounts.billings})
+                    </button>
+                    <button
+                        onClick={() => handleSubTabChange('outgoing_log')}
+                        className={`flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 whitespace-nowrap ${activeSubTab === 'outgoing_log'
+                            ? 'bg-white text-primary shadow-sm scale-105'
+                            : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+                            }`}
+                    >
+                        <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7h16M4 12h16M4 17h16" />
+                        </svg>
+                        Outgoing log
                     </button>
                 </div>
                 </div>
@@ -706,7 +729,19 @@ const ReceptionTab = ({
                     billingModalInteraction={billingModalInteraction}
                     onOpenBillNow={setBillingModalInteraction}
                     onCloseBillNow={() => setBillingModalInteraction(null)}
+                    getVisitorName={getVisitorName}
+                    getVisitorSerial={getVisitorSerial}
+                    formatDate={formatDate}
+                    lastVisits={lastVisits}
                 />
+            )}
+
+            {activeSubTab === 'outgoing_log' && (
+                <div className="flex-1 flex flex-col min-h-0 overflow-x-hidden">
+                    <div className="flex-1 min-h-0 p-4">
+                        <OutgoingLogTab entityId={userData?.entityId} />
+                    </div>
+                </div>
             )}
 
             {/* Patient Details Modal - rendered at ReceptionTab level so it's available from Patients, Reports, Billings tabs */}

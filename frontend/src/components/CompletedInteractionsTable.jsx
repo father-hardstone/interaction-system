@@ -148,7 +148,7 @@ const CompletedInteractionsTable = ({
                                                     title={blockEditCompleted ? 'Finish or cancel your current interaction first' : undefined}
                                                     className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${blockEditCompleted ? 'text-slate-400 border border-slate-200 bg-slate-50 cursor-not-allowed' : 'text-emerald-600 border border-emerald-200 hover:bg-emerald-50'}`}
                                                 >
-                                                    Close it
+                                                    Add billing info
                                                 </button>
                                             )}
                                         </div>

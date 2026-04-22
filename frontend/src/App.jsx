@@ -1,16 +1,19 @@
 import { BrowserRouter as Router, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import Login from './pages/Login';
+import PortalLogin from './pages/PortalLogin';
 import PublicOnlyRoute from './components/PublicOnlyRoute';
 import EntityProtectedRoute from './components/EntityProtectedRoute';
 import EntityLayout from './pages/EntityLayout';
 import EntityDashboard from './pages/EntityDashboard';
 import EntitySettings from './pages/EntitySettings';
-import InternalLogin from './pages/InternalLogin';
 import UserProtectedRoute from './components/UserProtectedRoute';
 import UserDashboard from './pages/UserDashboard';
 import UserDashboardLayout from './pages/UserDashboardLayout';
 import UserSettings from './pages/UserSettings';
+import LabRequisitionPage from './pages/LabRequisitionPage';
+import GeneralServicesClaimFormPage from './pages/GeneralServicesClaimFormPage';
+import DiagnosticFormPage from './pages/DiagnosticFormPage';
+import CardioHealthFormPage from './pages/CardioHealthFormPage';
 import NotFoundPage from './pages/NotFoundPage';
 import ErrorBoundary from './components/ErrorBoundary';
 import { UserDashboardNavProvider, useUserDashboardNav } from './contexts/UserDashboardNavContext';
@@ -350,21 +353,9 @@ function App() {
           <Routes>
           {/* Public-only Routes (if logged in, redirect to correct dashboard) */}
           <Route element={<PublicOnlyRoute />}>
-            <Route path="/entity/login" element={<Login type="entity" />} />
-            <Route path="/user/login" element={<InternalLogin />} />
-            <Route path="/" element={
-              <div className="flex-1 flex items-center justify-center p-8 w-full">
-                <div className="text-center">
-                  <img src="/icons/interaction_system_icon.png" alt="Medical Interaction System" className="h-20 w-auto mx-auto mb-6 object-contain" />
-                  <h1 className="text-5xl mb-4 font-semibold">Medical Interaction System</h1>
-                  <p className="mb-8 text-gray-600">Select a portal to continue.</p>
-                  <div className="flex gap-4 justify-center">
-                    <Link to="/entity/login" className="px-6 py-3 bg-white text-primary border border-primary rounded-xl font-semibold text-base no-underline inline-block transition-all hover:bg-blue-50">Entity Portal</Link>
-                    <Link to="/user/login" className="px-6 py-3 bg-white text-primary border border-dashed border-primary rounded-xl font-semibold text-base no-underline inline-block transition-all hover:bg-blue-50">Internal Login</Link>
-                  </div>
-                </div>
-              </div>
-            } />
+            <Route path="/entity/login" element={<PortalLogin />} />
+            <Route path="/user/login" element={<PortalLogin />} />
+            <Route path="/" element={<PortalLogin />} />
           </Route>
 
           {/* Entity Protected Routes - shared layout (sidebar) for dashboard and settings */}
@@ -380,6 +371,10 @@ function App() {
             <Route path="/:serial/user/dashboard" element={<UserDashboardLayout />}>
               <Route index element={<UserDashboard />} />
               <Route path="settings" element={<UserSettings />} />
+              <Route path="lab-requisition/:interactionId" element={<LabRequisitionPage />} />
+              <Route path="forms/general-services-claim/:interactionId" element={<GeneralServicesClaimFormPage />} />
+              <Route path="forms/diagnostic/:interactionId" element={<DiagnosticFormPage />} />
+              <Route path="forms/cardio-health/:interactionId" element={<CardioHealthFormPage />} />
             </Route>
           </Route>
 
