@@ -93,10 +93,15 @@ const CompletedInteractionsTable = ({
                                 </td>
                             </tr>
                         ) : (
-                            completedInteractions.map((interaction) => (
+                            completedInteractions.map((interaction) => {
+                                const billingMissing = !isClosed && !(
+                                    Array.isArray(interaction.serviceLines) && 
+                                    interaction.serviceLines.some(line => (line.totalFee && line.totalFee > 0) || line.accountingNumber)
+                                );
+                                return (
                                 <tr
                                     key={interaction.id}
-                                    className="border-b border-slate-100 hover:bg-slate-50 transition-all cursor-pointer"
+                                    className={`border-b border-slate-100 transition-all cursor-pointer ${billingMissing ? 'bg-amber-50 hover:bg-amber-100/70' : 'hover:bg-slate-50'}`}
                                     onClick={() => onInteractionClick(interaction)}
                                 >
                                     <td className="px-4 sm:px-6 py-4 align-middle">
@@ -154,7 +159,8 @@ const CompletedInteractionsTable = ({
                                         </div>
                                     </td>
                                 </tr>
-                            ))
+                                );
+                            })
                         )}
                     </tbody>
                 </table>
