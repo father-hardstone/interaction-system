@@ -148,6 +148,12 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
     const [subjective, setSubjective] = useState('');
     const [objective, setObjective] = useState('');
     const [assessmentPlan, setAssessmentPlan] = useState('');
+    const [vitals, setVitals] = useState({
+        systolic: '',
+        diastolic: '',
+        pulse: '',
+        temperature: ''
+    });
 
     // Pad states
     const [ccReasonPad, setCcReasonPad] = useState('');
@@ -159,11 +165,15 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
         {
             id: Date.now(),
             serialNumber: 1,
+            serviceDate: new Date().toLocaleDateString('en-CA'), // YYYY-MM-DD
             diagnostic: '',
             diagnosticDescription: '',
             billingCode: '',
             billingDescription: '',
-            totalFee: ''
+            suffix: 'A',
+            numberOf: 1,
+            totalFee: '0.00',
+            accountingNo: ''
         }
     ]);
 
@@ -372,6 +382,7 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
         setAdditionalNotes('');
         setSavedNotes([]);
         setFollowup({ required: false, date: '', intervalWeeks: null, intervalMonths: null, addedLater: false });
+        setVitals({ systolic: '', diastolic: '', pulse: '', temperature: '' });
     };
 
     /** Resolve scratchpad paths to full Supabase URLs so canvas can load images. Returns a new interaction object with resolved scratchpads (so pad state gets URLs, not paths). */
@@ -451,16 +462,32 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
                 return {
                     id: Math.random(),
                     serialNumber: line.serialNumber || i + 1,
+                    serviceDate: line.serviceDate || new Date().toLocaleDateString('en-CA'),
                     diagnostic: diag,
                     diagnosticDescription: diagDesc,
                     billingCode: line.service || '',
                     billingDescription: services.find(s => (s.code || '').toUpperCase() === (line.service || '').trim().toUpperCase())?.description || '',
-                    totalFee: line.totalFee !== undefined ? line.totalFee.toString() : ''
+                    suffix: line.suffix || 'A',
+                    numberOf: line.numberOf || 1,
+                    totalFee: line.totalFee !== undefined ? line.totalFee.toString() : '0.00',
+                    accountingNo: line.accountingNumber || interaction.accountingNumber || ''
                 };
             }));
         } else {
             setServiceLines([
-                { id: Date.now(), serialNumber: 1, diagnostic: '', diagnosticDescription: '', billingCode: '', billingDescription: '', totalFee: '' }
+                {
+                    id: Date.now(),
+                    serialNumber: 1,
+                    serviceDate: new Date().toLocaleDateString('en-CA'),
+                    diagnostic: '',
+                    diagnosticDescription: '',
+                    billingCode: '',
+                    billingDescription: '',
+                    suffix: 'A',
+                    numberOf: 1,
+                    totalFee: '0.00',
+                    accountingNo: interaction.accountingNumber || ''
+                }
             ]);
         }
 
@@ -485,6 +512,12 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
             intervalWeeks: fr.intervalWeeks != null ? fr.intervalWeeks : null,
             intervalMonths: fr.intervalMonths != null ? fr.intervalMonths : null
         } : { required: false, date: '', intervalWeeks: null, intervalMonths: null, addedLater: false });
+        setVitals({
+            systolic: interaction.vitals?.systolic || '',
+            diastolic: interaction.vitals?.diastolic || '',
+            pulse: interaction.vitals?.pulse || '',
+            temperature: interaction.vitals?.temperature || ''
+        });
         setAdditionalNotes(''); // Always clear input on load
     };
 
@@ -572,6 +605,34 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
         }
     };
 
+    const fetchNextAcct = async () => {
+        if (!userData?.entityId) return;
+        try {
+            const res = await api.get(`/interactions/entity/${userData.entityId}/next-accounting-number`);
+            const nextAcct = res?.data?.nextAccountingNumber;
+            if (nextAcct) {
+                setServiceLines(prev => prev.map(line => ({
+                    ...line,
+                    accountingNo: line.accountingNo || nextAcct
+                })));
+            }
+            return nextAcct;
+        } catch (e) {
+            console.error('Failed to fetch next accounting number:', e);
+            return null;
+        }
+    };
+
+    // Auto-fetch accounting number if missing when an interaction is active
+    useEffect(() => {
+        if (activeInteractionId && serviceLines.length > 0) {
+            const hasAcct = serviceLines.some(l => l.accountingNo && String(l.accountingNo).trim() !== '');
+            if (!hasAcct && !isSaving) {
+                fetchNextAcct();
+            }
+        }
+    }, [activeInteractionId, serviceLines.length, isSaving]);
+
     const handleStartInteraction = async (interactionId) => {
         setIsEditingCompleted(false);
         const currentOngoing = ongoingInteractions.find(i => i.id !== interactionId);
@@ -580,26 +641,31 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
             setActiveViewTab('ongoing');
             return;
         }
-
         setActiveInteractionId(interactionId);
 
         // Always fetch full interaction by ID so we have the latest draft (CC, etc.); list may be stale or filtered out
         try {
-            const { data } = await api.get(`/interactions/${interactionId}`);
-            const resolved = data ? await resolveScratchpadUrls(data) : data;
-            const toLoad = resolved || data;
-            if (toLoad) {
-                loadInteractionToState(toLoad);
-            } else {
-                const fromList = interactions.find(i => i.id === interactionId);
-                if (fromList) loadInteractionToState(fromList);
-                else resetInteractionFields();
+            const res = await api.get(`/interactions/${interactionId}`);
+            const raw = res?.data?.data ?? res?.data?.interaction ?? res?.data;
+            if (raw) {
+                const resolved = await resolveScratchpadUrls(raw);
+                loadInteractionToState(resolved || raw);
+                if (!(resolved || raw).accountingNumber) {
+                    fetchNextAcct();
+                }
             }
         } catch (e) {
-            console.warn('Resume: could not fetch interaction by ID, using list:', e?.message);
-            const fromList = interactions.find(i => i.id === interactionId);
-            if (fromList) loadInteractionToState(fromList);
-            else resetInteractionFields();
+            console.warn('Resume: could not fetch interaction by ID, using memory/list:', e?.message);
+            const found = doctorInteractions.find(i => i.id === interactionId);
+            if (found) {
+                const resolved = await resolveScratchpadUrls(found);
+                loadInteractionToState(resolved || found);
+                if (!(resolved || found).accountingNumber) {
+                    fetchNextAcct();
+                }
+            } else {
+                resetInteractionFields();
+            }
         }
 
         try {
@@ -662,11 +728,13 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
                 medications: [],
                 followupRequired: { required: false, date: '', followupInteractionId: '', addedLater: false, intervalWeeks: null, intervalMonths: null },
                 savedNotes: [],
+                vitals: { systolic: '', diastolic: '', pulse: '', temperature: '' },
                 started: false,
                 ongoing: false,
                 incomplete: false,
                 completed: false,
-                billed: false
+                billed: false,
+                vitals: { systolic: '', diastolic: '', pulse: '', temperature: '' }
             };
             await api.put(`/interactions/${idToCancel}/details`, clearPayload);
             showToast('Interaction canceled', 'success');
@@ -826,9 +894,13 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
                 .filter((line) => (line.diagnostic && String(line.diagnostic).trim()) && (line.billingCode && String(line.billingCode).trim()))
                 .map((line, i) => ({
                     serialNumber: i + 1,
+                    serviceDate: line.serviceDate || new Date().toLocaleDateString('en-CA'),
                     service: line.billingCode,
+                    suffix: line.suffix || 'A',
                     diagnostic: line.diagnostic,
-                    totalFee: parseFloat(line.totalFee) || 0
+                    numberOf: parseInt(line.numberOf, 10) || 1,
+                    totalFee: parseFloat(line.totalFee) || 0,
+                    accountingNumber: line.accountingNo || ''
                 })),
             referral,
             medications: medications.map(med => ({
@@ -840,13 +912,8 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
                 refills: parseInt(med.repeat, 10) || 0,
                 instructions: ''
             })),
-            followupRequired: {
-                required: followup.required || false,
-                date: followup.date || '',
-                followupInteractionId: (activeInteractionResolved?.followupRequired?.followupInteractionId || activeInteractionResolved?.followupInteractionId || ''),
-                intervalWeeks: followup.intervalWeeks != null ? followup.intervalWeeks : null,
-                intervalMonths: followup.intervalMonths != null ? followup.intervalMonths : null
-            },
+            vitals,
+            followupRequired: followup,
             savedNotes: updatedSavedNotes,
             ongoing: false,
             incomplete: false,
@@ -972,9 +1039,13 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
                     .filter((line) => (line.diagnostic && String(line.diagnostic).trim()) && (line.billingCode && String(line.billingCode).trim()))
                     .map((line, i) => ({
                         serialNumber: i + 1,
+                        serviceDate: line.serviceDate || new Date().toLocaleDateString('en-CA'),
                         service: line.billingCode,
+                        suffix: line.suffix || 'A',
                         diagnostic: line.diagnostic || '',
-                        totalFee: parseFloat(line.totalFee) || 0
+                        numberOf: parseInt(line.numberOf, 10) || 1,
+                        totalFee: parseFloat(line.totalFee) || 0,
+                        accountingNumber: line.accountingNo || ''
                     })),
                 referral: {
                     ...referral,
@@ -990,14 +1061,8 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
                     instructions: '',
                     addedLater: med.addedLater === true || i >= initialMedicationCount
                 })),
-                followupRequired: {
-                    required: followup.required || false,
-                    date: followup.date || '',
-                    followupInteractionId: interaction.followupRequired?.followupInteractionId || interaction.followup?.followupInteractionId || '',
-                    addedLater: followup.addedLater === true || (!(interaction.followupRequired?.required && interaction.followupRequired?.date) && !!(followup.required && followup.date)),
-                    intervalWeeks: followup.intervalWeeks != null ? followup.intervalWeeks : null,
-                    intervalMonths: followup.intervalMonths != null ? followup.intervalMonths : null
-                },
+                vitals,
+                followupRequired: followup,
                 savedNotes: updatedSavedNotes,
                 editCount: nextEditCount,
                 completed: true,
@@ -1021,25 +1086,36 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
         if (serviceLines.length >= 4) {
             return;
         }
-        // Copy diag code from last line (or first) so new line starts with it; each line stays independent after that
+        // Copy diag code and accounting no from last line (or first)
         const source = serviceLines[serviceLines.length - 1] || serviceLines[0];
         const copyDiag = source?.diagnostic || '';
         const copyDiagDesc = source?.diagnosticDescription || diagnostics.find(d => (d.code || '').toUpperCase() === (copyDiag || '').trim().toUpperCase())?.description || '';
+        const copyAccountingNo = source?.accountingNo || '';
+
         const newLine = {
             id: Date.now(),
             serialNumber: serviceLines.length + 1,
+            serviceDate: new Date().toLocaleDateString('en-CA'),
             diagnostic: copyDiag,
             diagnosticDescription: copyDiagDesc,
             billingCode: '',
             billingDescription: '',
-            totalFee: ''
+            suffix: 'A',
+            numberOf: 1,
+            totalFee: '0.00',
+            accountingNo: copyAccountingNo
         };
         setServiceLines([...serviceLines, newLine]);
     };
 
     const updateServiceLine = (index, field, value) => {
-        const updatedLines = [...serviceLines];
+        let updatedLines = [...serviceLines];
         updatedLines[index] = { ...updatedLines[index], [field]: value };
+
+        // If accountingNo is changed, sync it to all lines
+        if (field === 'accountingNo') {
+            updatedLines = updatedLines.map(line => ({ ...line, accountingNo: value }));
+        }
 
         if (field === 'diagnostic') {
             // Each line has its own diag; only update this line
@@ -1048,15 +1124,18 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
             updatedLines[index].diagnosticDescription = desc;
         }
 
-        if (field === 'billingCode') {
-            const service = services.find(s => (s.code || '').toUpperCase() === (value || '').trim().toUpperCase());
+        if (field === 'billingCode' || field === 'numberOf') {
+            const billingCode = field === 'billingCode' ? value : updatedLines[index].billingCode;
+            const num = field === 'numberOf' ? (parseInt(value, 10) || 0) : (parseInt(updatedLines[index].numberOf, 10) || 0);
+
+            const service = services.find(s => (s.code || '').toUpperCase() === (billingCode || '').trim().toUpperCase());
             if (service) {
                 updatedLines[index].billingDescription = service.description;
-                const totalFee = (service.hcpFee || 0) + (service.tFee || 0) + (service.pFee || 0) + (service.sFee || 0);
-                updatedLines[index].totalFee = totalFee.toFixed(2);
+                const unitFee = (service.hcpFee || 0) + (service.tFee || 0) + (service.pFee || 0) + (service.sFee || 0);
+                updatedLines[index].totalFee = (unitFee * num).toFixed(2);
             } else {
-                updatedLines[index].billingDescription = '';
-                updatedLines[index].totalFee = '';
+                if (field === 'billingCode') updatedLines[index].billingDescription = '';
+                updatedLines[index].totalFee = '0.00';
             }
         }
         setServiceLines(updatedLines);
@@ -1163,7 +1242,9 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
         setAdditionalNotes,
         savedNotes,
         followup,
-        setFollowup
+        setFollowup,
+        vitals,
+        setVitals
     };
 };
 

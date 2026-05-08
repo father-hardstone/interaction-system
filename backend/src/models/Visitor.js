@@ -20,7 +20,7 @@ const visitorSchema = new mongoose.Schema({
     },
     firstName: {
         type: String,
-        required: true
+        default: ''
     },
     middleName: {
         type: String,
@@ -28,23 +28,23 @@ const visitorSchema = new mongoose.Schema({
     },
     lastName: {
         type: String,
-        required: true
+        default: ''
     },
     dateOfBirth: {
         type: String,
-        required: true
+        default: ''
     },
     addressLine: {
         type: String,
-        required: true
+        default: ''
     },
     city: {
         type: String,
-        required: true
+        default: ''
     },
     province: {
         type: String,
-        required: true
+        default: ''
     },
     postalCode: {
         type: String,
@@ -73,7 +73,7 @@ const visitorSchema = new mongoose.Schema({
     smoke: { type: String, default: '' },
     gender: {
         type: String,
-        required: true
+        default: ''
     },
     phone: {
         type: String,
@@ -97,7 +97,7 @@ const visitorSchema = new mongoose.Schema({
     },
     healthCardNumber: {
         type: String,
-        required: true
+        default: ''
     },
     healthCardVersion: {
         type: String,
@@ -148,6 +148,15 @@ const visitorSchema = new mongoose.Schema({
         type: String,
         default: ''
     },
+    isConfirmed: {
+        type: Boolean,
+        default: true
+    },
+    onboardingToken: {
+        token: { type: String, default: '' },
+        expiresAt: { type: String, default: '' },
+        used: { type: Boolean, default: false }
+    },
     createdAt: {
         type: String,
         default: () => new Date().toISOString()
@@ -168,7 +177,9 @@ const visitorSchema = new mongoose.Schema({
 visitorSchema.index({ entityId: 1 });
 visitorSchema.index({ serial: 1 });
 visitorSchema.index({ phone: 1 });
-visitorSchema.index({ healthCardNumber: 1 }, { unique: true });
+// Remove the unique constraint on healthCardNumber because onboarding profiles might not have it yet.
+// We will handle uniqueness in the service logic during confirmation/save.
+visitorSchema.index({ healthCardNumber: 1 });
 
 const Visitor = mongoose.model('Visitor', visitorSchema);
 

@@ -38,78 +38,111 @@ const ServicesBillingBlock = ({
             </div>
 
             <div className="overflow-x-auto rounded-lg border border-slate-200 w-full">
-                <table className="w-full border-collapse min-w-[520px]">
+                <table className="w-full border-collapse min-w-[1000px]">
                     <thead>
                         <tr className="bg-slate-50 border-b border-slate-200">
-                            <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 normal-case tracking-wider w-12">Sr</th>
-                            <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 normal-case tracking-wider w-[90px]">Diag Code</th>
-                            <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 normal-case tracking-wider min-w-[140px]">Description</th>
-                            <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 normal-case tracking-wider w-[90px]">Billing Code</th>
-                            <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 normal-case tracking-wider min-w-[140px]">Description</th>
-                            <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 normal-case tracking-wider w-20">Actions</th>
+                            <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 normal-case tracking-wider w-10">Sr</th>
+                            <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 normal-case tracking-wider w-32">Service Date</th>
+                            <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 normal-case tracking-wider w-24">Service</th>
+                            <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 normal-case tracking-wider min-w-[150px]">Description</th>
+                            <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 normal-case tracking-wider w-16">Suffix</th>
+                            <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 normal-case tracking-wider w-24">Diag Code</th>
+                            <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 normal-case tracking-wider min-w-[150px]">Description</th>
+                            <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 normal-case tracking-wider w-16"># of</th>
+                            <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 normal-case tracking-wider w-24">Total Fee</th>
+                            <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 normal-case tracking-wider w-32">Accounting No.</th>
+                            <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 normal-case tracking-wider w-16">Action</th>
                         </tr>
                     </thead>
                     <tbody>
                         {serviceLines.map((line, index) => (
                             <tr key={line.id || index} className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50/50 transition-colors">
                                 <td className="px-3 py-2 align-middle">
-                                    <span className="flex items-center justify-center w-7 h-7 rounded-full bg-slate-100 text-xs font-semibold text-slate-600">
-                                        {line.serialNumber}
+                                    <span className="flex items-center justify-center w-6 h-6 rounded-full bg-slate-100 text-[10px] font-semibold text-slate-600">
+                                        {index + 1}
+                                    </span>
+                                </td>
+                                <td className="px-3 py-2 align-middle text-center">
+                                    <span className="text-xs font-medium text-slate-600 bg-slate-100/50 px-2 py-1 rounded border border-slate-200/50">
+                                        {line.serviceDate || '—'}
                                     </span>
                                 </td>
                                 <td className="px-3 py-2 align-middle">
                                     <div className="relative">
-                                        <div className="flex border border-slate-200 rounded-lg overflow-hidden bg-slate-50 focus-within:bg-white focus-within:border-blue-500 transition-all">
-                                            <input
-                                                type="text"
-                                                className="w-full min-w-[7ch] px-2 py-2 text-sm focus:outline-none placeholder:text-slate-300"
-                                                placeholder="Code"
-                                                value={line.diagnostic}
-                                                onChange={(e) => updateServiceLine(index, 'diagnostic', e.target.value)}
-                                                onFocus={(e) => {
-                                                    const rect = e.target.getBoundingClientRect();
-                                                    setDiagDropdownRect({ top: rect.bottom + 4, left: rect.left, width: Math.max(rect.width, 200) });
-                                                    setShowDiagDropdown(index);
-                                                }}
-                                                onBlur={() => setTimeout(() => setShowDiagDropdown(null), 150)}
-                                            />
-                                        </div>
+                                        <input
+                                            type="text"
+                                            className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500 uppercase"
+                                            placeholder="Code"
+                                            value={line.billingCode}
+                                            onChange={(e) => updateServiceLine(index, 'billingCode', e.target.value)}
+                                            onFocus={(e) => {
+                                                const rect = e.target.getBoundingClientRect();
+                                                setBillingDropdownRect({ top: rect.bottom + 4, left: rect.left, width: Math.max(rect.width, 220) });
+                                                setShowBillingDropdown(index);
+                                            }}
+                                            onBlur={() => setTimeout(() => setShowBillingDropdown(null), 150)}
+                                        />
                                     </div>
                                 </td>
                                 <td className="px-3 py-2 align-middle">
-                                    <div className="text-sm text-slate-500 truncate max-w-[200px]" title={getDiagDesc(line)}>
+                                    <div className="text-[11px] text-slate-500 line-clamp-2 max-w-[150px]" title={line.billingDescription}>
+                                        {line.billingDescription || '—'}
+                                    </div>
+                                </td>
+                                <td className="px-3 py-2 align-middle">
+                                    <input
+                                        type="text"
+                                        className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500 text-center"
+                                        value={line.suffix || 'A'}
+                                        onChange={(e) => updateServiceLine(index, 'suffix', e.target.value)}
+                                    />
+                                </td>
+                                <td className="px-3 py-2 align-middle">
+                                    <div className="relative">
+                                        <input
+                                            type="text"
+                                            className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500"
+                                            placeholder="Code"
+                                            value={line.diagnostic}
+                                            onChange={(e) => updateServiceLine(index, 'diagnostic', e.target.value)}
+                                            onFocus={(e) => {
+                                                const rect = e.target.getBoundingClientRect();
+                                                setDiagDropdownRect({ top: rect.bottom + 4, left: rect.left, width: Math.max(rect.width, 220) });
+                                                setShowDiagDropdown(index);
+                                            }}
+                                            onBlur={() => setTimeout(() => setShowDiagDropdown(null), 150)}
+                                        />
+                                    </div>
+                                </td>
+                                <td className="px-3 py-2 align-middle">
+                                    <div className="text-[11px] text-slate-500 line-clamp-2 max-w-[150px]" title={getDiagDesc(line)}>
                                         {getDiagDesc(line) || '—'}
                                     </div>
                                 </td>
                                 <td className="px-3 py-2 align-middle">
-                                    <div className="relative">
-                                        <div className="flex border border-slate-200 rounded-lg overflow-hidden bg-slate-50 focus-within:bg-white focus-within:border-blue-500 transition-all">
-                                            <input
-                                                type="text"
-                                                className="w-full min-w-[7ch] px-2 py-2 text-sm focus:outline-none placeholder:text-slate-300"
-                                                placeholder="Code"
-                                                value={line.billingCode}
-                                                onChange={(e) => updateServiceLine(index, 'billingCode', e.target.value)}
-                                                onFocus={(e) => {
-                                                    const rect = e.target.getBoundingClientRect();
-                                                    setBillingDropdownRect({ top: rect.bottom + 4, left: rect.left, width: Math.max(rect.width, 200) });
-                                                    setShowBillingDropdown(index);
-                                                }}
-                                                onBlur={() => setTimeout(() => setShowBillingDropdown(null), 150)}
-                                            />
-                                        </div>
-                                    </div>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500 text-center"
+                                        value={line.numberOf || 1}
+                                        onChange={(e) => updateServiceLine(index, 'numberOf', e.target.value)}
+                                    />
                                 </td>
                                 <td className="px-3 py-2 align-middle">
-                                    <div className="text-sm text-slate-500 truncate max-w-[200px]" title={line.billingDescription}>
-                                        {line.billingDescription || '—'}
+                                    <div className="text-xs font-semibold text-slate-700 text-right pr-2">
+                                        ${line.totalFee || '0.00'}
                                     </div>
+                                </td>
+                                <td className="px-3 py-2 align-middle text-center">
+                                    <span className="text-[11px] font-mono font-bold text-slate-500 bg-slate-50 px-2 py-1 rounded border border-slate-200/50 block truncate max-w-[100px]">
+                                        {line.accountingNo || '—'}
+                                    </span>
                                 </td>
                                 <td className="px-3 py-2 align-middle">
                                     <button
                                         type="button"
                                         onClick={() => removeServiceLine(index)}
-                                        className="p-1.5 text-slate-300 hover:text-red-500 transition-colors rounded"
+                                        className="p-1.5 text-slate-300 hover:text-red-500 transition-colors rounded mx-auto block"
                                         title="Remove line"
                                     >
                                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -120,6 +153,15 @@ const ServicesBillingBlock = ({
                             </tr>
                         ))}
                     </tbody>
+                    <tfoot className="bg-slate-50 border-t border-slate-200 font-semibold">
+                        <tr>
+                            <td colSpan={8} className="px-3 py-3 text-right text-xs text-slate-500 uppercase tracking-wider">Total Fee</td>
+                            <td className="px-3 py-3 text-right text-sm text-slate-900 pr-2 font-bold">
+                                ${serviceLines.reduce((sum, l) => sum + (parseFloat(l.totalFee) || 0), 0).toFixed(2)}
+                            </td>
+                            <td colSpan={2}></td>
+                        </tr>
+                    </tfoot>
                 </table>
             </div>
 

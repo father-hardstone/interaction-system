@@ -71,7 +71,8 @@ const BilledBillingTable = ({
             idx,
             patientId,
             patientName,
-            feeTypeLabel
+            feeTypeLabel,
+            serviceDate: interaction.closedAt || interaction.completedAt || interaction.createdAt
         }));
     });
 
@@ -145,6 +146,7 @@ const BilledBillingTable = ({
                             <th className="px-4 sm:px-3 py-4 text-left text-xs sm:text-sm font-semibold text-slate-700 w-10">
                                 {/* Row checkbox column */}
                             </th>
+                            <th className="px-2 sm:px-4 py-4 text-left text-xs sm:text-sm font-semibold text-slate-700">Service Date</th>
                             <th className="px-2 sm:px-4 py-4 text-left text-xs sm:text-sm font-semibold text-slate-700">ID</th>
                             <th className="px-4 sm:px-6 py-4 text-left text-xs sm:text-sm font-semibold text-slate-700">Name</th>
                             <th className="px-4 sm:px-6 py-4 text-left text-xs sm:text-sm font-semibold text-slate-700">Accounting #</th>
@@ -160,7 +162,7 @@ const BilledBillingTable = ({
                     <tbody>
                         {isLoading ? (
                             <tr>
-                                <td colSpan={11} className="px-4 sm:px-6 py-16 text-center">
+                                <td colSpan={12} className="px-4 sm:px-6 py-16 text-center">
                                     <div className="flex flex-col items-center justify-center gap-3">
                                         <svg className="animate-spin h-10 w-10 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -174,7 +176,7 @@ const BilledBillingTable = ({
                             </tr>
                         ) : billedInteractions.length === 0 ? (
                             <tr>
-                                <td colSpan={11} className="px-6 py-12 text-center text-slate-400">
+                                <td colSpan={12} className="px-6 py-12 text-center text-slate-400">
                                     {emptyMessage || (isFiledVariant ? 'No filed claims.' : 'No billed appointments.')}
                                 </td>
                             </tr>
@@ -199,6 +201,18 @@ const BilledBillingTable = ({
                                                     toggleInteractionRows(interaction.id);
                                                 }}
                                             />
+                                        </td>
+                                        <td className="px-2 sm:px-4 py-4 font-medium text-slate-900 text-xs sm:text-sm">
+                                            {idx === 0 ? (
+                                                (() => {
+                                                    const d = new Date(row.serviceDate || 0);
+                                                    if (!d.getTime()) return '—';
+                                                    const mm = String(d.getMonth() + 1).padStart(2, '0');
+                                                    const dd = String(d.getDate()).padStart(2, '0');
+                                                    const yyyy = d.getFullYear();
+                                                    return `${mm}-${dd}-${yyyy}`;
+                                                })()
+                                            ) : ''}
                                         </td>
                                         <td className="px-2 sm:px-4 py-4 font-medium text-slate-900 text-xs sm:text-sm">
                                             {idx === 0 ? patientId : ''}

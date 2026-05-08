@@ -12,15 +12,14 @@ import ReportDetailsModal from './ReportDetailsModal';
 import TakeActionModal from './TakeActionModal';
 import { reportService } from '../services/reportService';
 import supabaseStorageService from '../services/supabaseService';
-import { formatDateMMDDYYYY } from '../utils/formatUtils';
+import { formatDateMMDDYYYY, getVisitorSerialDisplay } from '../utils/formatUtils';
 
 const OFFICER_MAIN_TABS = {
     INTERACTIONS: 'interactions',
-    PHONE_CONSULTS: 'phone_consults',
     REPORT_REVIEWS: 'report_reviews'
 };
 
-const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadingInteractions = false, onRefreshInteractions, onInteractionClick, handleRegisterPatient, interactionFilter = 'today', setInteractionFilter }) => {
+const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadingInteractions = false, onRefreshInteractions, onInteractionClick, handleRegisterPatient, interactionFilter = 'all', setInteractionFilter }) => {
     const [activeMainTab, setActiveMainTab] = useState(OFFICER_MAIN_TABS.INTERACTIONS);
 
     const {
@@ -87,7 +86,9 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
         setAdditionalNotes,
         savedNotes,
         followup,
-        setFollowup
+        setFollowup,
+        vitals,
+        setVitals
     } = useOfficerTab(userData, interactions, visitors, onRefreshInteractions);
 
     const [showPatientHistoryOverlay, setShowPatientHistoryOverlay] = useState(false);
@@ -140,11 +141,11 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
 
     /** When starting from Phone consults tab, switch to Interactions main tab so the ongoing panel is visible. */
     const handleStartInteractionFromUI = useCallback((interactionId) => {
-        if (activeMainTab === OFFICER_MAIN_TABS.PHONE_CONSULTS) {
-            setActiveMainTab(OFFICER_MAIN_TABS.INTERACTIONS);
+        if (activeViewTab === 'phone_consults') {
+            setActiveViewTab('ongoing');
         }
         handleStartInteraction(interactionId);
-    }, [activeMainTab, handleStartInteraction]);
+    }, [activeViewTab, setActiveViewTab, handleStartInteraction]);
 
     // Report reviews tab
     const [reportsForReview, setReportsForReview] = useState([]);
@@ -154,13 +155,59 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
     const [isSigningReport, setIsSigningReport] = useState(false);
     const [showTakeActionModal, setShowTakeActionModal] = useState(false);
     const [reportForTakeAction, setReportForTakeAction] = useState(null);
+    const [actionConfirmation, setActionConfirmation] = useState(null); // { report, actionType }
+    const [resultFilter, setResultFilter] = useState('all');
+
+    const handleConfirmAction = async () => {
+        if (!actionConfirmation) return;
+        const { report, actionType } = actionConfirmation;
+        setIsSigningReport(true);
+        try {
+            // Sign and set action
+            await reportService.updateReport(report.id, {
+                signed: true,
+                action: actionType,
+                reviewed: true
+            });
+
+            // If phone or followup, trigger registration
+            if (actionType === 'phone_consult' || actionType === 'followup') {
+                const visitor = visitors.find(v => v.id === report.patientId);
+                if (visitor && handleRegisterPatient && userData?.id && userData?.serial) {
+                    const config = actionType === 'phone_consult'
+                        ? {
+                            reasonForVisit: 'new_visit',
+                            visitMode: 'on_phone',
+                            assignToOfficerId: userData.id,
+                            assignOfficerSerial: userData.serial
+                        }
+                        : {
+                            reasonForVisit: 'followup',
+                            visitMode: 'physical',
+                            parentInteractionId: '',
+                            assignToOfficerId: userData.id,
+                            assignOfficerSerial: userData.serial
+                        };
+                    await handleRegisterPatient(visitor, config);
+                    onRefreshInteractions?.();
+                }
+            }
+
+            loadReportsForReview();
+            setActionConfirmation(null);
+        } catch (err) {
+            console.error('Failed to take action:', err);
+        } finally {
+            setIsSigningReport(false);
+        }
+    };
 
     const loadReportsForReview = useCallback(async () => {
         const entityId = userData?.entityId;
         if (!entityId) return;
         setIsLoadingReportsForReview(true);
         try {
-            const list = await reportService.getForReview(entityId);
+            const list = await reportService.getForReview(entityId, resultFilter);
             setReportsForReview(list || []);
         } catch (err) {
             console.error('Failed to load reports for review:', err);
@@ -168,7 +215,7 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
         } finally {
             setIsLoadingReportsForReview(false);
         }
-    }, [userData?.entityId]);
+    }, [userData?.entityId, resultFilter]);
 
     // Load report reviews when Officer tab mounts (so "Report reviews (N)" count is correct upfront)
     useEffect(() => {
@@ -259,10 +306,9 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
 
     // Tab counts: number of entries in each tab's table
     const mainTabCounts = useMemo(() => ({
-        interactions: scheduledInteractions.length + ongoingInteractions.length + incompleteInteractions.length + completedInteractions.length + closedInteractions.length,
-        phoneConsults: phoneConsultInteractions.length,
+        interactions: scheduledInteractions.length + phoneConsultInteractions.length + ongoingInteractions.length + incompleteInteractions.length + completedInteractions.length,
         reportReviews: reportsForReview.length
-    }), [scheduledInteractions.length, ongoingInteractions.length, incompleteInteractions.length, completedInteractions.length, closedInteractions.length, phoneConsultInteractions.length, reportsForReview.length]);
+    }), [scheduledInteractions.length, phoneConsultInteractions.length, ongoingInteractions.length, incompleteInteractions.length, completedInteractions.length, reportsForReview.length]);
 
     return (
         <div className="flex flex-col min-h-0 flex-1 space-y-6 overflow-hidden">
@@ -279,15 +325,6 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
                         Interactions ({mainTabCounts.interactions})
                     </button>
                     <button
-                        onClick={() => setActiveMainTab(OFFICER_MAIN_TABS.PHONE_CONSULTS)}
-                        className={`flex items-center gap-2 px-4 py-2 sm:px-5 sm:py-2.5 rounded-lg text-sm sm:text-base font-semibold transition-all shrink-0 ${activeMainTab === OFFICER_MAIN_TABS.PHONE_CONSULTS ? 'bg-white text-primary shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
-                    >
-                        <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                        </svg>
-                        Phone consults ({mainTabCounts.phoneConsults})
-                    </button>
-                    <button
                         onClick={() => setActiveMainTab(OFFICER_MAIN_TABS.REPORT_REVIEWS)}
                         className={`flex items-center gap-2 px-4 py-2 sm:px-5 sm:py-2.5 rounded-lg text-sm sm:text-base font-semibold transition-all shrink-0 ${activeMainTab === OFFICER_MAIN_TABS.REPORT_REVIEWS ? 'bg-white text-primary shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
                     >
@@ -297,6 +334,7 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
                         Report reviews ({mainTabCounts.reportReviews})
                     </button>
                 </div>
+                {/* 
                 {activeMainTab !== OFFICER_MAIN_TABS.REPORT_REVIEWS && !(activeMainTab === OFFICER_MAIN_TABS.INTERACTIONS && activeViewTab === 'ongoing') && setInteractionFilter && (
                     <div className="flex items-center gap-2 shrink-0">
                         <span className="text-xs font-semibold normal-case tracking-wide text-slate-500">Time filter</span>
@@ -313,6 +351,7 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
                         </div>
                     </div>
                 )}
+                */}
             </div>
 
             {/* Interactions tab: existing sub-tabs and content (unchanged) */}
@@ -328,6 +367,15 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                     </svg>
                     Scheduled ({scheduledInteractions.length})
+                </button>
+                <button
+                    onClick={() => setActiveViewTab('phone_consults')}
+                    className={`flex items-center gap-1.5 min-w-0 px-2 py-1 rounded text-xs font-medium transition-all shrink-0 ${activeViewTab === 'phone_consults' ? 'bg-white text-primary shadow-sm' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}`}
+                >
+                    <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                    </svg>
+                    Phone consults ({phoneConsultInteractions.length})
                 </button>
                 <button
                     onClick={() => setActiveViewTab('ongoing')}
@@ -536,8 +584,11 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
                             onInteractionClick={onInteractionClick}
                             interactions={interactions}
                             doctorName={userData?.name || ''}
+                            doctorBillingNumber={userData?.billingNumber || ''}
                             onOpenLabRequisition={handleOpenLabRequisition}
                             onOpenReferralForm={handleOpenReferralForm}
+                            vitals={vitals}
+                            setVitals={setVitals}
                         />
                     </div>
                     {/* Patient History - sidebar on xl+, overlay on smaller screens */}
@@ -598,11 +649,8 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
                     )}
                 </div>
             )}
-            </>
-            )}
-
-            {/* Phone consults – same table as scheduled, no waiting time / expected turn */}
-            {activeMainTab === OFFICER_MAIN_TABS.PHONE_CONSULTS && (
+            {/* Phone Consults Tab */}
+            {activeViewTab === 'phone_consults' && (
                 <div className="flex flex-col flex-1 min-h-0">
                     <ScheduledInteractionsTable
                         scheduledInteractions={phoneConsultInteractions}
@@ -627,6 +675,10 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
                     />
                 </div>
             )}
+            </>
+            )}
+
+
 
             {/* Report reviews */}
             {activeMainTab === OFFICER_MAIN_TABS.REPORT_REVIEWS && (
@@ -639,9 +691,24 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
                         <table className="w-full border-collapse min-w-[600px]">
                             <thead>
                                 <tr className="border-b border-slate-200 bg-slate-50">
-                                    <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-700">Report ID</th>
+                                    <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-700">Patient ID</th>
                                     <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-700 border-l border-slate-100">Report details</th>
-                                    <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-700 border-l border-slate-100">Patient (name & DOB)</th>
+                                    <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-700 border-l border-slate-100">Patient</th>
+                                    <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-700 border-l border-slate-100">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <span>Result</span>
+                                            <select 
+                                                value={resultFilter} 
+                                                onChange={(e) => setResultFilter(e.target.value)}
+                                                className="text-[10px] font-bold bg-white border border-slate-200 rounded px-1 py-0.5 outline-none focus:border-blue-500 cursor-pointer shadow-sm"
+                                                onClick={(e) => e.stopPropagation()}
+                                            >
+                                                <option value="all">All</option>
+                                                <option value="positive">Positive</option>
+                                                <option value="negative">Negative</option>
+                                            </select>
+                                        </div>
+                                    </th>
                                     <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-700 border-l border-slate-100">Status</th>
                                     <th className="px-3 sm:px-4 py-3 text-right text-xs sm:text-sm font-semibold text-slate-700 border-l border-slate-100">Actions</th>
                                 </tr>
@@ -671,7 +738,9 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
                                                 onClick={() => setViewingReportForReview(report)}
                                                 className="border-b border-slate-100 hover:bg-slate-50/50 cursor-pointer transition-colors"
                                             >
-                                                <td className="px-3 sm:px-4 py-3 align-middle text-sm font-mono text-slate-700">{report.id ? report.id.slice(0, 8) : '—'}</td>
+                                                <td className="px-3 sm:px-4 py-3 align-middle text-sm font-bold text-slate-900">
+                                                    {visitor ? getVisitorSerialDisplay(visitor) : '—'}
+                                                </td>
                                                 <td className="px-3 sm:px-4 py-3 align-middle text-sm text-slate-700 border-l border-slate-100">
                                                     <div>{reportTypeLabel}</div>
                                                     <div className="text-xs text-slate-500 mt-0.5">
@@ -690,32 +759,46 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
                                                     )}
                                                 </td>
                                                 <td className="px-3 sm:px-4 py-3 align-middle border-l border-slate-100">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <div className={`w-2 h-2 rounded-full ${report?.result?.toLowerCase() === 'negative' ? 'bg-green-500' : 'bg-red-500'}`} />
+                                                        <span className={`text-xs font-bold uppercase tracking-wider ${report?.result?.toLowerCase() === 'negative' ? 'text-green-700' : 'text-red-700'}`}>
+                                                            {report?.result || 'Positive'}
+                                                        </span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-3 sm:px-4 py-3 align-middle border-l border-slate-100">
                                                     <span className={`inline-flex px-2.5 py-1 rounded-md text-xs font-semibold ${isSigned ? 'bg-green-100 text-green-800 border border-green-300' : 'bg-orange-100 text-orange-800 border border-orange-300'}`}>
-                                                        {isSigned ? 'Signed' : 'Under review'}
+                                                        {isSigned 
+                                                            ? (report.action === 'other' || !report.action ? 'Signed' : (report.action === 'phone_consult' ? 'Phone consult' : 'Followup'))
+                                                            : 'Under review'}
                                                     </span>
                                                 </td>
                                                 <td className="px-3 sm:px-4 py-3 align-middle text-right border-l border-slate-100" onClick={(e) => e.stopPropagation()}>
-                                                    <div className="flex items-center justify-end gap-2">
-                                                        {!isSigned && (
+                                                    {!isSigned && (
+                                                        <div className="flex items-center justify-end gap-2">
                                                             <button
                                                                 type="button"
-                                                                onClick={() => setViewingReportForReview(report)}
-                                                                className="px-4 py-2 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                                                                onClick={() => setActionConfirmation({ report, actionType: 'phone_consult' })}
+                                                                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors"
                                                             >
-                                                                Review
+                                                                Phone consult
                                                             </button>
-                                                        )}
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                setReportForTakeAction(report);
-                                                                setShowTakeActionModal(true);
-                                                            }}
-                                                            className="px-4 py-2 rounded-lg text-xs font-semibold border-2 border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition-colors"
-                                                        >
-                                                            Take action
-                                                        </button>
-                                                    </div>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setActionConfirmation({ report, actionType: 'followup' })}
+                                                                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
+                                                            >
+                                                                Followup
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setActionConfirmation({ report, actionType: 'other' })}
+                                                                className="px-3 py-1.5 rounded-lg text-xs font-semibold border-2 border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition-colors"
+                                                            >
+                                                                Other
+                                                            </button>
+                                                        </div>
+                                                    )}
                                                 </td>
                                             </tr>
                                         );
@@ -769,7 +852,7 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
                     const interaction = activeInteractionId != null ? interactions.find((i) => i.id === activeInteractionId) : null;
                     const wasPhoneConsult = interaction?.visitMode === 'on_phone';
                     await confirmCancel();
-                    if (wasPhoneConsult) setActiveMainTab(OFFICER_MAIN_TABS.PHONE_CONSULTS);
+                    if (wasPhoneConsult) setActiveViewTab('phone_consults');
                 }}
             />
 
@@ -802,40 +885,39 @@ const OfficerTab = ({ userData, interactions, lastVisits = {}, visitors, isLoadi
                 />
             )}
 
-            <TakeActionModal
-                show={showTakeActionModal}
-                onClose={() => {
-                    setShowTakeActionModal(false);
-                    setReportForTakeAction(null);
-                }}
-                report={reportForTakeAction}
-                visitors={visitors}
-                onProceed={async (action, visitor) => {
-                    if (!handleRegisterPatient || !visitor || !userData?.id || !userData?.serial) return false;
-                    if (action === 'phone_consult') {
-                        const success = await handleRegisterPatient(visitor, {
-                            reasonForVisit: 'new_visit',
-                            visitMode: 'on_phone',
-                            assignToOfficerId: userData.id,
-                            assignOfficerSerial: userData.serial
-                        });
-                        if (success) onRefreshInteractions?.();
-                        return success;
-                    }
-                    if (action === 'followup') {
-                        const success = await handleRegisterPatient(visitor, {
-                            reasonForVisit: 'followup',
-                            visitMode: 'physical',
-                            parentInteractionId: '',
-                            assignToOfficerId: userData.id,
-                            assignOfficerSerial: userData.serial
-                        });
-                        if (success) onRefreshInteractions?.();
-                        return success;
-                    }
-                    return false;
-                }}
-            />
+            {actionConfirmation && (
+                <div className="fixed inset-0 z-[3000] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full mx-4">
+                        <h3 className="text-lg font-bold text-slate-900 mb-2">Confirm Action</h3>
+                        <p className="text-sm text-slate-600 mb-6">
+                            Are you sure you want to take the <strong>{actionConfirmation.actionType.replace('_', ' ')}</strong> action for this report? This will also mark the report as signed.
+                        </p>
+                        <div className="flex items-center justify-end gap-3">
+                            <button
+                                onClick={() => setActionConfirmation(null)}
+                                disabled={isSigningReport}
+                                className="px-4 py-2 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-50"
+                            >
+                                No
+                            </button>
+                            <button
+                                onClick={() => handleConfirmAction()}
+                                disabled={isSigningReport}
+                                className="px-6 py-2 rounded-xl text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 shadow-md transition-all active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed flex items-center gap-2"
+                            >
+                                {isSigningReport ? (
+                                    <>
+                                        <div className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-white/20 border-t-white" />
+                                        <span>Processing...</span>
+                                    </>
+                                ) : (
+                                    'Yes'
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

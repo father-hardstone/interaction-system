@@ -14,7 +14,7 @@ const padHasContent = (pv) => {
     return !!(pv && (pv.startsWith('data:image') || pv.includes('/interactions/')));
 };
 
-const SoapBlock = ({ label, value, onChange, padValue, onPadChange, required = false, placeholder, enableSheets = false, readOnly = false, padReadOnly, existingSheetCount = 0, addedLaterSheetIndices }) => {
+const SoapBlock = ({ label, value, onChange, padValue, onPadChange, required = false, placeholder, enableSheets = false, readOnly = false, padReadOnly, existingSheetCount = 0, addedLaterSheetIndices, padHeight = "400px" }) => {
     const padIsReadOnly = padReadOnly !== undefined ? padReadOnly : readOnly;
     const [mode, setMode] = useState('handwriting');
 
@@ -78,7 +78,7 @@ const SoapBlock = ({ label, value, onChange, padValue, onPadChange, required = f
                             label="Handwriting"
                             value={padValue}
                             onChange={onPadChange}
-                            minHeight="400px"
+                            minHeight={padHeight}
                             enableSheets={enableSheets}
                             readOnly={padIsReadOnly}
                             existingSheetCount={existingSheetCount}

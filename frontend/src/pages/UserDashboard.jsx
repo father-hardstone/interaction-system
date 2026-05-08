@@ -90,7 +90,7 @@ const UserDashboard = () => {
     const [fieldErrors, setFieldErrors] = useState({});
 
     // Filter state
-    const [interactionFilter, setInteractionFilter] = useState('today');
+    const [interactionFilter, setInteractionFilter] = useState('all');
     const [receptionSubTab, setReceptionSubTab] = useState('patients');
 
     // Loading states
@@ -110,6 +110,7 @@ const UserDashboard = () => {
 
     // Next visitor serial (for preview in create form)
     const [nextVisitorSerial, setNextVisitorSerial] = useState('');
+    const [isEditingUnconfirmed, setIsEditingUnconfirmed] = useState(false);
 
     // Interaction & Media details
     const [selectedInteraction, setSelectedInteraction] = useState(null);
@@ -186,7 +187,7 @@ const UserDashboard = () => {
         }
     };
 
-    const loadInteractions = async (entityId, filter = 'this_week') => {
+    const loadInteractions = async (entityId, filter = 'all') => {
         setIsLoadingInteractions(true);
         try {
             const data = await interactionService.getByEntity(entityId, filter);
@@ -901,8 +902,9 @@ const UserDashboard = () => {
         setShowVisitorModal(true);
     };
 
-    const handleEditVisitor = (visitor) => {
+    const handleEditVisitor = (visitor, unconfirmed = false) => {
         setEditingVisitorId(visitor.id);
+        setIsEditingUnconfirmed(unconfirmed);
         setVisitorForm({
             firstName: visitor.firstName || '',
             middleName: visitor.middleName || '',
@@ -944,6 +946,8 @@ const UserDashboard = () => {
         setHealthCardEffectivityDate(visitor.healthCardEffectivityDate || '');
         setHealthCardExpiryDate(visitor.healthCardExpiryDate || '');
         setShowVisitorModal(true);
+        setError('');
+        setFieldErrors({});
     };
 
     const handlePatientClick = (patient) => {
@@ -1259,7 +1263,9 @@ const UserDashboard = () => {
                             setFieldErrors={setFieldErrors}
                             editingVisitorId={editingVisitorId}
                             setEditingVisitorId={setEditingVisitorId}
+                            isEditingUnconfirmed={isEditingUnconfirmed}
                             onEditVisitor={handleEditVisitor}
+                            onRefreshVisitors={() => loadVisitors(userData.entityId)}
                             handlePatientClick={handlePatientClick}
                             selectedPatient={selectedPatient}
                             showPatientDetailModal={showPatientDetailModal}

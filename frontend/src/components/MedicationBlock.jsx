@@ -3,8 +3,8 @@ import { DeleteOutlined } from '@ant-design/icons';
 import { generatePrescriptionImage } from '../utils/prescriptionImage';
 import PrescriptionActionModal from './PrescriptionActionModal';
 
-const FREQUENCY_OPTIONS = ['OD', 'BID', 'TID', 'QID', 'As Directed'];
-const DURATION_OPTIONS = ['7 days', '10 days', '14 days', '1 month', '2 months', '3 months'];
+const FREQUENCY_OPTIONS = ['OD', 'BID', 'TID', 'QID', 'PRN', 'As Directed'];
+const DURATION_OPTIONS = ['1 day', '3 days', '7 days', '10 days', '14 days', '1 month', '2 months', '3 months'];
 
 /** At least one med with name and (strength or frequency) filled. */
 const hasValidMedLine = (medications) =>
@@ -14,7 +14,7 @@ const hasValidMedLine = (medications) =>
             ((m?.strength ?? '').trim() !== '' || (m?.frequency ?? '').trim() !== '')
     );
 
-const MedicationBlock = ({ visitor, medications, addMedication, updateMedication, removeMedication, patientName = '', doctorName = '', interactionId = '' }) => {
+const MedicationBlock = ({ visitor, medications, addMedication, updateMedication, removeMedication, patientName = '', doctorName = '', doctorBillingNumber = '', interactionId = '' }) => {
     const [prescriptionModalOpen, setPrescriptionModalOpen] = useState(false);
     const hasRedZone =
         (visitor?.allergies && visitor.allergies !== 'N/A') ||
@@ -36,6 +36,26 @@ const MedicationBlock = ({ visitor, medications, addMedication, updateMedication
                     <div className="text-lg font-bold text-slate-900 normal-case">Medications</div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
+                    <button
+                        type="button"
+                        onClick={() => {
+                            const width = 1100;
+                            const height = 800;
+                            const left = (window.screen.width - width) / 2;
+                            const top = (window.screen.height - height) / 2;
+                            window.open(
+                                'https://reference.medscape.com/drug-interactionchecker',
+                                'InteractionChecker',
+                                `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes,status=yes`
+                            );
+                        }}
+                        className="text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors flex items-center gap-1.5 border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 normal-case shrink-0"
+                    >
+                        <svg className="w-3.5 h-3.5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                        </svg>
+                        Interactions checker
+                    </button>
                     <button
                         type="button"
                         onClick={() => setPrescriptionModalOpen(true)}
@@ -60,38 +80,32 @@ const MedicationBlock = ({ visitor, medications, addMedication, updateMedication
             {/* Red zone + Past medical history — same row, same dimensions */}
             {visitor && (hasRedZone || pastMedicalKeys.some(({ key }) => visitor[key])) && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                    <div className={`p-3 rounded-xl min-w-0 min-h-[88px] flex flex-col ${hasRedZone ? 'bg-red-50 border-2 border-red-200' : 'bg-slate-50/50 border border-slate-100 border-dashed'}`}>
-                        <div className="text-xs font-semibold text-red-800 normal-case tracking-wide mb-2">Allergies & reactions</div>
+                    <div className={`p-2.5 rounded-xl min-w-0 min-h-[60px] flex flex-col ${hasRedZone ? 'bg-red-50 border-2 border-red-200' : 'bg-slate-50/50 border border-slate-100 border-dashed'}`}>
                         {hasRedZone ? (
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-1.5 text-sm">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-sm">
                                 <div>
-                                    <span className="text-xs font-semibold text-red-900 normal-case block">Allergies</span>
-                                    <span className="font-medium text-slate-700">{visitor.allergies || 'N/A'}</span>
+                                    <span className="text-[10px] font-bold text-red-900 uppercase tracking-tight block">Allergies</span>
+                                    <span className="font-medium text-slate-700 leading-tight">{visitor.allergies || 'N/A'}</span>
                                 </div>
                                 <div>
-                                    <span className="text-xs font-semibold text-red-900 normal-case block">Type of reaction</span>
-                                    <span className="font-medium text-slate-700">{visitor.drugReactions || 'N/A'}</span>
-                                </div>
-                                <div>
-                                    <span className="text-xs font-semibold text-red-900 normal-case block">Special notes</span>
-                                    <span className="font-medium text-slate-700">{visitor.specialNotes || '-'}</span>
+                                    <span className="text-[10px] font-bold text-red-900 uppercase tracking-tight block">Reaction</span>
+                                    <span className="font-medium text-slate-700 leading-tight">{visitor.drugReactions || 'N/A'}</span>
                                 </div>
                             </div>
                         ) : (
                             <span className="text-xs text-slate-400">—</span>
                         )}
                     </div>
-                    <div className={`p-3 rounded-xl min-w-0 min-h-[88px] flex flex-col ${pastMedicalKeys.some(({ key }) => visitor[key]) ? 'bg-slate-50 border border-slate-200' : 'bg-slate-50/50 border border-slate-100 border-dashed'}`}>
-                        <div className="text-xs font-semibold text-slate-700 normal-case tracking-wide mb-2">Past medical history</div>
+                    <div className={`p-2.5 rounded-xl min-w-0 min-h-[60px] flex flex-col ${pastMedicalKeys.some(({ key }) => visitor[key]) ? 'bg-slate-50 border border-slate-200' : 'bg-slate-50/50 border border-slate-100 border-dashed'}`}>
                         {pastMedicalKeys.some(({ key }) => visitor[key]) ? (
-                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-x-4 gap-y-1.5 text-sm">
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-x-4 gap-y-1 text-sm">
                                 {pastMedicalKeys.map(({ key, label }) => {
                                     const val = visitor[key];
                                     const display = (val === 'yes' || val === 'no') ? (val === 'yes' ? 'Yes' : 'No') : '—';
                                     return (
                                         <div key={key}>
-                                            <span className="text-xs font-semibold text-slate-600 normal-case block">{label}</span>
-                                            <span className="font-medium text-slate-700">{display}</span>
+                                            <span className="text-[10px] font-bold text-slate-600 uppercase tracking-tight block">{label}</span>
+                                            <span className="font-medium text-slate-700 leading-tight">{display}</span>
                                         </div>
                                     );
                                 })}
@@ -223,6 +237,7 @@ const MedicationBlock = ({ visitor, medications, addMedication, updateMedication
                 visitor={visitor}
                 interactionId={interactionId}
                 doctorName={doctorName}
+                doctorBillingNumber={doctorBillingNumber}
                 patientName={patientName}
                 medications={medications}
             />

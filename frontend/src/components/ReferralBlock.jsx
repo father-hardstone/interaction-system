@@ -1,6 +1,6 @@
 import React from 'react';
 
-const ReferralBlock = ({ referral, setReferral, onOpenReferralForm }) => {
+const ReferralBlock = ({ referral, setReferral, onOpenReferralForm, onOpenLabRequisition }) => {
     const handleChange = (field, value) => {
         setReferral(prev => ({ ...prev, [field]: value }));
     };
