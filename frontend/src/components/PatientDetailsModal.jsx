@@ -30,7 +30,8 @@ const PatientDetailsModal = ({
     handlePatientClick,
     onInteractionClick,
     visitors = [],
-    reportsOnly = false
+    reportsOnly = false,
+    isUnconfirmed = false
 }) => {
     const [imageLoadingStates, setImageLoadingStates] = useState({});
     const [reportUrls, setReportUrls] = useState({});
@@ -277,6 +278,7 @@ const PatientDetailsModal = ({
                     )}
 
                     {/* SECTION 3 & 4: Past Interactions and Reports side by side, max two rows height, internal scroll */}
+                    {!isUnconfirmed && (
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 max-h-[18rem] min-h-0">
                         {/* Past Interactions - hidden in reportsOnly mode */}
                         {!reportsOnly && (
@@ -402,9 +404,11 @@ const PatientDetailsModal = ({
                             </div>
                         </div>
                     </div>
+                    )}
                 </div>
 
                 {/* Footer with Action */}
+                {!isUnconfirmed && (
                 <div className="px-6 py-3 bg-white border-t border-slate-100 flex justify-end">
                     <ReportUpload
                         visitor={selectedPatient}
@@ -415,6 +419,7 @@ const PatientDetailsModal = ({
                         onUploadSuccess={onUploadSuccess}
                     />
                 </div>
+                )}
             </div>
 
             {viewingReport && (

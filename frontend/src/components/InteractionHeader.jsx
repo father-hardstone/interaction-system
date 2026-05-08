@@ -97,10 +97,16 @@ const InteractionHeader = ({
     return (
         <div className="px-4 sm:px-6 py-4 border-b border-slate-200 flex flex-col gap-3 md:flex-row md:justify-between md:items-center md:gap-4 bg-white sticky top-0 z-10 w-full">
             <div className="flex flex-col gap-1 min-w-0 flex-1">
-                <button
-                    type="button"
+                <div
+                    role="button"
+                    tabIndex={0}
                     onClick={() => handleOpenPatientDetails?.(interaction.visitorId)}
-                    className="text-left group w-fit"
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                            handleOpenPatientDetails?.(interaction.visitorId);
+                        }
+                    }}
+                    className="text-left group w-fit cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded-lg"
                 >
                     <div className="flex items-baseline gap-2 flex-wrap items-center">
                         <span className="shrink-0 text-sm font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 normal-case tracking-widest">
@@ -119,7 +125,7 @@ const InteractionHeader = ({
                             )}
                         </h2>
                     </div>
-                </button>
+                </div>
             </div>
             <div className="flex flex-wrap items-center gap-2 sm:gap-3 shrink-0">
                 {setFollowup && followup && (

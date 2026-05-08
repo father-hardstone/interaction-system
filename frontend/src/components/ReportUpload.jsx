@@ -36,6 +36,7 @@ const ReportUpload = ({
     const [externalReportId, setExternalReportId] = useState('');
     const [doctorId, setDoctorId] = useState('');
     const [doctorName, setDoctorName] = useState('');
+    const [result, setResult] = useState('');
     const [dateError, setDateError] = useState('');
 
     const [selectedFile, setSelectedFile] = useState(null);
@@ -57,6 +58,7 @@ const ReportUpload = ({
         setSelectedInteractionId('');
         setProcedureDate(new Date().toISOString().split('T')[0]);
         setReportGeneratedDate(new Date().toISOString().split('T')[0]);
+        setResult('');
         setNotes('');
         setLabName('');
         setLabAddress('');
@@ -149,6 +151,7 @@ const ReportUpload = ({
         if (!reportType) return 'Please select a report type';
         if (!procedureDate) return 'Please select a procedure date';
         if (!reportGeneratedDate) return 'Please select a report generation date';
+        if (!result) return 'Please select a result (Positive/Negative)';
 
         const procDate = new Date(procedureDate);
         const genDate = new Date(reportGeneratedDate);
@@ -206,6 +209,7 @@ const ReportUpload = ({
                         reportType,
                         procedureDate,
                         reportGeneratedDate,
+                        result,
                         labMetadata: {
                             labName,
                             labAddress,
@@ -220,7 +224,7 @@ const ReportUpload = ({
                         uploadedBy: 'system' // Should be current user
                     };
 
-                    const result = await reportService.upload(reportData);
+                    const res = await reportService.upload(reportData);
 
                     setUploadProgress(100);
                     setSuccessMsg('Report uploaded successfully!');
@@ -395,6 +399,41 @@ const ReportUpload = ({
                                                 <p className="text-sm font-medium text-red-500">{dateError}</p>
                                             </div>
                                         )}
+                                    </div>
+
+                                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-3">
+                                        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Result (Required)</label>
+                                        <div className="flex items-center gap-6">
+                                            <label className="flex items-center gap-2 cursor-pointer group">
+                                                <div className="relative flex items-center justify-center">
+                                                    <input
+                                                        type="radio"
+                                                        name="reportResult"
+                                                        value="positive"
+                                                        checked={result === 'positive'}
+                                                        onChange={(e) => setResult(e.target.value)}
+                                                        className="peer appearance-none w-5 h-5 border-2 border-slate-300 rounded-full checked:border-red-500 transition-all cursor-pointer"
+                                                    />
+                                                    <div className="absolute w-2.5 h-2.5 bg-red-500 rounded-full opacity-0 peer-checked:opacity-100 transition-opacity" />
+                                                </div>
+                                                <span className={`text-sm font-bold transition-colors ${result === 'positive' ? 'text-red-600' : 'text-slate-500 group-hover:text-slate-700'}`}>Positive</span>
+                                            </label>
+
+                                            <label className="flex items-center gap-2 cursor-pointer group">
+                                                <div className="relative flex items-center justify-center">
+                                                    <input
+                                                        type="radio"
+                                                        name="reportResult"
+                                                        value="negative"
+                                                        checked={result === 'negative'}
+                                                        onChange={(e) => setResult(e.target.value)}
+                                                        className="peer appearance-none w-5 h-5 border-2 border-slate-300 rounded-full checked:border-green-500 transition-all cursor-pointer"
+                                                    />
+                                                    <div className="absolute w-2.5 h-2.5 bg-green-500 rounded-full opacity-0 peer-checked:opacity-100 transition-opacity" />
+                                                </div>
+                                                <span className={`text-sm font-bold transition-colors ${result === 'negative' ? 'text-green-600' : 'text-slate-500 group-hover:text-slate-700'}`}>Negative</span>
+                                            </label>
+                                        </div>
                                     </div>
 
                                     <div>

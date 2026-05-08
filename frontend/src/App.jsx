@@ -14,6 +14,8 @@ import LabRequisitionPage from './pages/LabRequisitionPage';
 import GeneralServicesClaimFormPage from './pages/GeneralServicesClaimFormPage';
 import DiagnosticFormPage from './pages/DiagnosticFormPage';
 import CardioHealthFormPage from './pages/CardioHealthFormPage';
+import PatientOnboardingPage from './pages/PatientOnboardingPage';
+import LandingPage from './pages/LandingPage';
 import NotFoundPage from './pages/NotFoundPage';
 import ErrorBoundary from './components/ErrorBoundary';
 import { UserDashboardNavProvider, useUserDashboardNav } from './contexts/UserDashboardNavContext';
@@ -102,6 +104,7 @@ const NavBar = () => {
   }, [token]);
 
   const isDashboardRoute = location.pathname !== '/' && !location.pathname.endsWith('/login');
+  const isLoginRoute = location.pathname.endsWith('/login');
   const isUserDashboard = location.pathname.includes('/user/dashboard');
   const isEntityRoute = location.pathname.includes('/entity/');
   const shouldShowIcon = (userInfo.isEntity && isEntityRoute) || (isUserDashboard && userInfo.userEntityId);
@@ -228,6 +231,29 @@ const NavBar = () => {
   };
 
   // Default layout (entity, login, etc.)
+  const isOnboardingRoute = location.pathname.startsWith('/newpatient-registry/temp/');
+  if (location.pathname === '/' || isOnboardingRoute) return null;
+  
+  if (!showEntityTopBar && isLoginRoute) {
+    return (
+      <nav className="fixed top-0 left-0 right-0 z-50 px-10 py-4 flex justify-between items-center bg-slate-900/40 backdrop-blur-md border-b border-white/5 h-16">
+        <div className="flex flex-col scale-75 origin-left">
+          <div className="text-4xl font-black tracking-tighter text-white leading-none">
+            MEDI<span className="text-cyan-400">NET</span>
+          </div>
+          <div className="text-[12px] font-bold text-cyan-500 tracking-[0.3em] uppercase mt-2">
+            Advanced Healthcare Solutions
+          </div>
+        </div>
+        <div className="flex gap-4">
+          <Link to="/" className="text-xs text-slate-400 hover:text-white font-bold uppercase tracking-widest transition-colors">
+            &larr; Back to Home
+          </Link>
+        </div>
+      </nav>
+    );
+  }
+
   return (
     <nav className="fixed top-0 left-0 right-0 flex justify-between items-center h-16 px-6 bg-white/80 backdrop-blur-lg z-[100] border-b border-slate-200 w-full font-inherit">
       <div className="flex items-center gap-3 shrink-0">
@@ -334,8 +360,11 @@ const NavBar = () => {
 function MainContentWithOptionalPadding({ children }) {
   const location = useLocation();
   const isUserDashboard = location.pathname.includes('/user/dashboard');
+  const isLandingPage = location.pathname === '/';
+  const isLoginRoute = location.pathname.endsWith('/login');
+  const isOnboardingRoute = location.pathname.startsWith('/newpatient-registry/temp/');
   return (
-    <div className={`flex-1 flex flex-col ${isUserDashboard ? '' : 'pt-16'}`}>
+    <div className={`flex-1 flex flex-col ${isUserDashboard || isLandingPage || isLoginRoute || isOnboardingRoute ? '' : 'pt-16'}`}>
       {children}
     </div>
   );
@@ -355,8 +384,11 @@ function App() {
           <Route element={<PublicOnlyRoute />}>
             <Route path="/entity/login" element={<PortalLogin />} />
             <Route path="/user/login" element={<PortalLogin />} />
-            <Route path="/" element={<PortalLogin />} />
+            <Route path="/login" element={<PortalLogin />} />
           </Route>
+
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/newpatient-registry/temp/:entitySerial/:token" element={<PatientOnboardingPage />} />
 
           {/* Entity Protected Routes - shared layout (sidebar) for dashboard and settings */}
           <Route element={<EntityProtectedRoute />}>

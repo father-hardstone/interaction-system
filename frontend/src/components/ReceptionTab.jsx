@@ -1,8 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
+import api from '../services/api';
 import { formatHealthCardDisplay, getInteractionStatus } from '../utils/formatUtils';
 import { reportService } from '../services/reportService';
 import { interactionService } from '../services/interactionService';
 import VisitorsSection from './VisitorsSection';
+import UnconfirmedVisitorsSection from './UnconfirmedVisitorsSection';
 import InteractionsSection from './InteractionsSection';
 import ReportsSection from './ReportsSection';
 import PatientDetailsModal from './PatientDetailsModal';
@@ -12,6 +14,7 @@ import UnbilledInteractionsTable from './UnbilledInteractionsTable';
 import FollowupInteractionsTable from './FollowupInteractionsTable';
 import { BillingSection } from './billing';
 import OutgoingLogTab from './operations/OutgoingLogTab';
+import CreatePatientModal from './CreatePatientModal';
 
 const PlaceholderSection = ({ title, description }) => (
     <div className="flex flex-col items-center justify-center p-12 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50 min-h-[400px]">
@@ -131,7 +134,9 @@ const ReceptionTab = ({
     getImageUrl,
     setViewingMedia,
     handleRegisterFollowup,
-    registeringFollowupForId
+    registeringFollowupForId,
+    isEditingUnconfirmed = false,
+    onRefreshVisitors = () => { }
 }) => {
     const [activeSubTab, setActiveSubTab] = useState('patients');
     const handleSubTabChange = (tab) => {
@@ -143,6 +148,31 @@ const ReceptionTab = ({
     const [billingModalInteraction, setBillingModalInteraction] = useState(null);
     const [reports, setReports] = useState([]);
     const [loadingReports, setLoadingReports] = useState(false);
+    const [unconfirmedVisitors, setUnconfirmedVisitors] = useState([]);
+    const [isLoadingUnconfirmed, setIsLoadingUnconfirmed] = useState(false);
+    const [approvingVisitor, setApprovingVisitor] = useState(null);
+    const [isApproving, setIsApproving] = useState(false);
+
+    const fetchUnconfirmed = async () => {
+        if (!userData?.entityId) return;
+        setIsLoadingUnconfirmed(true);
+        try {
+            const res = await api.get(`/visitors/entity/${userData.entityId}?confirmed=false`);
+            setUnconfirmedVisitors(res.data || []);
+        } catch (err) {
+            console.error('Failed to fetch unconfirmed visitors:', err);
+        } finally {
+            setIsLoadingUnconfirmed(false);
+        }
+    };
+
+    useEffect(() => {
+        if (userData?.entityId) {
+            fetchUnconfirmed();
+            const interval = setInterval(fetchUnconfirmed, 30000); // Refresh every 30s
+            return () => clearInterval(interval);
+        }
+    }, [userData?.entityId]);
 
     // Fetch past interactions for patient when profile modal opens (independent of time filter)
     useEffect(() => {
@@ -224,50 +254,15 @@ const ReceptionTab = ({
             return status === 'registered' || status === 'queued';
         });
 
-        // Interactions tab: anything that would appear in Ongoing, Incomplete, Followup, or Cancelled subtabs
-        const interactionIds = new Set();
-        for (const i of interactions) {
-            const isOngoing = i.ongoing && !i.completed;
-
-            let isIncomplete = false;
-            if (i.started && !i.completed) {
-                const hasCC = i.ccReason && (i.ccReason.text && i.ccReason.text.trim()) || (i.ccReason?.hasScratchpad && i.ccReason.scratchpad);
-                const hasS = i.subjective && (i.subjective.text && i.subjective.text.trim()) || (i.subjective?.hasScratchpad && i.subjective.scratchpad);
-                const hasO = i.objective && (i.objective.text && i.objective.text.trim()) || (i.objective?.hasScratchpad && i.objective.scratchpad);
-                isIncomplete = !hasCC || !hasS || !hasO;
-            }
-
-            const isFollowup = i.followupRequired?.required || i.followup?.required;
-            const isCancelled = i.cancelled;
-
-            if (isOngoing || isIncomplete || isFollowup || isCancelled) {
-                interactionIds.add(i.id);
-            }
-        }
-
         return {
             patients: visitors.length,
             registrations: registrationInteractions.length,
-            interactions: interactionIds.size,
             reports: visitors.length,
             billings: completedOpen + unbilled + detailClaim + filedClaims,
-            outgoing: 0
+            outgoing: 0,
+            unconfirmed: unconfirmedVisitors.length
         };
-    }, [visitors, interactions]);
-
-    const interactionSubTabCounts = useMemo(() => {
-        const ongoing = interactions.filter((i) => i.ongoing && !i.completed).length;
-        const incomplete = interactions.filter((i) => {
-            if (!i.started || i.completed) return false;
-            const hasCC = i.ccReason && (i.ccReason.text?.trim() || (i.ccReason.hasScratchpad && i.ccReason.scratchpad));
-            const hasS = i.subjective && (i.subjective.text?.trim() || (i.subjective.hasScratchpad && i.subjective.scratchpad));
-            const hasO = i.objective && (i.objective.text?.trim() || (i.objective.hasScratchpad && i.objective.scratchpad));
-            return !hasCC || !hasS || !hasO;
-        }).length;
-        const followup = interactions.filter((i) => i.followupRequired?.required || i.followup?.required).length;
-        const cancelled = interactions.filter((i) => i.cancelled).length;
-        return { ongoing, incomplete, followup, cancelled };
-    }, [interactions]);
+    }, [visitors, interactions, unconfirmedVisitors]);
 
     return (
         <div className="flex flex-col flex-1 min-h-0 overflow-x-hidden">
@@ -275,6 +270,18 @@ const ReceptionTab = ({
             <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 sm:pb-0 mb-4">
                 <div className="flex overflow-x-auto scrollbar-hide">
                 <div className="flex bg-slate-100 p-1.5 rounded-2xl w-fit">
+                    <button
+                        onClick={() => handleSubTabChange('unconfirmed')}
+                        className={`flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 whitespace-nowrap ${activeSubTab === 'unconfirmed'
+                            ? 'bg-rose-500 text-white shadow-lg scale-105'
+                            : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+                            }`}
+                    >
+                        <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.876c1.27 0 2.09-1.383 1.45-2.43L13.732 4c-.64-1.047-2.05-1.047-2.692 0L3.062 16.57c-.64 1.047.18 2.43 1.45 2.43z" />
+                        </svg>
+                        Unconfirmed Patients ({tabCounts.unconfirmed})
+                    </button>
                     <button
                         onClick={() => handleSubTabChange('patients')}
                         className={`flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 whitespace-nowrap ${activeSubTab === 'patients'
@@ -298,18 +305,6 @@ const ReceptionTab = ({
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
                         </svg>
                         Registrations ({tabCounts.registrations})
-                    </button>
-                    <button
-                        onClick={() => handleSubTabChange('interactions')}
-                        className={`flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 whitespace-nowrap ${activeSubTab === 'interactions'
-                            ? 'bg-white text-primary shadow-sm scale-105'
-                            : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
-                            }`}
-                    >
-                        <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-                        </svg>
-                        Interactions ({tabCounts.interactions})
                     </button>
                     <button
                         onClick={() => handleSubTabChange('reports')}
@@ -349,23 +344,78 @@ const ReceptionTab = ({
                     </button>
                 </div>
                 </div>
-                {activeSubTab !== 'patients' && activeSubTab !== 'reports' && (
-                <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-xs font-semibold normal-case tracking-wide text-slate-500">Time filter</span>
-                    <div className="flex bg-slate-200/50 p-1 rounded-xl flex-wrap gap-1">
-                        {['today', 'this_week', 'this_month', 'last_three_months', 'all'].map((f) => (
-                            <button
-                                key={f}
-                                onClick={() => setInteractionFilter(f)}
-                                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${interactionFilter === f ? 'bg-white text-primary shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
-                            >
-                                {f === 'this_week' ? 'This week' : f === 'this_month' ? 'This month' : f === 'last_three_months' ? 'Last 3 months' : f.charAt(0).toUpperCase() + f.slice(1)}
-                            </button>
-                        ))}
+            </div>
+
+            {activeSubTab === 'unconfirmed' && (
+                <div className="flex-1 flex flex-col min-h-0">
+                    <UnconfirmedVisitorsSection
+                        visitors={unconfirmedVisitors}
+                        isLoading={isLoadingUnconfirmed}
+                        onApprove={(v) => {
+                            setApprovingVisitor(v);
+                        }}
+                        onPatientClick={handlePatientClick}
+                        formatDate={formatDate}
+                    />
+                </div>
+            )}
+
+            {approvingVisitor && (
+                <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-[fadeIn_0.2s_ease-out]">
+                    <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden border border-slate-100 animate-[slideUp_0.3s_ease-out]">
+                        <div className="p-8">
+                            <div className="w-16 h-16 bg-emerald-50 text-emerald-500 rounded-2xl flex items-center justify-center mb-6 border border-emerald-100 mx-auto">
+                                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                            </div>
+                            <h3 className="text-xl font-bold text-slate-900 text-center mb-2">Approve Patient</h3>
+                            <p className="text-slate-500 text-center mb-8">
+                                Are you sure you want to approve <span className="font-semibold text-slate-900">{(approvingVisitor.firstName || approvingVisitor.lastName) ? `${approvingVisitor.firstName} ${approvingVisitor.lastName}`.trim() : "this patient"}</span>? This will move them to the regular patients list.
+                            </p>
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={() => setApprovingVisitor(null)}
+                                    disabled={isApproving}
+                                    className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-all disabled:opacity-50"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={async () => {
+                                        setIsApproving(true);
+                                        try {
+                                            await api.post(`/visitors/${approvingVisitor.id}/approve`);
+                                            setApprovingVisitor(null);
+                                            fetchUnconfirmed();
+                                            if (userData?.entityId && onRefreshVisitors) {
+                                                onRefreshVisitors();
+                                            }
+                                        } catch (err) {
+                                            console.error('Failed to approve patient:', err);
+                                            alert('Failed to approve patient. Please try again.');
+                                        } finally {
+                                            setIsApproving(false);
+                                        }
+                                    }}
+                                    disabled={isApproving}
+                                    className="flex-1 py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl shadow-lg shadow-emerald-500/20 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                                >
+                                    {isApproving ? (
+                                        <>
+                                            <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                            </svg>
+                                            Approving...
+                                        </>
+                                    ) : 'Approve'}
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
-                )}
-            </div>
+            )}
 
             {activeSubTab === 'patients' && (
                 <div className="flex-1 flex flex-col min-h-0">
@@ -436,6 +486,7 @@ const ReceptionTab = ({
                     userData={userData}
                     handleRegisterPatient={handleRegisterPatient}
                     nextVisitorSerial={nextVisitorSerial}
+                    unconfirmed={isEditingUnconfirmed}
                 />
                 </div>
             )}
@@ -491,215 +542,6 @@ const ReceptionTab = ({
                 </div>
             )}
 
-            {activeSubTab === 'interactions' && (
-                <div className="flex-1 flex flex-col min-h-0 overflow-x-hidden">
-                    <div className="flex bg-slate-50 p-1 rounded-xl w-fit border border-slate-200 mb-4 shrink-0">
-                        <button
-                            onClick={() => setActiveInteractionSubTab('ongoing')}
-                            className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${activeInteractionSubTab === 'ongoing'
-                                ? 'bg-white text-primary shadow-sm'
-                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                                }`}
-                        >
-                            Ongoing ({interactionSubTabCounts.ongoing})
-                        </button>
-                        <button
-                            onClick={() => setActiveInteractionSubTab('incomplete')}
-                            className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${activeInteractionSubTab === 'incomplete'
-                                ? 'bg-white text-primary shadow-sm'
-                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                                }`}
-                        >
-                            Incomplete ({interactionSubTabCounts.incomplete})
-                        </button>
-                        {/* Not ready for billing – commented out
-                        <button
-                            onClick={() => setActiveInteractionSubTab('not_closed')}
-                            className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${activeInteractionSubTab === 'not_closed'
-                                ? 'bg-white text-primary shadow-sm'
-                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                                }`}
-                        >
-                            Not ready for billing
-                        </button>
-                        */}
-                        {/* Unbilled – commented out
-                        <button
-                            onClick={() => setActiveInteractionSubTab('unbilled')}
-                            className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${activeInteractionSubTab === 'unbilled'
-                                ? 'bg-white text-primary shadow-sm'
-                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                                }`}
-                        >
-                            Unbilled
-                        </button>
-                        */}
-                        <button
-                            onClick={() => setActiveInteractionSubTab('followup')}
-                            className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${activeInteractionSubTab === 'followup'
-                                ? 'bg-white text-primary shadow-sm'
-                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                                }`}
-                        >
-                            Followup ({interactionSubTabCounts.followup})
-                        </button>
-                        <button
-                            onClick={() => setActiveInteractionSubTab('cancelled')}
-                            className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${activeInteractionSubTab === 'cancelled'
-                                ? 'bg-white text-primary shadow-sm'
-                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                                }`}
-                        >
-                            Cancelled ({interactionSubTabCounts.cancelled})
-                        </button>
-                    </div>
-
-                    {activeInteractionSubTab === 'ongoing' && (
-                        <div className="animate-[fadeIn_0.3s_ease-out] flex flex-col flex-1 min-h-0 p-4">
-                            <div className="mb-4 shrink-0">
-                                <h2 className="text-xl font-semibold text-slate-900">Ongoing</h2>
-                                <p className="text-sm text-slate-500 mt-1">Visits currently in progress (started but not yet completed).</p>
-                            </div>
-                            <NotClosedInteractionsTable
-                                notClosedInteractions={interactions.filter(i => i.ongoing && !i.completed)}
-                                handleOpenPatientDetails={handlePatientClick}
-                                getVisitorName={getVisitorName}
-                                getVisitorSerial={getVisitorSerial}
-                                getOfficerName={getOfficerName}
-                                formatDate={formatDate}
-                                showOfficer={true}
-                                onInteractionClick={onInteractionClick}
-                                interactions={interactions}
-                                lastVisits={lastVisits}
-                                emptyMessage="No ongoing interactions."
-                            />
-                        </div>
-                    )}
-
-                    {/* Not ready for billing – commented out
-                    {activeInteractionSubTab === 'not_closed' && (
-                        <div className="animate-[fadeIn_0.3s_ease-out] flex flex-col flex-1 min-h-0 p-4">
-                            <div className="mb-4 shrink-0">
-                                <h2 className="text-xl font-semibold text-slate-900">Not ready for billing</h2>
-                                <p className="text-sm text-slate-500 mt-1">Completed visits where diagnosis and billing codes are not yet entered.</p>
-                            </div>
-                            <NotClosedInteractionsTable
-                                notClosedInteractions={interactions.filter(i => i.started && i.completed && !i.closed)}
-                                handleOpenPatientDetails={handlePatientClick}
-                                getVisitorName={getVisitorName}
-                                getVisitorSerial={getVisitorSerial}
-                                getOfficerName={getOfficerName}
-                                formatDate={formatDate}
-                                showOfficer={true}
-                                onInteractionClick={onInteractionClick}
-                                interactions={interactions}
-                                lastVisits={lastVisits}
-                            />
-                        </div>
-                    )}
-                    */}
-
-                    {activeInteractionSubTab === 'incomplete' && (
-                        <div className="animate-[fadeIn_0.3s_ease-out] flex flex-col flex-1 min-h-0 p-4">
-                            <div className="mb-4 shrink-0">
-                                <h2 className="text-xl font-semibold text-slate-900">Incomplete</h2>
-                                <p className="text-sm text-slate-500 mt-1">Visits started but CC, Subjective, or Objective are missing.</p>
-                            </div>
-                            <IncompleteInteractionsTable
-                                incompleteInteractions={interactions.filter(i => {
-                                    if (!i.started || i.completed) return false;
-                                    const hasCC = i.ccReason && (i.ccReason.text?.trim() || (i.ccReason.hasScratchpad && i.ccReason.scratchpad));
-                                    const hasS = i.subjective && (i.subjective.text?.trim() || (i.subjective.hasScratchpad && i.subjective.scratchpad));
-                                    const hasO = i.objective && (i.objective.text?.trim() || (i.objective.hasScratchpad && i.objective.scratchpad));
-                                    return !hasCC || !hasS || !hasO;
-                                })}
-                                handleOpenPatientDetails={handlePatientClick}
-                                getVisitorName={getVisitorName}
-                                getVisitorSerial={getVisitorSerial}
-                                getOfficerName={getOfficerName}
-                                formatDate={formatDate}
-                                showOfficer={true}
-                                handleStartInteraction={null}
-                                onInteractionClick={onInteractionClick}
-                                interactions={interactions}
-                            />
-                        </div>
-                    )}
-
-                    {activeInteractionSubTab === 'followup' && (
-                        <div className="animate-[fadeIn_0.3s_ease-out] flex flex-col flex-1 min-h-0 p-4">
-                            <div className="mb-4 shrink-0">
-                                <h2 className="text-xl font-semibold text-slate-900">Followup To Interactions</h2>
-                                <p className="text-sm text-slate-500 mt-1">Track patients who need follow-up appointments or checks.</p>
-                            </div>
-                            <FollowupInteractionsTable
-                                followupInteractions={interactions.filter(i => i.followupRequired?.required || i.followup?.required)}
-                                handleOpenPatientDetails={handlePatientClick}
-                                getVisitorName={getVisitorName}
-                                getVisitorSerial={getVisitorSerial}
-                                getOfficerName={getOfficerName}
-                                formatDate={formatDate}
-                                showOfficer={true}
-                                onInteractionClick={onInteractionClick}
-                                interactions={interactions}
-                                lastVisits={lastVisits}
-                                handleRegisterFollowup={handleRegisterFollowup}
-                                registeringFollowupForId={registeringFollowupForId}
-                            />
-                        </div>
-                    )}
-
-                    {/* Unbilled – commented out
-                    {activeInteractionSubTab === 'unbilled' && (
-                        <div className="animate-[fadeIn_0.3s_ease-out] flex flex-col flex-1 min-h-0 p-4">
-                            <div className="mb-4 shrink-0">
-                                <h2 className="text-xl font-semibold text-slate-900">Unbilled</h2>
-                                <p className="text-sm text-slate-500 mt-1">Completed visits with diagnosis and billing codes entered, ready for billing.</p>
-                            </div>
-                            <UnbilledInteractionsTable
-                                unbilledInteractions={interactions.filter(i => i.completed && i.closed && i.billed !== true)}
-                                handleOpenPatientDetails={handlePatientClick}
-                                getVisitorName={getVisitorName}
-                                getVisitorSerial={getVisitorSerial}
-                                getOfficerName={getOfficerName}
-                                formatDate={formatDate}
-                                showOfficer={true}
-                                onInteractionClick={onInteractionClick}
-                                interactions={interactions}
-                                lastVisits={lastVisits}
-                                onBillNow={(interaction) => {
-                                    setBillingModalInteraction(interaction);
-                                    handleSubTabChange('billings');
-                                }}
-                            />
-                        </div>
-                    )}
-                    */}
-
-                    {activeInteractionSubTab === 'cancelled' && (
-                        <div className="animate-[fadeIn_0.3s_ease-out] flex flex-col flex-1 min-h-0 p-4">
-                            <div className="mb-4 shrink-0">
-                                <h2 className="text-xl font-semibold text-slate-900">Cancelled registrations</h2>
-                                <p className="text-sm text-slate-500 mt-1">Registrations that were cancelled before the visit started.</p>
-                            </div>
-                            <NotClosedInteractionsTable
-                                notClosedInteractions={interactions.filter(i => i.cancelled)}
-                                handleOpenPatientDetails={handlePatientClick}
-                                getVisitorName={getVisitorName}
-                                getVisitorSerial={getVisitorSerial}
-                                getOfficerName={getOfficerName}
-                                formatDate={formatDate}
-                                showOfficer={true}
-                                onInteractionClick={onInteractionClick}
-                                interactions={interactions}
-                                lastVisits={lastVisits}
-                                emptyMessage="No cancelled registrations."
-                            />
-                        </div>
-                    )}
-                </div>
-            )}
-
             {activeSubTab === 'reports' && (
                 <div className="flex-1 flex flex-col min-h-0">
                 <ReportsSection
@@ -744,6 +586,80 @@ const ReceptionTab = ({
                 </div>
             )}
 
+            <CreatePatientModal
+                open={showVisitorModal}
+                onClose={() => {
+                    setShowVisitorModal(false);
+                    setEditingVisitorId?.(null);
+                    setVisitorForm({
+                        firstName: '',
+                        middleName: '',
+                        lastName: '',
+                        dateOfBirth: '',
+                        addressLine: '',
+                        city: '',
+                        state: '',
+                        postalCode: '',
+                        gender: '',
+                        email: '',
+                        phoneH: '',
+                        phoneM: '',
+                        notes: '',
+                        memo: '',
+                        allergies: '',
+                        drugReactions: '',
+                        ongoingHealthConditions: '',
+                        specialNotes: '',
+                        highBloodPressure: '',
+                        heartDisease: '',
+                        diabetes: '',
+                        cholesterol: '',
+                        smoke: '',
+                        emergencyName: '',
+                        emergencyRelation: '',
+                        emergencyPhone: ''
+                    });
+                    setPhoneData({ fullNumber: '', valid: false });
+                    setPhoneHData({ fullNumber: '', valid: false });
+                    setPhoneMData({ fullNumber: '', valid: false });
+                    setGuardianPhoneData({ fullNumber: '', valid: false });
+                    setHealthCardNumber('');
+                    setHealthCardVersion('');
+                    setHealthCardEffectivityDate('');
+                    setHealthCardExpiryDate('');
+                    setError('');
+                    setFieldErrors({});
+                }}
+                visitors={useMemo(() => [...visitors, ...unconfirmedVisitors], [visitors, unconfirmedVisitors])}
+                editingVisitorId={editingVisitorId}
+                nextVisitorSerial={nextVisitorSerial}
+                visitorForm={visitorForm}
+                setVisitorForm={setVisitorForm}
+                phoneData={phoneData}
+                setPhoneData={setPhoneData}
+                phoneHData={phoneHData}
+                setPhoneHData={setPhoneHData}
+                phoneMData={phoneMData}
+                setPhoneMData={setPhoneMData}
+                guardianPhoneData={guardianPhoneData}
+                setGuardianPhoneData={setGuardianPhoneData}
+                healthCardNumber={healthCardNumber}
+                setHealthCardNumber={setHealthCardNumber}
+                healthCardVersion={healthCardVersion}
+                setHealthCardVersion={setHealthCardVersion}
+                healthCardEffectivityDate={healthCardEffectivityDate}
+                setHealthCardEffectivityDate={setHealthCardEffectivityDate}
+                healthCardExpiryDate={healthCardExpiryDate}
+                setHealthCardExpiryDate={setHealthCardExpiryDate}
+                onSubmit={handleCreateVisitor}
+                handleHealthCardChange={handleHealthCardChange}
+                handleHealthCardVersionChange={handleHealthCardVersionChange}
+                error={error}
+                setError={setError}
+                fieldErrors={fieldErrors}
+                setFieldErrors={setFieldErrors}
+            />
+
             {/* Patient Details Modal - rendered at ReceptionTab level so it's available from Patients, Reports, Billings tabs */}
             {showPatientDetailModal && selectedPatient && (
                 <PatientDetailsModal
@@ -767,6 +683,7 @@ const ReceptionTab = ({
                     onUploadSuccess={handleReportUploadSuccess}
                     handlePatientClick={handlePatientClick}
                     visitors={visitors}
+                    isUnconfirmed={activeSubTab === 'unconfirmed'}
                 />
             )}
         </div>

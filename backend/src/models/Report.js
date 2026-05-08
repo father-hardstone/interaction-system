@@ -61,6 +61,10 @@ const reportSchema = new mongoose.Schema({
         type: Boolean,
         default: false
     },
+    result: {
+        type: String,
+        default: ''
+    },
     deletedAt: {
         type: String,
         default: ''

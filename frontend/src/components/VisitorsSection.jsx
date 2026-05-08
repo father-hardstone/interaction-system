@@ -6,6 +6,7 @@ import { useMasterData } from '../contexts/MasterDataContext';
 import { formatPhoneDisplay, parsePhoneToDigits, getVisitorSerialDisplay, formatHealthCardDisplay, parseHealthCardToDigits, formatDateMMDDYYYY, getAgeYearsMonthsDisplay, getLastVisitDisplay } from '../utils/formatUtils';
 
 import { useState, useMemo } from 'react';
+import api from '../services/api';
 
 const VisitorsSection = ({
     visitors,
@@ -76,6 +77,7 @@ const VisitorsSection = ({
     setViewingMedia,
     actionsMode = 'user',
     onDeleteVisitor,
+    unconfirmed = false,
 }) => {
     const { services = [], diagnostics = [] } = useMasterData();
     const [showRegisterConfirmModal, setShowRegisterConfirmModal] = useState(false);
@@ -85,6 +87,36 @@ const VisitorsSection = ({
     const [parentInteractionId, setParentInteractionId] = useState('');
     const [newVisitNotes, setNewVisitNotes] = useState('');
     const [dobSearchFocused, setDobSearchFocused] = useState(false);
+    const [onboardingLink, setOnboardingLink] = useState('');
+    const [showOnboardingModal, setShowOnboardingModal] = useState(false);
+    const [isGeneratingOnboarding, setIsGeneratingOnboarding] = useState(false);
+
+    const generateOnboardingLink = async () => {
+        setIsGeneratingOnboarding(true);
+        try {
+            const res = await api.post('/visitors/onboarding-link', {
+                entityId: userData.entityId,
+                entitySerial: userData.entitySerial
+            });
+            const link = res.data.link;
+            setOnboardingLink(link);
+            setShowOnboardingModal(true);
+            
+            // Copy to clipboard
+            try {
+                await navigator.clipboard.writeText(link);
+            } catch (copyErr) {
+                console.error('Failed to copy to clipboard:', copyErr);
+            }
+
+            // Open in new window
+            window.open(link, '_blank');
+        } catch (err) {
+            console.error('Failed to generate onboarding link:', err);
+        } finally {
+            setIsGeneratingOnboarding(false);
+        }
+    };
 
     const confirmRegistration = async () => {
         if (!pendingRegisterVisitor || !handleRegisterPatient) return;
@@ -180,12 +212,31 @@ const searchContactDigits = parsePhoneToDigits(searchContact || '');
                         <h2 className="text-lg font-semibold text-slate-900">Patients</h2>
                         <p className="text-sm text-slate-500 mt-1">Manage patients for your entity</p>
                     </div>
-                    <button
-                        onClick={onOpenAddModal || (() => setShowVisitorModal(true))}
-                        className="px-4 py-2 bg-primary text-white rounded-xl font-semibold text-sm hover:bg-primary-dark transition-colors w-full sm:w-auto"
-                    >
-                        Add a patient
-                    </button>
+                    <div className="flex gap-2 w-full sm:w-auto">
+                        <button
+                            onClick={generateOnboardingLink}
+                            disabled={isGeneratingOnboarding}
+                            className="px-4 py-2 bg-indigo-50 text-indigo-600 border border-indigo-100 rounded-xl font-semibold text-sm hover:bg-indigo-100 transition-colors flex items-center gap-2"
+                        >
+                            {isGeneratingOnboarding ? (
+                                <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                            ) : (
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                                </svg>
+                            )}
+                            Patient onboarding form
+                        </button>
+                        <button
+                            onClick={onOpenAddModal || (() => setShowVisitorModal(true))}
+                            className="px-4 py-2 bg-primary text-white rounded-xl font-semibold text-sm hover:bg-primary-dark transition-colors"
+                        >
+                            Add a patient
+                        </button>
+                    </div>
                 </div>
 
                 <PatientSearchFilters
@@ -442,81 +493,6 @@ const searchContactDigits = parsePhoneToDigits(searchContact || '');
                 </div>
             </div>
 
-            <CreatePatientModal
-                open={showVisitorModal}
-                onClose={() => {
-                                            setShowVisitorModal(false);
-                                            setEditingVisitorId?.(null);
-                                            setVisitorForm({
-                                                firstName: '',
-                                                middleName: '',
-                                                lastName: '',
-                                                dateOfBirth: '',
-                                                addressLine: '',
-                                                city: '',
-                                                state: '',
-                                                postalCode: '',
-                                                gender: '',
-                                                email: '',
-                                                phoneH: '',
-                                                phoneM: '',
-                                                notes: '',
-                                                memo: '',
-                        allergies: '',
-                        drugReactions: '',
-                        ongoingHealthConditions: '',
-                                                specialNotes: '',
-                                                highBloodPressure: '',
-                                                heartDisease: '',
-                                                diabetes: '',
-                                                cholesterol: '',
-                                                smoke: '',
-                        emergencyName: '',
-                        emergencyRelation: '',
-                        emergencyPhone: ''
-                                            });
-                                            setPhoneData({ fullNumber: '', valid: false });
-                                            setPhoneHData({ fullNumber: '', valid: false });
-                                            setPhoneMData({ fullNumber: '', valid: false });
-                                            setGuardianPhoneData({ fullNumber: '', valid: false });
-                                            setHealthCardNumber('');
-                                            setHealthCardVersion('');
-                                            setHealthCardEffectivityDate('');
-                                            setHealthCardExpiryDate('');
-                                            setError('');
-                                            setFieldErrors({});
-                                        }}
-                visitors={visitors}
-                editingVisitorId={editingVisitorId}
-                nextVisitorSerial={nextVisitorSerial}
-                visitorForm={visitorForm}
-                setVisitorForm={setVisitorForm}
-                phoneData={phoneData}
-                setPhoneData={setPhoneData}
-                phoneHData={phoneHData}
-                setPhoneHData={setPhoneHData}
-                phoneMData={phoneMData}
-                setPhoneMData={setPhoneMData}
-                guardianPhoneData={guardianPhoneData}
-                setGuardianPhoneData={setGuardianPhoneData}
-                healthCardNumber={healthCardNumber}
-                setHealthCardNumber={setHealthCardNumber}
-                healthCardVersion={healthCardVersion}
-                setHealthCardVersion={setHealthCardVersion}
-                healthCardEffectivityDate={healthCardEffectivityDate}
-                setHealthCardEffectivityDate={setHealthCardEffectivityDate}
-                healthCardExpiryDate={healthCardExpiryDate}
-                setHealthCardExpiryDate={setHealthCardExpiryDate}
-                handleCreateVisitor={handleCreateVisitor}
-                handleHealthCardChange={handleHealthCardChange}
-                onHealthCardVersionChange={onHealthCardVersionChange}
-                error={error}
-                setError={setError}
-                isCreatingVisitor={isCreatingVisitor}
-                fieldErrors={fieldErrors}
-                setFieldErrors={setFieldErrors}
-            />
-
             <RegisterConfirmationModal
                 open={showRegisterConfirmModal}
                 pendingRegisterVisitor={pendingRegisterVisitor}
@@ -534,6 +510,61 @@ const searchContactDigits = parsePhoneToDigits(searchContact || '');
                 onClose={closeRegisterConfirmModal}
                 onConfirm={confirmRegistration}
             />
+
+            {/* Onboarding Link Modal */}
+            {showOnboardingModal && (
+                <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-[fadeIn_0.2s_ease-out]">
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-100 animate-[scaleIn_0.2s_ease-out]">
+                        <div className="bg-gradient-to-r from-indigo-600 to-blue-600 p-6 text-white text-center">
+                            <div className="w-16 h-16 bg-white/10 rounded-full flex items-center justify-center mx-auto mb-3">
+                                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                                </svg>
+                            </div>
+                            <h3 className="text-xl font-bold">Onboarding Link Ready</h3>
+                            <p className="text-indigo-100 text-sm mt-1">Expires in 30 minutes. One-time use only.</p>
+                        </div>
+                        <div className="p-6">
+                            <div className="mb-6">
+                                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Registration Link</label>
+                                <div className="flex gap-2">
+                                    <input 
+                                        readOnly 
+                                        value={onboardingLink} 
+                                        className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 focus:outline-none"
+                                    />
+                                    <button 
+                                        onClick={() => {
+                                            navigator.clipboard.writeText(onboardingLink);
+                                            alert('Link copied to clipboard!');
+                                        }}
+                                        className="p-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-colors"
+                                        title="Copy Link"
+                                    >
+                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="flex gap-3">
+                                <button 
+                                    onClick={() => window.open(onboardingLink, '_blank')}
+                                    className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg shadow-blue-100 transition-all"
+                                >
+                                    Open Link
+                                </button>
+                                <button 
+                                    onClick={() => setShowOnboardingModal(false)}
+                                    className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-all"
+                                >
+                                    Close
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

@@ -16,16 +16,25 @@ class VisitorController {
         }
     }
 
-    // Get all visitors for a specific entity (each visitor includes stillInService: true if they have an active/incomplete interaction)
+    // Get all visitors for a specific entity
     async getVisitorsByEntity(req, res) {
         try {
             const { entityId } = req.params;
-            console.log('getVisitorsByEntity - entityId:', entityId);
+            const { confirmed } = req.query; // 'true', 'false', or undefined
+            console.log('getVisitorsByEntity - entityId:', entityId, 'confirmed:', confirmed);
             const all = await VisitorService.getAll();
-            console.log('getVisitorsByEntity - total visitors:', all.length);
-            const filtered = all.filter(
+            
+            let filtered = all.filter(
                 v => v.entityId === entityId && (!v.deletedAt || v.deletedAt === '')
             );
+
+            if (confirmed === 'false') {
+                filtered = filtered.filter(v => v.isConfirmed === false);
+            } else {
+                // Default to confirmed only, unless explicitly asking for false
+                filtered = filtered.filter(v => v.isConfirmed === true);
+            }
+
             // Visitor IDs that have at least one non-completed, non-cancelled interaction (still in service)
             const activeInteractions = await InteractionService.findMany({
                 entityId,
@@ -42,11 +51,137 @@ class VisitorController {
                 ...v,
                 stillInService: stillInServiceSet.has(v.id)
             }));
-            console.log('getVisitorsByEntity - filtered visitors:', withFlags.length);
-
+            
             res.json(withFlags);
         } catch (e) {
             console.error('getVisitorsByEntity error:', e);
+            res.status(500).json({ error: e.message });
+        }
+    }
+
+    // Create an onboarding link (tentative profile)
+    async createOnboardingLink(req, res) {
+        try {
+            const { entityId, entitySerial } = req.body;
+            if (!entityId || !entitySerial) {
+                return res.status(400).json({ error: "Missing entity information" });
+            }
+
+            const crypto = require('crypto');
+            const token = crypto.randomBytes(32).toString('hex');
+            const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30 minutes
+
+            const visitorId = uuidv4();
+            const serial = await VisitorService.getNextSerialForEntity(entityId);
+
+            const tentativeVisitor = {
+                id: visitorId,
+                serial,
+                entityId,
+                entitySerial,
+                isConfirmed: false,
+                onboardingToken: {
+                    token,
+                    expiresAt,
+                    used: false
+                },
+                firstName: '',
+                lastName: '',
+                createdAt: new Date().toISOString()
+            };
+
+            const saved = await VisitorService.create(tentativeVisitor);
+
+            // Link entity (optional but good for tracking)
+            try {
+                const entity = await EntityService.findOne({ id: entityId });
+                if (entity) {
+                    const updatedList = Array.isArray(entity.patientIds) ? [...entity.patientIds, visitorId] : [visitorId];
+                    await EntityService.update(entityId, { patientIds: updatedList });
+                }
+            } catch (err) {
+                console.warn('Failed to update entity patientIds during onboarding link creation', err.message);
+            }
+
+            res.json({ 
+                token, 
+                visitorId, 
+                expiresAt,
+                link: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/newpatient-registry/temp/${entitySerial}/${token}`
+            });
+        } catch (e) {
+            console.error('createOnboardingLink error:', e);
+            res.status(500).json({ error: e.message });
+        }
+    }
+
+    async getVisitorByToken(req, res) {
+        try {
+            const { token, entitySerial } = req.params;
+            const visitor = await VisitorService.findOne({ 
+                "onboardingToken.token": token,
+                entitySerial: entitySerial
+            });
+            
+            if (!visitor) {
+                return res.status(404).json({ error: "Onboarding link is invalid, expired, or does not match this entity." });
+            }
+
+            const now = new Date();
+            const expiry = new Date(visitor.onboardingToken.expiresAt);
+            
+            if (visitor.onboardingToken.used || now > expiry) {
+                return res.status(410).json({ error: "This onboarding link has expired or has already been used." });
+            }
+
+            res.json(visitor);
+        } catch (e) {
+            console.error('getVisitorByToken error:', e);
+            res.status(500).json({ error: e.message });
+        }
+    }
+
+    // Submit onboarding form (Public)
+    async submitOnboarding(req, res) {
+        try {
+            const { token, entitySerial } = req.params;
+            const updates = req.body;
+
+            const visitor = await VisitorService.findOne({ 
+                "onboardingToken.token": token,
+                entitySerial: entitySerial
+            });
+            if (!visitor || visitor.onboardingToken.used || new Date() > new Date(visitor.onboardingToken.expiresAt)) {
+                return res.status(410).json({ error: "Link expired, invalid, or entity mismatch." });
+            }
+
+            // Standardize updates (similar to updateVisitor)
+            delete updates.id;
+            delete updates.serial;
+            delete updates.entityId;
+            delete updates.isConfirmed;
+            delete updates.onboardingToken;
+
+            updates["onboardingToken.used"] = true;
+            updates.editedAt = new Date().toISOString();
+
+            const updated = await VisitorService.update(visitor.id, updates);
+            res.json({ message: "Information submitted successfully.", visitor: updated });
+        } catch (e) {
+            console.error('submitOnboarding error:', e);
+            res.status(500).json({ error: e.message });
+        }
+    }
+
+    // Approve an unconfirmed visitor
+    async approveVisitor(req, res) {
+        try {
+            const { id } = req.params;
+            const updated = await VisitorService.update(id, { isConfirmed: true });
+            if (!updated) return res.status(404).json({ error: "Visitor not found" });
+            res.json(updated);
+        } catch (e) {
+            console.error('approveVisitor error:', e);
             res.status(500).json({ error: e.message });
         }
     }
@@ -212,6 +347,7 @@ class VisitorController {
                 emergencyName: (emergencyName && String(emergencyName).trim()) ? String(emergencyName).trim() : '',
                 emergencyRelation: (emergencyRelation && String(emergencyRelation).trim()) ? String(emergencyRelation).trim() : '',
                 emergencyPhone: (emergencyPhone && String(emergencyPhone).trim()) ? String(emergencyPhone).trim() : '',
+                isConfirmed: true,
                 createdAt: now,
                 editedAt: now,
                 deletedAt: ''

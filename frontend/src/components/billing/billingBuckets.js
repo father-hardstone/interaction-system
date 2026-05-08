@@ -36,9 +36,11 @@ export function partitionBillingInteractions(interactions) {
         }
     }
 
-    const sortByDateDesc = (a, b) =>
-        new Date(b.completedAt || b.closedAt || b.editedAt || b.createdAt || 0).getTime() -
-        new Date(a.completedAt || a.closedAt || a.editedAt || a.createdAt || 0).getTime();
+    const sortByDateDesc = (a, b) => {
+        const bDate = new Date(b.closedAt || b.completedAt || b.editedAt || b.createdAt || 0).getTime();
+        const aDate = new Date(a.closedAt || a.completedAt || a.editedAt || a.createdAt || 0).getTime();
+        return bDate - aDate;
+    };
 
     completedOpen.sort(sortByDateDesc);
     unbilled.sort((a, b) => {

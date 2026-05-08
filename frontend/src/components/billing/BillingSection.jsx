@@ -206,16 +206,18 @@ const BillingSection = ({
                 .filter((d) => !Number.isNaN(d.getTime()));
             let statementFrom = '';
             let statementTo = '';
+            const format = (time) => {
+                const d = new Date(time);
+                if (isNaN(d.getTime())) return '';
+                const mm = String(d.getMonth() + 1).padStart(2, '0');
+                const dd = String(d.getDate()).padStart(2, '0');
+                const yyyy = d.getFullYear();
+                return `${mm}-${dd}-${yyyy}`;
+            };
+
             if (dates.length > 0) {
                 const minTime = Math.min(...dates.map((d) => d.getTime()));
                 const maxTime = Math.max(...dates.map((d) => d.getTime()));
-                const format = (time) => {
-                    const d = new Date(time);
-                    const mm = String(d.getMonth() + 1).padStart(2, '0');
-                    const dd = String(d.getDate()).padStart(2, '0');
-                    const yyyy = d.getFullYear();
-                    return `${mm}-${dd}-${yyyy}`;
-                };
                 statementFrom = format(minTime);
                 statementTo = format(maxTime);
             }
@@ -233,6 +235,7 @@ const BillingSection = ({
                 doctorName,
                 statementFrom,
                 statementTo,
+                statementDate: format(new Date()),
                 rows,
             });
             setProcessImageUrl(dataUrl);

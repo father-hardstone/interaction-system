@@ -57,9 +57,19 @@ const PatientHealthWarningTooltip = ({ visitor, className = '' }) => {
             onMouseEnter={() => setIsOpen(true)}
             onMouseLeave={() => setIsOpen(false)}
         >
-            <button
-                type="button"
-                onClick={() => setIsOpen((o) => !o)}
+            <div
+                role="button"
+                tabIndex={0}
+                onClick={(e) => {
+                    e.stopPropagation();
+                    setIsOpen((o) => !o);
+                }}
+                onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.stopPropagation();
+                        setIsOpen((o) => !o);
+                    }
+                }}
                 className={`inline-flex items-center justify-center rounded-full p-0.5 cursor-help transition-colors touch-manipulation ${
                     hasContent ? 'text-red-500 hover:text-red-600' : 'text-red-300'
                 }`}
@@ -72,7 +82,7 @@ const PatientHealthWarningTooltip = ({ visitor, className = '' }) => {
                         clipRule="evenodd"
                     />
                 </svg>
-            </button>
+            </div>
             {isOpen && (
                 <div className="absolute left-0 top-full pt-1 z-[100]">
                     <RedZoneContent />

@@ -14,13 +14,16 @@ function loadImage(src) {
  * Returns a data URL for the image; open in new tab with window.open(url).
  * Uses 2.5x resolution, larger fonts, and the RX icon from /icons/RX-icon.png.
  *
- * @param {{ doctorName: string, patientName: string, medications: Array<{ name?: string, strength?: string, frequency?: string, duration?: string, repeat?: number }>, date?: string }} options
+ * @param {{ doctorName: string, doctorBillingNumber?: string, patientName: string, patientDob?: string, patientHealthCard?: string, medications: Array<{ name?: string, strength?: string, frequency?: string, duration?: string, repeat?: number }>, date?: string }} options
  * @returns {Promise<string>} data URL (image/png)
  */
 export async function generatePrescriptionImage(options) {
     const {
         doctorName = '',
+        doctorBillingNumber = '',
         patientName = '',
+        patientDob = '',
+        patientHealthCard = '',
         medications = [],
         date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })
     } = options;
@@ -62,13 +65,19 @@ export async function generatePrescriptionImage(options) {
     ctx.fillText('Family Physicians', width / 2, y);
     y += Math.round(36 * scale);
 
-    // Doctor
+    // Doctor & Billing Number
     ctx.textAlign = 'left';
     const drText = (doctorName && String(doctorName).trim())
         ? `DR. ${String(doctorName).trim().toUpperCase()}`
         : 'DR. ';
-    ctx.font = `${Math.round(20 * scale)}px ${fontSans}`;
+    ctx.font = `bold ${Math.round(20 * scale)}px ${fontSans}`;
     ctx.fillText(drText, px, y);
+
+    if (doctorBillingNumber) {
+        ctx.textAlign = 'right';
+        ctx.font = `${Math.round(18 * scale)}px ${fontSans}`;
+        ctx.fillText(`Billing #: ${doctorBillingNumber}`, width - px, y);
+    }
     y += Math.round(32 * scale);
 
     // Address and contact
@@ -93,12 +102,24 @@ export async function generatePrescriptionImage(options) {
     ctx.stroke();
     y += Math.round(32 * scale);
 
-    // Date and patient name
+    // Date and patient details
     ctx.font = `${Math.round(18 * scale)}px ${fontSans}`;
     ctx.fillText(`Date: ${date}`, px, y);
     y += Math.round(28 * scale);
-    ctx.fillText(`Patient Name: ${patientName || '.................................................'}`, px, y);
-    y += Math.round(32 * scale);
+
+    let pNameLine = `Patient Name: ${patientName || '.................................................'}`;
+    if (patientDob) pNameLine += `  (DOB: ${patientDob})`;
+
+    ctx.font = `bold ${Math.round(18 * scale)}px ${fontSans}`;
+    ctx.fillText(pNameLine, px, y);
+    y += Math.round(28 * scale);
+
+    if (patientHealthCard) {
+        ctx.font = `${Math.round(16 * scale)}px ${fontSans}`;
+        ctx.fillText(`Health Card #: ${patientHealthCard}`, px, y);
+        y += Math.round(32 * scale);
+    }
+
 
     // Rx icon – slightly smaller; meds will start at px + rxIconSize (to the right of icon)
     const rxIconSize = Math.round(56 * scale);

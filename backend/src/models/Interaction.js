@@ -84,9 +84,11 @@ const interactionSchema = new mongoose.Schema({
     // Service lines array
     serviceLines: [{
         serialNumber: { type: Number, default: 1 },
+        serviceDate: { type: String, default: '' },
         service: { type: String, default: '' },
-        suffix: { type: String, default: '' },
+        suffix: { type: String, default: 'A' },
         diagnostic: { type: String, default: '' },
+        numberOf: { type: Number, default: 1 },
         totalFee: { type: Number, default: 0 },
         accountingNumber: { type: String, default: '' }
     }],
@@ -125,6 +127,12 @@ const interactionSchema = new mongoose.Schema({
         text: { type: String, default: '' },
         timestamp: { type: String, default: '' }
     }],
+    vitals: {
+        systolic: { type: String, default: '' },
+        diastolic: { type: String, default: '' },
+        pulse: { type: String, default: '' },
+        temperature: { type: String, default: '' }
+    },
     /** Number of times this completed interaction was edited (for Notes "Edit (n)" heading). */
     editCount: {
         type: Number,

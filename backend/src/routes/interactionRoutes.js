@@ -15,6 +15,9 @@ router.get('/entity/:entityId/status-counts', InteractionController.getStatusCou
 // Get revenue for entity dashboard (must be before generic entity route)
 router.get('/entity/:entityId/revenue', InteractionController.getRevenue);
 
+// Get next available accounting number for an entity (must be before generic entity route)
+router.get('/entity/:entityId/next-accounting-number', InteractionController.getNextAccountingNumber);
+
 // Get all interactions for an entity
 router.get('/entity/:entityId', InteractionController.getInteractionsByEntity);
 
