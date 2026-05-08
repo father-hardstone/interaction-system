@@ -77,6 +77,9 @@ const OngoingInteractionsView = ({
     doctorName = '',
     onOpenLabRequisition,
     onOpenReferralForm,
+    vitals,
+    setVitals,
+    doctorBillingNumber = ''
 }) => {
     const [activeTab, setActiveTab] = useState('cc');
 
@@ -126,20 +129,90 @@ const OngoingInteractionsView = ({
         switch (activeTab) {
             case 'cc':
                 return (
-                    <SoapBlock
-                        label="CC / Reason"
-                        value={ccReason}
-                        onChange={setCcReason}
-                        padValue={ccReasonPad}
-                        onPadChange={setCcReasonPad}
-                        required={true}
-                        placeholder="Enter reason for visit..."
-                        enableSheets={true}
-                        readOnly={isEditingCompleted}
-                        padReadOnly={isEditingCompleted}
-                        existingSheetCount={originalPadSheetCounts.cc}
-                        addedLaterSheetIndices={interaction?.ccReason?.addedLaterSheetIndices}
-                    />
+                    <div className="space-y-6">
+                        <SoapBlock
+                            label="CC / Reason"
+                            value={ccReason}
+                            onChange={setCcReason}
+                            padValue={ccReasonPad}
+                            onPadChange={setCcReasonPad}
+                            required={true}
+                            placeholder="Enter reason for visit..."
+                            enableSheets={true}
+                            readOnly={isEditingCompleted}
+                            padReadOnly={isEditingCompleted}
+                            existingSheetCount={originalPadSheetCounts.cc}
+                            addedLaterSheetIndices={interaction?.ccReason?.addedLaterSheetIndices}
+                            padHeight="260px"
+                        />
+
+                        {/* Compact Vitals Section at the bottom of CC tab */}
+                        <div className="bg-white px-4 py-2.5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-6 overflow-x-auto no-scrollbar">
+                            <div className="flex items-center gap-2 shrink-0 border-r border-slate-100 pr-4">
+                                <div className="w-1 h-3 bg-blue-500 rounded-full"></div>
+                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Vitals</div>
+                            </div>
+                            
+                            <div className="flex items-center gap-8 min-w-max">
+                                {/* BP */}
+                                <div className="flex items-center gap-3">
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Blood Pressure</label>
+                                    <div className="flex items-center gap-1.5">
+                                        <input 
+                                            type="text" 
+                                            placeholder="Sys"
+                                            value={vitals.systolic}
+                                            onChange={(e) => setVitals({...vitals, systolic: e.target.value})}
+                                            disabled={isLoadingEdit}
+                                            className={`w-14 px-2 py-1 text-sm border rounded-lg focus:outline-none focus:ring-2 transition-all text-center font-bold ${vitals.systolic && (parseInt(vitals.systolic) < 70 || parseInt(vitals.systolic) > 250) ? 'border-red-300 bg-red-50 text-red-700' : 'border-slate-100 bg-slate-50 focus:bg-white focus:border-blue-500'}`}
+                                        />
+                                        <span className="text-slate-300 font-bold">/</span>
+                                        <input 
+                                            type="text" 
+                                            placeholder="Dia"
+                                            value={vitals.diastolic}
+                                            onChange={(e) => setVitals({...vitals, diastolic: e.target.value})}
+                                            disabled={isLoadingEdit}
+                                            className={`w-14 px-2 py-1 text-sm border rounded-lg focus:outline-none focus:ring-2 transition-all text-center font-bold ${vitals.diastolic && (parseInt(vitals.diastolic) < 40 || parseInt(vitals.diastolic) > 150) ? 'border-red-300 bg-red-50 text-red-700' : 'border-slate-100 bg-slate-50 focus:bg-white focus:border-blue-500'}`}
+                                        />
+                                        <span className="text-[9px] font-bold text-slate-300 ml-0.5">mmHg</span>
+                                    </div>
+                                </div>
+
+                                {/* Pulse */}
+                                <div className="flex items-center gap-3">
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Pulse</label>
+                                    <div className="flex items-center gap-1.5">
+                                        <input 
+                                            type="text" 
+                                            placeholder="HR"
+                                            value={vitals.pulse}
+                                            onChange={(e) => setVitals({...vitals, pulse: e.target.value})}
+                                            disabled={isLoadingEdit}
+                                            className={`w-14 px-2 py-1 text-sm border rounded-lg focus:outline-none focus:ring-2 transition-all text-center font-bold ${vitals.pulse && (parseInt(vitals.pulse) < 40 || parseInt(vitals.pulse) > 200) ? 'border-red-300 bg-red-50 text-red-700' : 'border-slate-100 bg-slate-50 focus:bg-white focus:border-blue-500'}`}
+                                        />
+                                        <span className="text-[9px] font-bold text-slate-300 ml-0.5">bpm</span>
+                                    </div>
+                                </div>
+
+                                {/* Temp */}
+                                <div className="flex items-center gap-3">
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Temp</label>
+                                    <div className="flex items-center gap-1.5">
+                                        <input 
+                                            type="text" 
+                                            placeholder="°C"
+                                            value={vitals.temperature}
+                                            onChange={(e) => setVitals({...vitals, temperature: e.target.value})}
+                                            disabled={isLoadingEdit}
+                                            className={`w-16 px-2 py-1 text-sm border rounded-lg focus:outline-none focus:ring-2 transition-all text-center font-bold ${vitals.temperature && (parseFloat(vitals.temperature) < 33 || parseFloat(vitals.temperature) > 45) ? 'border-red-300 bg-red-50 text-red-700' : 'border-slate-100 bg-slate-50 focus:bg-white focus:border-blue-500'}`}
+                                        />
+                                        <span className="text-[9px] font-bold text-slate-300 ml-0.5">°C</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 );
             case 's':
                 return (
@@ -203,6 +276,7 @@ const OngoingInteractionsView = ({
                         removeMedication={removeMedication}
                         patientName={getVisitorName(interaction.visitorId) || ''}
                         doctorName={doctorName}
+                        doctorBillingNumber={doctorBillingNumber}
                     />
                 );
             case 'referral':
@@ -213,6 +287,11 @@ const OngoingInteractionsView = ({
                         onOpenReferralForm={
                             onOpenReferralForm
                                 ? () => onOpenReferralForm(interaction, referral?.type)
+                                : undefined
+                        }
+                        onOpenLabRequisition={
+                            onOpenLabRequisition
+                                ? () => onOpenLabRequisition(interaction)
                                 : undefined
                         }
                     />

@@ -14,8 +14,10 @@ export const reportService = {
     },
 
     // Get unreviewed reports for an entity (report reviews tab)
-    getForReview: async (entityId) => {
-        const response = await api.get(`/reports/entity/${entityId}/review`);
+    getForReview: async (entityId, resultFilter = 'all') => {
+        const response = await api.get(`/reports/entity/${entityId}/review`, {
+            params: { result: resultFilter }
+        });
         return response.data;
     },
 

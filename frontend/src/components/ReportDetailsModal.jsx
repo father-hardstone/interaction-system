@@ -129,6 +129,7 @@ const ReportDetailsModal = ({ report, reportUrl, interactions = [], onClose, rev
 
   const detailFields = [
     { label: "Report Type", value: reportTypeLabel || "-" },
+    { label: "Result", value: report.result || "Positive", isTag: true },
     { label: "Procedure Date", value: formatDateMMDDYYYY(report.procedureDate) || "-" },
     { label: "Report Generated Date", value: formatDateMMDDYYYY(report.reportGeneratedDate) || "-" },
     { label: "Lab Name", value: report.labMetadata?.labName || "-" },
@@ -233,7 +234,14 @@ const ReportDetailsModal = ({ report, reportUrl, interactions = [], onClose, rev
               {detailFields.map((field, idx) => (
                 <div key={idx} className="space-y-1">
                   <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">{field.label}</label>
-                  <div className="text-sm font-medium text-slate-900 leading-relaxed">{field.value}</div>
+                  {field.isTag ? (
+                    <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full ${field.value.toLowerCase() === 'negative' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'} border ${field.value.toLowerCase() === 'negative' ? 'border-green-200' : 'border-red-200'}`}>
+                      <div className={`w-2 h-2 rounded-full ${field.value.toLowerCase() === 'negative' ? 'bg-green-500' : 'bg-red-500'}`} />
+                      <span className="text-xs font-bold uppercase tracking-wide">{field.value}</span>
+                    </div>
+                  ) : (
+                    <div className="text-sm font-medium text-slate-900 leading-relaxed">{field.value}</div>
+                  )}
                 </div>
               ))}
             </div>
@@ -394,28 +402,7 @@ const ReportDetailsModal = ({ report, reportUrl, interactions = [], onClose, rev
           </div>
         </div>
 
-        {reviewMode && (
-          <div className="shrink-0 flex items-center justify-end px-6 py-4 border-t border-slate-200 bg-slate-50">
-            <button
-              type="button"
-              onClick={() => typeof onSignReport === "function" && onSignReport()}
-              disabled={isSigning}
-              className="inline-flex items-center justify-center gap-2 px-6 py-2.5 bg-white border-2 border-green-600 text-green-700 rounded-xl font-semibold text-sm hover:bg-green-50 transition-colors disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:bg-white"
-            >
-              {isSigning ? (
-                <>
-                  <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                  <span>Signing…</span>
-                </>
-              ) : (
-                'Sign'
-              )}
-            </button>
-          </div>
-        )}
+
       </div>
     </div>
   );

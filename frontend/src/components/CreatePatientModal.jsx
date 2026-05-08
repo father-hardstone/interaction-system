@@ -32,7 +32,8 @@ const CreatePatientModal = ({
     setError,
     isCreatingVisitor,
     fieldErrors = {},
-    setFieldErrors = () => {}
+    setFieldErrors = () => {},
+    unconfirmed = false
 }) => {
     const validateDates = (effectivity, expiry) => {
         if (effectivity && expiry) {
@@ -64,7 +65,9 @@ const CreatePatientModal = ({
                 {/* Header: Title | ID + Buttons div */}
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
                     <h2 className="text-xl sm:text-2xl font-semibold text-slate-900 shrink-0">
-                        {editingVisitorId ? 'Edit Patient' : 'Add New Patient'}
+                        {editingVisitorId 
+                            ? (unconfirmed ? 'Edit Unconfirmed Patient' : 'Edit Patient') 
+                            : 'Add New Patient'}
                     </h2>
                     <div className="flex-1 min-w-0 flex items-center justify-between gap-3 p-3 bg-blue-50 border border-blue-200 rounded-xl ml-2">
                         <div className="flex items-center gap-2">
@@ -512,7 +515,7 @@ const CreatePatientModal = ({
                         <label className="text-sm font-semibold text-slate-900 block mb-3">Past medical history <span className="text-red-500">*</span></label>
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                             {[
-                                { key: 'highBloodPressure', label: 'High blood pressure' },
+                                { key: 'highBloodPressure', label: 'High BP' },
                                 { key: 'heartDisease', label: 'Heart disease' },
                                 { key: 'diabetes', label: 'Diabetes' },
                                 { key: 'cholesterol', label: 'Cholesterol' },

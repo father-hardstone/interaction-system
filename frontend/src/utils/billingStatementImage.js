@@ -76,9 +76,10 @@ export async function generateBillingStatementImage(options) {
     y += 55;
 
     // Statement date (left-aligned, below header block)
+    const displayStatementDate = options.statementDate || formatDateLabel(new Date());
     ctx.textAlign = 'left';
     ctx.font = `32px ${fontSans}`;
-    ctx.fillText(`Statement Date: ${toLabel || '________'}`, px, y);
+    ctx.fillText(`Statement Date: ${displayStatementDate}`, px, y);
     y += 50;
 
     // Column headers

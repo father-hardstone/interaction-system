@@ -213,6 +213,35 @@ const InteractionDataView = ({
 
     return (
         <div className="space-y-8">
+            {/* ROW 0: Vitals */}
+            {interaction.vitals && (interaction.vitals.systolic || interaction.vitals.diastolic || interaction.vitals.pulse || interaction.vitals.temperature) && (
+                <div className="group">
+                    <label className="text-xs font-semibold text-slate-400 normal-case tracking-wide block mb-2 transition-colors group-hover:text-blue-500 flex items-center flex-wrap gap-1">
+                        Patient Vitals
+                    </label>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                        {(interaction.vitals.systolic || interaction.vitals.diastolic) && (
+                            <div className="bg-white border border-slate-100 p-3 rounded-2xl flex flex-col shadow-sm transition-all hover:shadow-md hover:border-blue-200 group/vital">
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1 transition-colors group-hover/vital:text-blue-500">Blood Pressure</span>
+                                <span className="text-sm font-bold text-slate-700">{interaction.vitals.systolic || '-'}/{interaction.vitals.diastolic || '-'} <span className="text-[10px] text-slate-400 font-medium ml-1">mmHg</span></span>
+                            </div>
+                        )}
+                        {interaction.vitals.pulse && (
+                            <div className="bg-white border border-slate-100 p-3 rounded-2xl flex flex-col shadow-sm transition-all hover:shadow-md hover:border-blue-200 group/vital">
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1 transition-colors group-hover/vital:text-blue-500">Heart Rate</span>
+                                <span className="text-sm font-bold text-slate-700">{interaction.vitals.pulse} <span className="text-[10px] text-slate-400 font-medium ml-1">bpm</span></span>
+                            </div>
+                        )}
+                        {interaction.vitals.temperature && (
+                            <div className="bg-white border border-slate-100 p-3 rounded-2xl flex flex-col shadow-sm transition-all hover:shadow-md hover:border-blue-200 group/vital">
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1 transition-colors group-hover/vital:text-blue-500">Body Temp</span>
+                                <span className="text-sm font-bold text-slate-700">{interaction.vitals.temperature} <span className="text-[10px] text-slate-400 font-medium ml-1">°C</span></span>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
             {/* ROW 1: CC */}
             {(interaction.ccReason?.text || (interaction.ccReason?.hasScratchpad && interaction.ccReason?.scratchpad)) && (
                 <div className="group">

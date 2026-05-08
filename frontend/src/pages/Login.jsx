@@ -150,29 +150,29 @@ const Login = ({ type = 'admin', embedded = false }) => {
 
     const content = (
         <>
-            {error && <p className="bg-red-50 border border-red-200 text-error py-3 px-4 rounded-xl text-sm text-center mb-4">{error}</p>}
+            {error && <p className="bg-red-500/10 border border-red-500/20 text-red-400 py-3 px-4 rounded-xl text-sm text-center mb-4">{error}</p>}
 
             {step === 1 ? (
                 <>
                     <form onSubmit={handleLogin} className="flex flex-col gap-5">
                         {isEntity && (
                             <div className="flex flex-col gap-2">
-                                <label className="text-sm font-semibold text-slate-900">Email Address <span className="text-error">*</span></label>
+                                <label className="text-sm font-bold text-slate-300">Email Address <span className="text-error">*</span></label>
                                 <input
                                     type="email"
                                     placeholder="Enter your email address"
                                     value={email}
                                     onChange={handleEmailChange}
                                     required
-                                    className={`w-full py-3.5 px-4 border rounded-xl font-inherit text-base transition-all text-slate-900 ${emailError ? 'border-error bg-red-50 focus:border-error focus:bg-white focus:outline-none focus:ring-4 focus:ring-red-100' : 'border-slate-200 bg-slate-50 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100'}`}
+                                    className={`w-full py-3.5 px-4 border rounded-xl font-inherit text-base transition-all text-white ${emailError ? 'border-red-500/50 bg-red-500/5 focus:border-red-500 focus:bg-slate-900 focus:outline-none focus:ring-4 focus:ring-red-500/10' : 'border-slate-700 bg-slate-800/50 focus:outline-none focus:border-cyan-500 focus:bg-slate-900 focus:ring-4 focus:ring-cyan-500/10'}`}
                                 />
-                                {emailError && <span className="text-error text-sm">{emailError}</span>}
+                                {emailError && <span className="text-red-400 text-sm">{emailError}</span>}
                             </div>
                         )}
 
                         {!isEntity && (
                             <div className="flex flex-col gap-2">
-                                <label className="text-sm font-semibold text-slate-900">Phone Number <span className="text-error">*</span></label>
+                                <label className="text-sm font-bold text-slate-300">Phone Number <span className="text-error">*</span></label>
                                 <PhoneInput
                                     onChange={setPhoneData}
                                     required
@@ -181,7 +181,7 @@ const Login = ({ type = 'admin', embedded = false }) => {
                         )}
 
                         <div className="flex flex-col gap-2">
-                            <label className="text-sm font-semibold text-slate-900">Password <span className="text-error">*</span></label>
+                            <label className="text-sm font-bold text-slate-300">Password <span className="text-error">*</span></label>
                             <PasswordInput
                                 placeholder="Enter your password"
                                 value={password}
@@ -193,7 +193,7 @@ const Login = ({ type = 'admin', embedded = false }) => {
                         <button
                             type="submit"
                             disabled={isSubmitting}
-                            className="mt-4 py-4 px-4 bg-primary text-white border-none rounded-xl font-semibold text-base cursor-pointer transition-all shadow-lg shadow-blue-300/30 hover:bg-primary-dark hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-400/40 disabled:opacity-60 disabled:cursor-not-allowed"
+                            className="mt-4 py-4 px-4 bg-gradient-to-r from-cyan-500 to-blue-600 text-white border-none rounded-xl font-bold text-base cursor-pointer transition-all shadow-lg shadow-cyan-500/20 hover:shadow-cyan-500/40 hover:-translate-y-0.5 disabled:opacity-60 disabled:cursor-not-allowed"
                         >
                             {isSubmitting ? (
                                 <span className="flex items-center justify-center gap-2">
@@ -211,8 +211,8 @@ const Login = ({ type = 'admin', embedded = false }) => {
 
                     {!isEntity && (
                         <div className="mt-6 text-center text-sm">
-                            <span className="text-slate-500">Don't have an account? </span>
-                            <Link to="/register" className="text-primary font-semibold no-underline">
+                            <span className="text-slate-500 font-medium">Don't have an account? </span>
+                            <Link to="/register" className="text-cyan-400 font-bold no-underline hover:text-cyan-300">
                                 Register here
                             </Link>
                         </div>
@@ -227,7 +227,7 @@ const Login = ({ type = 'admin', embedded = false }) => {
                     <button
                         type="submit"
                         disabled={isSubmitting}
-                        className="mt-4 py-4 px-4 bg-primary text-white border-none rounded-xl font-semibold text-base cursor-pointer transition-all shadow-lg shadow-blue-300/30 hover:bg-primary-dark hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-400/40 disabled:opacity-60 disabled:cursor-not-allowed"
+                        className="mt-4 py-4 px-4 bg-gradient-to-r from-cyan-500 to-blue-600 text-white border-none rounded-xl font-bold text-base cursor-pointer transition-all shadow-lg shadow-cyan-500/20 hover:shadow-cyan-500/40 hover:-translate-y-0.5 disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                         {isSubmitting ? (
                             <span className="flex items-center justify-center gap-2">
@@ -259,7 +259,7 @@ const Login = ({ type = 'admin', embedded = false }) => {
 
                 {isEntity && (
                     <div className="mt-6 text-center text-sm">
-                        <Link to="/" className="text-primary font-semibold no-underline">
+                        <Link to="/" className="text-slate-500 font-bold no-underline hover:text-cyan-400 transition-colors">
                             Back to main portal
                         </Link>
                     </div>

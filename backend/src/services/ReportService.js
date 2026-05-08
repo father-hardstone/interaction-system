@@ -51,8 +51,18 @@ class ReportService {
         return reports.map(r => r.toObject());
     }
 
-    async getUnreviewedByEntity(entityId) {
-        const reports = await Report.find({ entityId, deletedAt: '', reviewed: { $ne: true } }).sort({ createdAt: -1 });
+    async getUnreviewedByEntity(entityId, resultFilter = 'all') {
+        const query = { entityId, deletedAt: '' };
+        if (resultFilter === 'positive') {
+            query.$or = [
+                { result: 'positive' },
+                { result: '' },
+                { result: { $exists: false } }
+            ];
+        } else if (resultFilter === 'negative') {
+            query.result = 'negative';
+        }
+        const reports = await Report.find(query).sort({ createdAt: -1 });
         return reports.map(r => r.toObject());
     }
 

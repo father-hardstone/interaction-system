@@ -65,6 +65,18 @@ class InteractionController {
         }
     }
 
+    // Get next available accounting number for an entity
+    async getNextAccountingNumber(req, res) {
+        try {
+            const { entityId } = req.params;
+            const next = await InteractionService.getNextAccountingNumber(entityId);
+            res.json({ nextAccountingNumber: next });
+        } catch (e) {
+            console.error('getNextAccountingNumber error:', e);
+            res.status(500).json({ error: e.message });
+        }
+    }
+
     // Get daily stats (registered vs completed counts) for chart - no full documents
     async getDailyStats(req, res) {
         try {
@@ -321,6 +333,7 @@ class InteractionController {
                 followup,
                 savedNotes,
                 editCount,
+                vitals,
                 started,
                 ongoing,
                 incomplete,
@@ -523,6 +536,16 @@ class InteractionController {
                     timestamp: note.timestamp || ''
                 }));
             }
+
+            if (vitals !== undefined) {
+                updates.vitals = {
+                    systolic: vitals.systolic || '',
+                    diastolic: vitals.diastolic || '',
+                    pulse: vitals.pulse || '',
+                    temperature: vitals.temperature || ''
+                };
+            }
+
             if (editCount !== undefined) {
                 updates.editCount = Math.max(0, parseInt(editCount, 10) || 0);
             }

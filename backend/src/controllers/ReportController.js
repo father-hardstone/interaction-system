@@ -32,7 +32,8 @@ class ReportController {
     async getReportsForReview(req, res) {
         try {
             const { entityId } = req.params;
-            const reports = await ReportService.getUnreviewedByEntity(entityId);
+            const { result } = req.query;
+            const reports = await ReportService.getUnreviewedByEntity(entityId, result || 'all');
             res.json(reports);
         } catch (error) {
             console.error('getReportsForReview error:', error);
@@ -69,11 +70,12 @@ class ReportController {
                 mimeType,
                 fileSize,
                 reportId, // Report ID from frontend
-                uploadedBy
+                uploadedBy,
+                result
             } = req.body;
 
             // Validate required fields
-            if (!entityId || !patientId || !reportType || !procedureDate || !reportGeneratedDate || !supabasePath || !fileName || !mimeType || !reportId) {
+            if (!entityId || !patientId || !reportType || !procedureDate || !reportGeneratedDate || !supabasePath || !fileName || !mimeType || !reportId || !result) {
                 return res.status(400).json({ error: 'Missing required fields' });
             }
 
@@ -86,6 +88,7 @@ class ReportController {
                 reportType,
                 procedureDate,
                 reportGeneratedDate,
+                result,
                 fileMetadata: {
                     supabasePath: supabasePath, // Supabase storage path
                     filename: fileName,
@@ -116,11 +119,12 @@ class ReportController {
     async updateReport(req, res) {
         try {
             const { id } = req.params;
-            const { reviewed, action, signed } = req.body;
+            const { reviewed, action, signed, result } = req.body;
             const updates = {};
             if (typeof reviewed === 'boolean') updates.reviewed = reviewed;
             if (typeof action === 'string') updates.action = action;
             if (typeof signed === 'boolean') updates.signed = signed;
+            if (typeof result === 'string') updates.result = result;
             if (Object.keys(updates).length === 0) {
                 return res.status(400).json({ error: 'No valid updates provided' });
             }
