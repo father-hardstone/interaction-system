@@ -29,7 +29,7 @@ class VisitorController {
             );
 
             if (confirmed === 'false') {
-                filtered = filtered.filter(v => v.isConfirmed === false);
+                filtered = filtered.filter(v => v.isConfirmed === false && v.onboardingToken?.used === true);
             } else {
                 // Default to confirmed only, unless explicitly asking for false
                 filtered = filtered.filter(v => v.isConfirmed === true);
@@ -107,7 +107,7 @@ class VisitorController {
                 token, 
                 visitorId, 
                 expiresAt,
-                link: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/newpatient-registry/temp/${entitySerial}/${token}`
+                link: `${process.env.FRONTEND_URL}/newpatient-registry/temp/${entitySerial}/${token}`
             });
         } catch (e) {
             console.error('createOnboardingLink error:', e);
