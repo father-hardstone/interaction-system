@@ -22,4 +22,19 @@ api.interceptors.request.use(
     (error) => Promise.reject(error)
 );
 
+// Clear stale sessions on unauthorized responses
+api.interceptors.response.use(
+    (response) => response,
+    (error) => {
+        if (error.response?.status === 401) {
+            localStorage.removeItem('token');
+            const onLoginPage = window.location.pathname.includes('/superadmin/login');
+            if (!onLoginPage) {
+                window.location.href = '/superadmin/login';
+            }
+        }
+        return Promise.reject(error);
+    }
+);
+
 export default api;

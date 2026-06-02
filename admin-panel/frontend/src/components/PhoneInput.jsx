@@ -7,7 +7,14 @@ const COUNTRIES = [
     { code: 'SA', name: 'Saudi Arabia', dialCode: '+966', length: 9, format: '(5#) ###-####', flag: '🇸🇦' },
 ];
 
-const PhoneInput = ({ value, onChange, required }) => {
+const PhoneInput = ({ value, onChange, required, variant = 'light' }) => {
+    const isDark = variant === 'dark';
+    const selectClass = isDark
+        ? "w-[30%] min-w-[80px] max-w-[120px] bg-[url('data:image/svg+xml,%3csvg xmlns=\\'http://www.w3.org/2000/svg\\' fill=\\'none\\' viewBox=\\'0 0 20 20\\'%3e%3cpath stroke=\\'%2394a3b8\\' stroke-linecap=\\'round\\' stroke-linejoin=\\'round\\' stroke-width=\\'1.5\\' d=\\'M6 8l4 4 4-4\\'/%3e%3c/svg%3e')] bg-[right_0.5rem_center] bg-no-repeat bg-[length:1.5em_1.5em] pr-10 appearance-none py-3.5 px-4 border border-slate-700 rounded-xl font-inherit text-sm bg-slate-800/50 transition-all text-white focus:outline-none focus:border-cyan-500 focus:bg-slate-900 focus:ring-4 focus:ring-cyan-500/10"
+        : "w-[30%] min-w-[80px] max-w-[120px] bg-[url('data:image/svg+xml,%3csvg xmlns=\\'http://www.w3.org/2000/svg\\' fill=\\'none\\' viewBox=\\'0 0 20 20\\'%3e%3cpath stroke=\\'%236b7280\\' stroke-linecap=\\'round\\' stroke-linejoin=\\'round\\' stroke-width=\\'1.5\\' d=\\'M6 8l4 4 4-4\\'/%3e%3c/svg%3e')] bg-[right_0.5rem_center] bg-no-repeat bg-[length:1.5em_1.5em] pr-10 appearance-none py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-sm bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100";
+    const inputClass = isDark
+        ? "flex-1 py-3.5 px-4 border border-slate-700 rounded-xl font-inherit text-base bg-slate-800/50 transition-all text-white focus:outline-none focus:border-cyan-500 focus:bg-slate-900 focus:ring-4 focus:ring-cyan-500/10"
+        : "flex-1 py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100";
     const [selectedCountry, setSelectedCountry] = useState(COUNTRIES[0]);
     const [phoneNumber, setPhoneNumber] = useState('');
 
@@ -86,7 +93,7 @@ const PhoneInput = ({ value, onChange, required }) => {
             <select 
                 value={selectedCountry.code} 
                 onChange={handleCountryChange} 
-                className="w-[30%] min-w-[80px] max-w-[120px] bg-[url('data:image/svg+xml,%3csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 20 20\'%3e%3cpath stroke=\'%236b7280\' stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'1.5\' d=\'M6 8l4 4 4-4\'/%3e%3c/svg%3e')] bg-[right_0.5rem_center] bg-no-repeat bg-[length:1.5em_1.5em] pr-10 appearance-none py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-sm bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
+                className={selectClass}
             >
                 {COUNTRIES.map(c => (
                     <option key={c.code} value={c.code}>
@@ -99,7 +106,7 @@ const PhoneInput = ({ value, onChange, required }) => {
                 placeholder=""
                 value={formatNumber(phoneNumber, selectedCountry.format)}
                 onChange={handleNumberChange}
-                className="flex-1 py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
+                className={inputClass}
                 required={required}
                 maxLength={selectedCountry.format.length}
             />

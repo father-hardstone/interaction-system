@@ -13,8 +13,10 @@
   }
 
   body {
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
-    background: linear-gradient(135deg, #f0f9ff 0%, #cbebff 100%);
+    font-family: 'Roboto', system-ui, -apple-system, sans-serif;
+    font-size: 15px;
+    font-weight: 400;
+    background: #f8fafc;
     color: #0f172a;
     -webkit-font-smoothing: antialiased;
   }

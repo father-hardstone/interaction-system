@@ -8,6 +8,8 @@ export default function EntityDashboardDoctorsTable({
   onAddOfficer,
   onDeleteOfficer,
 }) {
+  const [showEditModal, setShowEditModal] = useState(false);
+
   return (
     <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
       <div className="p-6 border-b border-slate-200 flex justify-between items-center">
