@@ -22,6 +22,7 @@ import { UserDashboardNavProvider, useUserDashboardNav } from './contexts/UserDa
 import { ToastProvider } from './contexts/ToastContext';
 import UserDashboardNavContent from './components/UserDashboardNavContent';
 import { jwtDecode } from 'jwt-decode';
+import { getDashboardPathForToken } from './utils/authRedirect';
 import { entityService } from './services/entityService';
 import supabaseStorageService from './services/supabaseService';
 
@@ -66,7 +67,7 @@ const NavBar = () => {
             entityId: decoded.id,
             userEntityId: null
           });
-        } else if (decoded.role === 'officer' || decoded.role === 'receptionist') {
+        } else if (['officer', 'receptionist', 'accountant', 'admin'].includes(decoded.role)) {
           setUserInfo({
             displayName: decoded.entityName || localStorage.getItem('entityName') || decoded.entitySerial || 'Dashboard',
             isAuthed: true,
@@ -218,6 +219,7 @@ const NavBar = () => {
     );
   }
 
+  const homePath = getDashboardPathForToken(token) || '/';
   const showEntityTopBar = isEntityRoute && userInfo.isAuthed && userInfo.isEntity;
   const handleEntityLogout = () => {
     localStorage.removeItem('token');
@@ -246,7 +248,7 @@ const NavBar = () => {
           </div>
         </div>
         <div className="flex gap-4">
-          <Link to="/" className="text-xs text-slate-400 hover:text-white font-bold uppercase tracking-widest transition-colors">
+          <Link to={homePath} className="text-xs text-slate-400 hover:text-white font-bold uppercase tracking-widest transition-colors">
             &larr; Back to Home
           </Link>
         </div>
@@ -257,7 +259,7 @@ const NavBar = () => {
   return (
     <nav className="fixed top-0 left-0 right-0 flex justify-between items-center h-16 px-6 bg-white/80 backdrop-blur-lg z-[100] border-b border-slate-200 w-full font-inherit">
       <div className="flex items-center gap-3 shrink-0">
-        <Link to="/" className="flex items-center group">
+        <Link to={homePath} className="flex items-center group">
           {userInfo.isAuthed && isDashboardRoute && shouldShowIcon ? (
             entityIconUrl ? (
               <div className="flex items-center">
@@ -385,9 +387,8 @@ function App() {
             <Route path="/entity/login" element={<PortalLogin />} />
             <Route path="/user/login" element={<PortalLogin />} />
             <Route path="/login" element={<PortalLogin />} />
+            <Route path="/" element={<LandingPage />} />
           </Route>
-
-          <Route path="/" element={<LandingPage />} />
           <Route path="/newpatient-registry/temp/:entitySerial/:token" element={<PatientOnboardingPage />} />
 
           {/* Entity Protected Routes - shared layout (sidebar) for dashboard and settings */}

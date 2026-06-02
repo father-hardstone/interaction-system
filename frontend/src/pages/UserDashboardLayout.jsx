@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams, Outlet } from 'react-router-dom';
 import { jwtDecode } from 'jwt-decode';
 import { useUserDashboardNav } from '../contexts/UserDashboardNavContext';
+import { getDefaultMainTab } from '../utils/userPermissions';
 
 const UserDashboardLayout = () => {
     const navigate = useNavigate();
@@ -17,7 +18,7 @@ const UserDashboardLayout = () => {
             try {
                 const decoded = jwtDecode(token);
                 setUserData(decoded);
-                setActiveTab(decoded.role === 'officer' ? 'officer' : 'reception');
+                setActiveTab(getDefaultMainTab(decoded.role));
             } catch (e) {
                 console.error('Failed to decode token');
             }

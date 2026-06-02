@@ -1,5 +1,6 @@
 const OfficerService = require('../services/OfficerService');
 const ReceptionistService = require('../services/ReceptionistService');
+const AccountantService = require('../services/AccountantService');
 const EntityService = require('../services/EntityService');
 const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcryptjs');
@@ -167,21 +168,30 @@ class OfficerController {
             let user = null;
             let role = null;
 
-            // Find user by email or phone
+            const findByEmail = async (value) => {
+                let u = await OfficerService.findOne((o) => o.email === value && o.active === 'true');
+                if (u) return { user: u, role: 'officer' };
+                u = await ReceptionistService.findOne((r) => r.email === value && r.active === 'true');
+                if (u) return { user: u, role: 'receptionist' };
+                u = await AccountantService.findOne((a) => a.email === value && a.active === 'true');
+                if (u) return { user: u, role: 'accountant' };
+                return { user: null, role: null };
+            };
+
+            const findByPhone = async (value) => {
+                let u = await OfficerService.findOne((o) => o.phone === value && o.active === 'true');
+                if (u) return { user: u, role: 'officer' };
+                u = await ReceptionistService.findOne((r) => r.phone === value && r.active === 'true');
+                if (u) return { user: u, role: 'receptionist' };
+                u = await AccountantService.findOne((a) => a.phone === value && a.active === 'true');
+                if (u) return { user: u, role: 'accountant' };
+                return { user: null, role: null };
+            };
+
             if (email) {
-                user = await OfficerService.findOne(o => o.email === email && o.active === 'true');
-                role = 'officer';
-                if (!user) {
-                    user = await ReceptionistService.findOne(r => r.email === email && r.active === 'true');
-                    role = user ? 'receptionist' : null;
-                }
+                ({ user, role } = await findByEmail(email));
             } else {
-                user = await OfficerService.findOne(o => o.phone === phone && o.active === 'true');
-                role = 'officer';
-                if (!user) {
-                    user = await ReceptionistService.findOne(r => r.phone === phone && r.active === 'true');
-                    role = user ? 'receptionist' : null;
-                }
+                ({ user, role } = await findByPhone(phone));
             }
 
             // Check if user exists and is not deleted
@@ -230,9 +240,14 @@ class OfficerController {
             const { id, role } = req.user || {};
             if (!id || !role) return res.status(401).json({ error: 'Unauthenticated' });
 
-            const record = role === 'receptionist'
-                ? await ReceptionistService.findOne({ id })
-                : await OfficerService.findOne({ id });
+            let record;
+            if (role === 'receptionist') {
+                record = await ReceptionistService.findOne({ id });
+            } else if (role === 'accountant') {
+                record = await AccountantService.findOne({ id });
+            } else {
+                record = await OfficerService.findOne({ id });
+            }
 
             if (!record) return res.status(404).json({ error: 'User not found' });
 
@@ -272,9 +287,14 @@ class OfficerController {
             // Email is intentionally not editable right now
             delete updates.email;
 
-            const updated = role === 'receptionist'
-                ? await ReceptionistService.update(id, updates)
-                : await OfficerService.update(id, updates);
+            let updated;
+            if (role === 'receptionist') {
+                updated = await ReceptionistService.update(id, updates);
+            } else if (role === 'accountant') {
+                updated = await AccountantService.update(id, updates);
+            } else {
+                updated = await OfficerService.update(id, updates);
+            }
 
             if (!updated) return res.status(404).json({ error: 'User not found' });
 

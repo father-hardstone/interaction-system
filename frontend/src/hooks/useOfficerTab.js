@@ -1091,6 +1091,19 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
         const copyDiag = source?.diagnostic || '';
         const copyDiagDesc = source?.diagnosticDescription || diagnostics.find(d => (d.code || '').toUpperCase() === (copyDiag || '').trim().toUpperCase())?.description || '';
         const copyAccountingNo = source?.accountingNo || '';
+        const copyBillingCode = (source?.billingCode || '').trim();
+        const copySuffix = source?.suffix || 'A';
+
+        let copyBillingDescription = source?.billingDescription || '';
+        let copyTotalFee = '0.00';
+        const matchedService = services.find(s => (s.code || '').toUpperCase() === copyBillingCode.toUpperCase());
+        if (matchedService) {
+            copyBillingDescription = matchedService.description;
+            const unitFee = (matchedService.hcpFee || 0) + (matchedService.tFee || 0) + (matchedService.pFee || 0) + (matchedService.sFee || 0);
+            copyTotalFee = unitFee.toFixed(2);
+        } else if (copyBillingCode) {
+            copyTotalFee = source?.totalFee || '0.00';
+        }
 
         const newLine = {
             id: Date.now(),
@@ -1098,11 +1111,11 @@ const useOfficerTab = (userData, interactions, visitors, onRefreshInteractions) 
             serviceDate: new Date().toLocaleDateString('en-CA'),
             diagnostic: copyDiag,
             diagnosticDescription: copyDiagDesc,
-            billingCode: '',
-            billingDescription: '',
-            suffix: 'A',
+            billingCode: copyBillingCode,
+            billingDescription: copyBillingDescription,
+            suffix: copySuffix,
             numberOf: 1,
-            totalFee: '0.00',
+            totalFee: copyTotalFee,
             accountingNo: copyAccountingNo
         };
         setServiceLines([...serviceLines, newLine]);

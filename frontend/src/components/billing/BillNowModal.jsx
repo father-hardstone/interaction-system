@@ -36,7 +36,8 @@ const BillNowModal = ({
     officers = [],
     services = [],
     diagnostics = [],
-    onSave
+    onSave,
+    linesOnly = false
 }) => {
     const [billingType, setBillingType] = useState('hcp');
     const [isBilling, setIsBilling] = useState(false);
@@ -149,17 +150,23 @@ const BillNowModal = ({
 
 
     const addBillingLine = () => {
-        setBillingLines((prev) => [
-            ...prev,
-            {
-                serialNumber: prev.length + 1,
-                suffix: '',
-                service: '',
-                diagnostic: '',
-                accountingNumber: accountingNumber,
-                totalFee: ''
-            }
-        ]);
+        setBillingLines((prev) => {
+            const last = prev[prev.length - 1];
+            const serviceCode = (last?.service || '').trim();
+            const suffix = serviceCode ? getSuffixFromBillingCode(serviceCode) : (last?.suffix || '');
+            const fee = serviceCode ? getFeeForService(serviceCode, billingType) : '';
+            return [
+                ...prev,
+                {
+                    serialNumber: prev.length + 1,
+                    suffix,
+                    service: serviceCode,
+                    diagnostic: '',
+                    accountingNumber: accountingNumber,
+                    totalFee: fee
+                }
+            ];
+        });
     };
 
     const removeBillingLine = (index) => {
@@ -193,17 +200,27 @@ const BillNowModal = ({
             onClick={isBilling ? undefined : onClose}
         >
             <div
-                className="bg-white w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl shadow-xl p-6"
+                className={`bg-white w-full max-h-[90vh] overflow-y-auto rounded-2xl shadow-xl p-6 ${linesOnly ? 'max-w-3xl' : 'max-w-4xl'}`}
                 onClick={(e) => e.stopPropagation()}
             >
                 <div className="flex items-start justify-between gap-4 mb-6">
-                    <h2 className="text-xl font-semibold text-slate-900">Bill Now</h2>
-                    <div className="shrink-0 text-right">
-                        <span className="text-xs font-semibold text-slate-400 normal-case tracking-wide block">Accounting #</span>
-                        <span className="text-sm font-mono font-semibold text-slate-800">{displayAccountingNumber || '—'}</span>
-                    </div>
+                    <h2 className="text-xl font-semibold text-slate-900">{linesOnly ? 'Add billing info' : 'Bill Now'}</h2>
+                    {!linesOnly && (
+                        <div className="shrink-0 text-right">
+                            <span className="text-xs font-semibold text-slate-400 normal-case tracking-wide block">Accounting #</span>
+                            <span className="text-sm font-mono font-semibold text-slate-800">{displayAccountingNumber || '—'}</span>
+                        </div>
+                    )}
                 </div>
 
+                {linesOnly && (
+                    <p className="text-sm text-slate-500 mb-4">
+                        Add service and diagnostic codes for this interaction.
+                    </p>
+                )}
+
+                {!linesOnly && (
+                <>
                 {/* Doctor - single line, bordered */}
                 <div className="flex flex-wrap items-end gap-4 p-4 mb-4 border border-slate-200 rounded-xl bg-slate-50/30">
                     <div className="min-w-[80px]">
@@ -295,6 +312,25 @@ const BillNowModal = ({
                         <div className="px-3 py-2 bg-slate-50 rounded-lg text-sm font-medium text-slate-700 border border-slate-200">{interactionDate}</div>
                     </div>
                 </div>
+                </>
+                )}
+
+                {linesOnly && (
+                    <div className="flex flex-wrap items-end gap-4 mb-4">
+                        <div className="min-w-[120px]">
+                            <label className="text-xs font-semibold text-slate-400 normal-case tracking-wide block mb-1">Fee Type</label>
+                            <select
+                                value={billingType}
+                                onChange={(e) => setBillingType(e.target.value)}
+                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            >
+                                {BILLING_TYPES.map((opt) => (
+                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+                )}
 
                 {billError ? (
                     <div className="mb-4 px-4 py-3 rounded-lg border border-red-200 bg-red-50 text-sm text-red-700">
@@ -518,8 +554,10 @@ const BillNowModal = ({
                                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                                 </svg>
-                                Billing…
+                                {linesOnly ? 'Saving…' : 'Billing…'}
                             </>
+                        ) : linesOnly ? (
+                            'Save'
                         ) : (
                             'Bill'
                         )}

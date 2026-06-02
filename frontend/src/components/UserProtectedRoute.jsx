@@ -23,8 +23,8 @@ const UserProtectedRoute = () => {
         return <Navigate to="/user/login" replace />;
     }
 
-    // Allow both officers and receptionists
-    if (decoded.role !== 'officer' && decoded.role !== 'receptionist') {
+    const allowedRoles = ['officer', 'receptionist', 'accountant', 'admin'];
+    if (!allowedRoles.includes(decoded.role)) {
         return <Navigate to="/user/login" replace />;
     }
 
