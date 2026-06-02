@@ -21,8 +21,7 @@ const entitySchema = new mongoose.Schema({
     },
     phone: {
         type: String,
-        required: true,
-        unique: true
+        default: ''
     },
     password: {
         type: String,
@@ -59,7 +58,7 @@ const entitySchema = new mongoose.Schema({
     collection: 'entities'
 });
 
-// Note: phone and serial already have unique indexes, so we only add non-unique indexes here
+// Note: serial already has a unique index; phone is optional and not unique
 entitySchema.index({ active: 1 });
 entitySchema.index({ approved: 1 });
 
