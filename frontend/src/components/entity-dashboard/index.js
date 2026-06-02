@@ -9,6 +9,8 @@ export { default as EntityDashboardDoctorsTable } from './EntityDashboardDoctors
 export { default as EntityDashboardEmployeesTable } from './EntityDashboardEmployeesTable';
 export { default as AddOfficerModal } from './AddOfficerModal';
 export { default as AddReceptionistModal } from './AddReceptionistModal';
+export { default as AddAccountantModal } from './AddAccountantModal';
+export { default as EntityDashboardAccountantsTable } from './EntityDashboardAccountantsTable';
 export { default as EntityPatientsSection } from './EntityPatientsSection';
 export { default as EntityInteractionsSection } from './EntityInteractionsSection';
 export { default as EntityInstitutesSection } from './EntityInstitutesSection';

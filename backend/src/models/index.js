@@ -3,6 +3,7 @@ const Admin = require('./Admin');
 const Entity = require('./Entity');
 const Officer = require('./Officer');
 const Receptionist = require('./Receptionist');
+const Accountant = require('./Accountant');
 const Visitor = require('./Visitor');
 const Interaction = require('./Interaction');
 const Service = require('./Service');
@@ -16,6 +17,7 @@ module.exports = {
     Entity,
     Officer,
     Receptionist,
+    Accountant,
     Visitor,
     Interaction,
     Service,

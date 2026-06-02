@@ -4,6 +4,7 @@ import EntityDashboardChart from './EntityDashboardChart';
 import EntityDashboardPieChart from './EntityDashboardPieChart';
 import EntityDashboardDoctorsTable from './EntityDashboardDoctorsTable';
 import EntityDashboardEmployeesTable from './EntityDashboardEmployeesTable';
+import EntityDashboardAccountantsTable from './EntityDashboardAccountantsTable';
 import EntityPatientsSection from './EntityPatientsSection';
 import EntityInteractionsSection from './EntityInteractionsSection';
 import EntityDashboardTodayInteractions from './EntityDashboardTodayInteractions';
@@ -89,6 +90,7 @@ export default function EntityDashboardContent({
   entityName,
   officers,
   receptionists,
+  accountants = [],
   chartData = [],
   chartLoading = false,
   patientCount = null,
@@ -102,8 +104,10 @@ export default function EntityDashboardContent({
   onExportCsv,
   onAddOfficer,
   onAddReceptionist,
+  onAddAccountant,
   onDeleteOfficer,
   onDeleteReceptionist,
+  onDeleteAccountant,
 }) {
   if (activeSection === 'dashboard') {
     return (
@@ -155,6 +159,11 @@ export default function EntityDashboardContent({
           receptionists={receptionists}
           onAddReceptionist={onAddReceptionist}
           onDeleteReceptionist={onDeleteReceptionist}
+        />
+        <EntityDashboardAccountantsTable
+          accountants={accountants}
+          onAddAccountant={onAddAccountant}
+          onDeleteAccountant={onDeleteAccountant}
         />
       </>
     );

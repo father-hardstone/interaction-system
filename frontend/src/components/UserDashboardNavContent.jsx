@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { canAccessMainTab, MAIN_TABS } from '../utils/userPermissions';
+import { getHomePath } from '../utils/authRedirect';
 
 const UserDashboardNavContent = ({ navState, entityIconUrl, userInfo }) => {
     const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -9,6 +11,15 @@ const UserDashboardNavContent = ({ navState, entityIconUrl, userInfo }) => {
     const location = useLocation();
 
     const { activeTab, setActiveTab, userData, serial, onLogout } = navState || {};
+    const userRole = userData?.role;
+    const receptionLocked = !canAccessMainTab(userRole, MAIN_TABS.RECEPTION);
+    const officerLocked = !canAccessMainTab(userRole, MAIN_TABS.OFFICER);
+
+    const TabLockIcon = () => (
+        <svg className="w-4 h-4 flex-shrink-0 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+        </svg>
+    );
 
     useEffect(() => {
         const handleClickOutside = (e) => {
@@ -33,6 +44,7 @@ const UserDashboardNavContent = ({ navState, entityIconUrl, userInfo }) => {
         : 'U';
 
     const displayPictureUrl = userData?.avatar || userData?.profilePicture || userData?.picture;
+    const homePath = getHomePath();
     const settingsPath = serial ? `/${serial}/user/dashboard/settings` : '#';
     const isSettingsPage = location.pathname === settingsPath;
     const isLabRequisitionPage = location.pathname.includes('/user/dashboard/lab-requisition/');
@@ -43,7 +55,7 @@ const UserDashboardNavContent = ({ navState, entityIconUrl, userInfo }) => {
             {/* Left: Entity logo */}
             <div className="w-1/3 flex justify-start min-w-0">
                 <div className="flex items-center gap-3 min-w-0">
-                <Link to="/" className="flex items-center group min-w-0">
+                <Link to={homePath} className="flex items-center group min-w-0">
                     {entityIconUrl ? (
                         <img
                             src={entityIconUrl}
@@ -79,9 +91,11 @@ const UserDashboardNavContent = ({ navState, entityIconUrl, userInfo }) => {
                                 <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-40 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-[200]">
                                     <button
                                         type="button"
-                                        onClick={() => { setActiveTab?.('reception'); setTabDropdownOpen(false); }}
-                                        className={`w-full px-4 py-2.5 text-left text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'reception' ? 'bg-primary/10 text-primary' : 'text-slate-600 hover:bg-slate-50'}`}
+                                        disabled={receptionLocked}
+                                        onClick={() => { if (!receptionLocked) { setActiveTab?.('reception'); setTabDropdownOpen(false); } }}
+                                        className={`w-full px-4 py-2.5 text-left text-sm font-medium transition-colors flex items-center gap-2 ${receptionLocked ? 'opacity-50 cursor-not-allowed' : ''} ${activeTab === 'reception' ? 'bg-primary/10 text-primary' : 'text-slate-600 hover:bg-slate-50'}`}
                                     >
+                                        {receptionLocked && <TabLockIcon />}
                                         <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
                                         </svg>
@@ -89,9 +103,11 @@ const UserDashboardNavContent = ({ navState, entityIconUrl, userInfo }) => {
                                     </button>
                                     <button
                                         type="button"
-                                        onClick={() => { setActiveTab?.('officer'); setTabDropdownOpen(false); }}
-                                        className={`w-full px-4 py-2.5 text-left text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'officer' ? 'bg-primary/10 text-primary' : 'text-slate-600 hover:bg-slate-50'}`}
+                                        disabled={officerLocked}
+                                        onClick={() => { if (!officerLocked) { setActiveTab?.('officer'); setTabDropdownOpen(false); } }}
+                                        className={`w-full px-4 py-2.5 text-left text-sm font-medium transition-colors flex items-center gap-2 ${officerLocked ? 'opacity-50 cursor-not-allowed' : ''} ${activeTab === 'officer' ? 'bg-primary/10 text-primary' : 'text-slate-600 hover:bg-slate-50'}`}
                                     >
+                                        {officerLocked && <TabLockIcon />}
                                         <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                                         </svg>
@@ -104,11 +120,13 @@ const UserDashboardNavContent = ({ navState, entityIconUrl, userInfo }) => {
                         <div className="hidden md:flex items-center gap-1 bg-slate-100 rounded-xl p-1">
                             <button
                                 type="button"
-                                onClick={() => setActiveTab?.('reception')}
+                                disabled={receptionLocked}
+                                onClick={() => !receptionLocked && setActiveTab?.('reception')}
                                 className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium transition-colors ${
-                                    activeTab === 'reception' ? 'bg-white text-primary shadow-sm' : 'text-slate-600 hover:text-slate-900'
-                                }`}
+                                    receptionLocked ? 'opacity-50 cursor-not-allowed' : ''
+                                } ${activeTab === 'reception' ? 'bg-white text-primary shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
                             >
+                                {receptionLocked && <TabLockIcon />}
                                 <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
                                 </svg>
@@ -116,11 +134,13 @@ const UserDashboardNavContent = ({ navState, entityIconUrl, userInfo }) => {
                             </button>
                             <button
                                 type="button"
-                                onClick={() => setActiveTab?.('officer')}
+                                disabled={officerLocked}
+                                onClick={() => !officerLocked && setActiveTab?.('officer')}
                                 className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium transition-colors ${
-                                    activeTab === 'officer' ? 'bg-white text-primary shadow-sm' : 'text-slate-600 hover:text-slate-900'
-                                }`}
+                                    officerLocked ? 'opacity-50 cursor-not-allowed' : ''
+                                } ${activeTab === 'officer' ? 'bg-white text-primary shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
                             >
+                                {officerLocked && <TabLockIcon />}
                                 <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                                 </svg>

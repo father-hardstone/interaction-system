@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { getHomePath } from '../utils/authRedirect';
 
 /**
  * 404 - Page not found (routing errors)
@@ -16,7 +17,7 @@ const NotFoundPage = () => {
                 </p>
                 <div className="flex gap-4 justify-center">
                     <Link
-                        to="/"
+                        to={getHomePath()}
                         className="px-6 py-3 bg-primary text-white rounded-xl font-semibold hover:bg-primary-dark transition-colors no-underline"
                     >
                         Go home

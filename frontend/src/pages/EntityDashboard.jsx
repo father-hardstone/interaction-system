@@ -3,6 +3,7 @@ import { useParams, useSearchParams } from 'react-router-dom';
 import { jwtDecode } from 'jwt-decode';
 import { officerService } from '../services/officerService';
 import { receptionistService } from '../services/receptionistService';
+import { accountantService } from '../services/accountantService';
 import { interactionService } from '../services/interactionService';
 import { visitorService } from '../services/visitorService';
 import { validateEmail } from '../utils/crypto';
@@ -10,6 +11,7 @@ import {
   EntityDashboardContent,
   AddOfficerModal,
   AddReceptionistModal,
+  AddAccountantModal,
 } from '../components/entity-dashboard';
 
 const EntityDashboard = () => {
@@ -19,6 +21,7 @@ const EntityDashboard = () => {
   const [entityData, setEntityData] = useState(null);
   const [officers, setOfficers] = useState([]);
   const [receptionists, setReceptionists] = useState([]);
+  const [accountants, setAccountants] = useState([]);
   const [chartData, setChartData] = useState([]);
   const [chartLoading, setChartLoading] = useState(false);
   const [patientCount, setPatientCount] = useState(null);
@@ -30,8 +33,14 @@ const EntityDashboard = () => {
   const [period, setPeriod] = useState('week'); // 'week' | 'month' | 'year'
   const [showOfficerModal, setShowOfficerModal] = useState(false);
   const [showReceptionistModal, setShowReceptionistModal] = useState(false);
+  const [showAccountantModal, setShowAccountantModal] = useState(false);
   const [newOfficer, setNewOfficer] = useState({ name: '', email: '', password: '' });
   const [newReceptionist, setNewReceptionist] = useState({
+    name: '',
+    email: '',
+    password: '',
+  });
+  const [newAccountant, setNewAccountant] = useState({
     name: '',
     email: '',
     password: '',
@@ -41,8 +50,13 @@ const EntityDashboard = () => {
     fullNumber: '',
     valid: false,
   });
+  const [accountantPhoneData, setAccountantPhoneData] = useState({
+    fullNumber: '',
+    valid: false,
+  });
   const [error, setError] = useState('');
   const [receptionError, setReceptionError] = useState('');
+  const [accountantError, setAccountantError] = useState('');
 
   const getDaysForPeriod = () => {
     if (period === 'month') return 30;
@@ -59,6 +73,7 @@ const EntityDashboard = () => {
         if (decoded.id) {
           loadOfficers(decoded.id);
           loadReceptionists(decoded.id);
+          loadAccountants(decoded.id);
         }
       } catch (e) {
         console.error('Failed to decode token:', e);
@@ -92,6 +107,16 @@ const EntityDashboard = () => {
     } catch (e) {
       console.error('Failed to load receptionists:', e);
       setReceptionists([]);
+    }
+  };
+
+  const loadAccountants = async (entityId) => {
+    try {
+      const data = await accountantService.getByEntity(entityId);
+      setAccountants(data || []);
+    } catch (e) {
+      console.error('Failed to load accountants:', e);
+      setAccountants([]);
     }
   };
 
@@ -231,6 +256,48 @@ const EntityDashboard = () => {
     setReceptionError('');
   };
 
+  const handleCreateAccountant = async (e) => {
+    e.preventDefault();
+    setAccountantError('');
+    if (!newAccountant.name || !newAccountant.email || !newAccountant.password) {
+      setAccountantError('Please fill in all fields');
+      return;
+    }
+    if (!accountantPhoneData.valid) {
+      setAccountantError('Please enter a valid phone number');
+      return;
+    }
+    const emailValidation = validateEmail(newAccountant.email);
+    if (!emailValidation.valid) {
+      setAccountantError(emailValidation.error);
+      return;
+    }
+    try {
+      await accountantService.create({
+        entityId: entityData.id,
+        entitySerial: entityData.serial,
+        name: newAccountant.name,
+        phone: accountantPhoneData.fullNumber,
+        email: newAccountant.email,
+        password: newAccountant.password,
+      });
+      setNewAccountant({ name: '', email: '', password: '' });
+      setAccountantPhoneData({ fullNumber: '', valid: false });
+      setShowAccountantModal(false);
+      setAccountantError('');
+      await loadAccountants(entityData.id);
+    } catch (err) {
+      setAccountantError(err.response?.data?.error || 'Failed to create accountant');
+    }
+  };
+
+  const handleCloseAccountantModal = () => {
+    setShowAccountantModal(false);
+    setNewAccountant({ name: '', email: '', password: '' });
+    setAccountantPhoneData({ fullNumber: '', valid: false });
+    setAccountantError('');
+  };
+
   const handleDeleteOfficer = async (officerId) => {
     try {
       await officerService.delete(officerId);
@@ -246,6 +313,15 @@ const EntityDashboard = () => {
       if (entityData?.id) await loadReceptionists(entityData.id);
     } catch (e) {
       alert('Failed to delete receptionist');
+    }
+  };
+
+  const handleDeleteAccountant = async (accountantId) => {
+    try {
+      await accountantService.delete(accountantId);
+      if (entityData?.id) await loadAccountants(entityData.id);
+    } catch (e) {
+      alert('Failed to delete accountant');
     }
   };
 
@@ -275,6 +351,7 @@ const EntityDashboard = () => {
         entityName={entityName}
         officers={officers}
         receptionists={receptionists}
+        accountants={accountants}
         chartData={chartData}
         chartLoading={chartLoading}
         patientCount={patientCount}
@@ -288,8 +365,10 @@ const EntityDashboard = () => {
         onExportCsv={handleExportCsv}
         onAddOfficer={() => setShowOfficerModal(true)}
         onAddReceptionist={() => setShowReceptionistModal(true)}
+        onAddAccountant={() => setShowAccountantModal(true)}
         onDeleteOfficer={handleDeleteOfficer}
         onDeleteReceptionist={handleDeleteReceptionist}
+        onDeleteAccountant={handleDeleteAccountant}
       />
 
       <AddOfficerModal
@@ -312,6 +391,17 @@ const EntityDashboard = () => {
         receptionPhoneData={receptionPhoneData}
         setReceptionPhoneData={setReceptionPhoneData}
         onSubmit={handleCreateReceptionist}
+      />
+
+      <AddAccountantModal
+        open={showAccountantModal}
+        onClose={handleCloseAccountantModal}
+        error={accountantError}
+        newAccountant={newAccountant}
+        setNewAccountant={setNewAccountant}
+        accountantPhoneData={accountantPhoneData}
+        setAccountantPhoneData={setAccountantPhoneData}
+        onSubmit={handleCreateAccountant}
       />
     </>
   );
