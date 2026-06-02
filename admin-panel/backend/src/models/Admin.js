@@ -15,10 +15,16 @@ const adminSchema = new mongoose.Schema({
         type: String,
         required: true
     },
-    phone: {
+    email: {
         type: String,
         required: true,
-        unique: true
+        unique: true,
+        lowercase: true,
+        trim: true
+    },
+    phone: {
+        type: String,
+        default: ''
     },
     password: {
         type: String,
@@ -51,8 +57,9 @@ const adminSchema = new mongoose.Schema({
 });
 
 // Indexes for better query performance
-// Note: phone and serial already have unique indexes, so we only add non-unique indexes here
+// Note: email and serial already have unique indexes, so we only add non-unique indexes here
 adminSchema.index({ active: 1 });
+adminSchema.index({ email: 1 });
 
 const Admin = mongoose.model('Admin', adminSchema);
 

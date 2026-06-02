@@ -1,5 +1,6 @@
 import { Navigate, Outlet } from 'react-router-dom';
 import { jwtDecode } from 'jwt-decode';
+import { getSuperadminDashboardPath } from '../utils/authRedirect';
 
 const getRedirectForToken = (token) => {
     try {
@@ -10,10 +11,9 @@ const getRedirectForToken = (token) => {
         }
 
         if (decoded.role === 'admin') {
-            return { valid: true, to: '/admin/dashboard' };
+            return { valid: true, to: getSuperadminDashboardPath() };
         }
 
-        // Wrong role for admin-panel => clear token
         return { valid: false };
     } catch {
         return { valid: false };
@@ -34,4 +34,3 @@ const PublicOnlyRoute = () => {
 };
 
 export default PublicOnlyRoute;
-

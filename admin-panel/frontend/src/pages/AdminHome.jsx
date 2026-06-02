@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { entityService } from '../services/entityService';
-import PhoneInput from '../components/PhoneInput';
+import PasswordInput from '../components/PasswordInput';
 
 const AdminDashboard = () => {
     const [entities, setEntities] = useState([]);
@@ -8,53 +8,72 @@ const AdminDashboard = () => {
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [showEditModal, setShowEditModal] = useState(false);
     const [editingEntity, setEditingEntity] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState('');
+    const [actionError, setActionError] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
-    // Create Form State
     const [newEntity, setNewEntity] = useState({ name: '', email: '', password: '' });
-    const [phoneData, setPhoneData] = useState({ fullNumber: '', valid: false });
     const [editForm, setEditForm] = useState({ name: '', email: '', phone: '', password: '' });
 
-    useEffect(() => {
-        loadEntities();
-    }, []);
-
-    const loadEntities = async () => {
+    const loadEntities = useCallback(async () => {
+        setLoading(true);
+        setLoadError('');
         try {
             const data = await entityService.getAll();
             setEntities(data);
         } catch (e) {
-            console.error(e);
+            setLoadError(e.response?.data?.error || 'Failed to load entities. Please try again.');
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        loadEntities();
+    }, [loadEntities]);
+
+    const handleApprove = async (id) => {
+        setActionError('');
+        try {
+            await entityService.approve(id);
+            await loadEntities();
+        } catch (e) {
+            setActionError(e.response?.data?.error || 'Failed to approve entity.');
         }
     };
 
-    const handleApprove = async (id) => {
-        await entityService.approve(id);
-        loadEntities();
-    }
-
     const handleDelete = async (id) => {
-        if (window.confirm("Are you sure you want to delete this entity?")) {
+        if (!window.confirm('Are you sure you want to delete this entity?')) return;
+        setActionError('');
+        try {
             await entityService.delete(id);
-            loadEntities();
+            await loadEntities();
+        } catch (e) {
+            setActionError(e.response?.data?.error || 'Failed to delete entity.');
         }
-    }
+    };
 
     const handleCreate = async (e) => {
         e.preventDefault();
+        if (isSubmitting) return;
+        setActionError('');
         try {
+            setIsSubmitting(true);
             const payload = {
                 ...newEntity,
-                phone: phoneData.fullNumber,
-                password: newEntity.password
+                password: newEntity.password,
             };
             await entityService.create(payload);
             setShowCreateModal(false);
             setNewEntity({ name: '', email: '', password: '' });
-            loadEntities();
+            await loadEntities();
         } catch (e) {
-            alert(e.response?.data?.error || "Error creating entity");
+            setActionError(e.response?.data?.error || 'Error creating entity');
+        } finally {
+            setIsSubmitting(false);
         }
-    }
+    };
 
     const handleEditClick = (entity) => {
         setEditingEntity(entity);
@@ -62,19 +81,21 @@ const AdminDashboard = () => {
             name: entity.name || '',
             email: entity.email || '',
             phone: entity.phone || '',
-            password: ''
+            password: '',
         });
         setShowEditModal(true);
     };
 
     const handleUpdate = async (e) => {
         e.preventDefault();
-        if (!editingEntity) return;
+        if (!editingEntity || isSubmitting) return;
+        setActionError('');
         try {
+            setIsSubmitting(true);
             const payload = {
                 name: editForm.name,
                 email: editForm.email,
-                phone: editForm.phone
+                phone: editForm.phone,
             };
             if (editForm.password && editForm.password.trim().length > 0) {
                 payload.password = editForm.password;
@@ -83,138 +104,184 @@ const AdminDashboard = () => {
             setShowEditModal(false);
             setEditingEntity(null);
             setEditForm({ name: '', email: '', phone: '', password: '' });
-            loadEntities();
+            await loadEntities();
         } catch (e) {
-            alert(e.response?.data?.error || "Error updating entity");
+            setActionError(e.response?.data?.error || 'Error updating entity');
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
-    const filteredEntities = entities.filter(e => {
+    const filteredEntities = entities.filter((e) => {
         const term = search.toLowerCase();
         return (
             e.name.toLowerCase().includes(term) ||
-            e.phone.includes(term) ||
+            (e.phone && e.phone.includes(term)) ||
             (e.serial && e.serial.toLowerCase().includes(term))
         );
     });
 
+    const inputClass =
+        'w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-white transition-all text-slate-900 focus:outline-none focus:border-primary focus:ring-4 focus:ring-blue-100';
+
     return (
-        <div className="max-w-[1200px] mx-auto my-8 px-8 w-full">
+        <div className="max-w-[1200px] mx-auto px-4 sm:px-8 py-8 w-full">
             <header className="mb-8 flex justify-between items-start flex-wrap gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold mb-1">Manage Entities</h1>
-                    <p className="text-slate-500">Create, approve, and update entities</p>
+                    <h1 className="text-2xl font-semibold mb-1 text-slate-900">Manage Entities</h1>
+                    <p className="text-slate-500">Create, approve, and update platform entities</p>
                 </div>
                 <div className="flex items-center gap-3 w-full lg:w-auto">
                     <input
                         type="text"
-                        placeholder="Search by Name, Serial (E1), or Phone..."
+                        placeholder="Search by name, serial, or phone..."
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
-                        className="flex-1 lg:w-80 py-3 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
+                        className="flex-1 lg:w-80 py-3 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-white transition-all text-slate-900 focus:outline-none focus:border-primary focus:ring-4 focus:ring-blue-100"
                     />
-                    <button onClick={() => setShowCreateModal(true)} className="px-4 py-3 bg-primary text-white rounded-xl font-semibold text-base cursor-pointer transition-all shadow-lg shadow-blue-300/30 hover:bg-primary-dark hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-400/40 whitespace-nowrap">
+                    <button
+                        type="button"
+                        onClick={() => setShowCreateModal(true)}
+                        className="px-4 py-3 bg-primary text-white rounded-xl font-semibold text-base cursor-pointer transition-all shadow-md hover:bg-primary-dark whitespace-nowrap"
+                    >
                         + New Entity
                     </button>
                 </div>
             </header>
 
-            <div className="bg-white rounded-xl p-4 overflow-x-auto">
-                <table className="w-full border-collapse">
-                    <thead>
-                        <tr className="text-left border-b border-slate-200 text-slate-500">
-                            <th className="p-4">ID</th>
-                            <th className="p-4">Name</th>
-                            <th className="p-4">Phone</th>
-                            <th className="p-4">Status</th>
-                            <th className="p-4">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {filteredEntities.map(entity => (
-                            <tr key={entity.id} className="border-b border-slate-100">
-                                <td className="p-4 font-medium">{entity.serial}</td>
-                                <td className="p-4">{entity.name}</td>
-                                <td className="p-4">{entity.phone}</td>
-                                <td className="p-4">
-                                    <span className={`px-3 py-1 rounded-full text-sm ${entity.approved === 'true' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                                        {entity.approved === 'true' ? 'Active' : 'Pending'}
-                                    </span>
-                                </td>
-                                <td className="p-4 flex gap-2">
-                                    <button
-                                        onClick={() => handleEditClick(entity)}
-                                        className="bg-blue-500 text-white border-none rounded-md px-3 py-2 cursor-pointer hover:bg-blue-600 transition-colors"
-                                    >
-                                        Edit
-                                    </button>
-                                    {entity.approved !== 'true' && (
-                                        <button
-                                            onClick={() => handleApprove(entity.id)}
-                                            className="bg-green-500 text-white border-none rounded-md px-3 py-2 cursor-pointer hover:bg-green-600 transition-colors"
-                                        >
-                                            Approve
-                                        </button>
-                                    )}
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-                {filteredEntities.length === 0 && <p className="text-center py-8 text-slate-400">No entities found.</p>}
+            {actionError && (
+                <div className="mb-4 bg-red-50 border border-red-200 text-red-700 py-3 px-4 rounded-xl text-sm">
+                    {actionError}
+                </div>
+            )}
+
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                {loading ? (
+                    <div className="flex items-center justify-center py-16 text-slate-500 gap-3">
+                        <svg className="animate-spin h-5 w-5 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                        Loading entities...
+                    </div>
+                ) : loadError ? (
+                    <div className="text-center py-16 px-6">
+                        <p className="text-red-600 mb-4">{loadError}</p>
+                        <button
+                            type="button"
+                            onClick={loadEntities}
+                            className="px-4 py-2 bg-primary text-white rounded-xl font-semibold hover:bg-primary-dark transition-colors"
+                        >
+                            Retry
+                        </button>
+                    </div>
+                ) : (
+                    <div className="overflow-x-auto">
+                        <table className="w-full border-collapse">
+                            <thead>
+                                <tr className="text-left border-b border-slate-200 text-slate-500 text-sm">
+                                    <th className="p-4 font-semibold">ID</th>
+                                    <th className="p-4 font-semibold">Name</th>
+                                    <th className="p-4 font-semibold">Phone</th>
+                                    <th className="p-4 font-semibold">Status</th>
+                                    <th className="p-4 font-semibold">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filteredEntities.map((entity) => (
+                                    <tr key={entity.id} className="border-b border-slate-100 hover:bg-slate-50/80 transition-colors">
+                                        <td className="p-4 font-medium text-slate-700">{entity.serial}</td>
+                                        <td className="p-4 text-slate-900">{entity.name}</td>
+                                        <td className="p-4 text-slate-600">{entity.phone || '—'}</td>
+                                        <td className="p-4">
+                                            <span
+                                                className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                                                    entity.approved === 'true'
+                                                        ? 'bg-green-100 text-green-800'
+                                                        : 'bg-amber-100 text-amber-800'
+                                                }`}
+                                            >
+                                                {entity.approved === 'true' ? 'Active' : 'Pending'}
+                                            </span>
+                                        </td>
+                                        <td className="p-4">
+                                            <div className="flex gap-2 flex-wrap">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleEditClick(entity)}
+                                                    className="bg-slate-100 text-slate-700 border border-slate-200 rounded-lg px-3 py-1.5 text-sm font-medium cursor-pointer hover:bg-slate-200 transition-colors"
+                                                >
+                                                    Edit
+                                                </button>
+                                                {entity.approved !== 'true' && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleApprove(entity.id)}
+                                                        className="bg-green-600 text-white border-none rounded-lg px-3 py-1.5 text-sm font-medium cursor-pointer hover:bg-green-700 transition-colors"
+                                                    >
+                                                        Approve
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                        {filteredEntities.length === 0 && (
+                            <p className="text-center py-12 text-slate-400">No entities found.</p>
+                        )}
+                    </div>
+                )}
             </div>
 
-            {/* Create Modal */}
             {showCreateModal && (
-                <div className="fixed inset-0 bg-black/50 flex justify-center items-center z-[1000]">
-                    <div className="bg-white w-full max-w-[440px] p-12 rounded-3xl shadow-lg animate-[slideUp_0.4s_ease-out] mx-4">
-                        <h2 className="m-0 mb-8 text-3xl font-bold text-center text-slate-900 tracking-tight">Create Entity</h2>
+                <div className="fixed inset-0 bg-black/50 flex justify-center items-center z-[1000] p-4">
+                    <div className="bg-white w-full max-w-[440px] p-8 sm:p-10 rounded-2xl shadow-xl animate-[slideUp_0.4s_ease-out] border border-slate-200">
+                        <h2 className="m-0 mb-6 text-2xl font-semibold text-center text-slate-900 tracking-tight">Create Entity</h2>
                         <form onSubmit={handleCreate} className="flex flex-col gap-5">
                             <div className="flex flex-col gap-2">
                                 <label className="text-sm font-semibold text-slate-900">Name</label>
-                                <input 
-                                    value={newEntity.name} 
-                                    onChange={e => setNewEntity({ ...newEntity, name: e.target.value })} 
+                                <input
+                                    value={newEntity.name}
+                                    onChange={(e) => setNewEntity({ ...newEntity, name: e.target.value })}
                                     required
-                                    className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
+                                    className={inputClass}
                                 />
                             </div>
                             <div className="flex flex-col gap-2">
-                                <label className="text-sm font-semibold text-slate-900">Phone</label>
-                                <PhoneInput onChange={setPhoneData} />
-                            </div>
-                            <div className="flex flex-col gap-2">
-                                <label className="text-sm font-semibold text-slate-900">Email (Optional)</label>
-                                <input 
-                                    type="email" 
-                                    value={newEntity.email} 
-                                    onChange={e => setNewEntity({ ...newEntity, email: e.target.value })} 
-                                    className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
+                                <label className="text-sm font-semibold text-slate-900">Email</label>
+                                <input
+                                    type="email"
+                                    value={newEntity.email}
+                                    onChange={(e) => setNewEntity({ ...newEntity, email: e.target.value })}
+                                    placeholder="Entity login email"
+                                    className={inputClass}
                                 />
                             </div>
                             <div className="flex flex-col gap-2">
                                 <label className="text-sm font-semibold text-slate-900">Password</label>
-                                <input 
-                                    type="password" 
-                                    value={newEntity.password} 
-                                    onChange={e => setNewEntity({ ...newEntity, password: e.target.value })} 
+                                <PasswordInput
+                                    value={newEntity.password}
+                                    onChange={(e) => setNewEntity({ ...newEntity, password: e.target.value })}
                                     required
-                                    className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
                                 />
                             </div>
-                            <div className="flex gap-4 mt-4">
-                                <button 
-                                    type="button" 
-                                    onClick={() => setShowCreateModal(false)} 
-                                    className="flex-1 py-4 px-4 bg-slate-200 text-slate-800 border-none rounded-xl cursor-pointer hover:bg-slate-300 transition-colors"
+                            <div className="flex gap-4 mt-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowCreateModal(false)}
+                                    disabled={isSubmitting}
+                                    className="flex-1 py-3 px-4 bg-slate-100 text-slate-800 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-200 transition-colors disabled:opacity-60"
                                 >
                                     Cancel
                                 </button>
-                                <button 
-                                    type="submit" 
-                                    className="flex-1 py-4 px-4 bg-primary text-white border-none rounded-xl font-semibold text-base cursor-pointer transition-all shadow-lg shadow-blue-300/30 hover:bg-primary-dark hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-400/40"
+                                <button
+                                    type="submit"
+                                    disabled={isSubmitting}
+                                    className="flex-1 py-3 px-4 bg-primary text-white border-none rounded-xl font-semibold cursor-pointer hover:bg-primary-dark transition-colors disabled:opacity-60"
                                 >
-                                    Create
+                                    {isSubmitting ? 'Creating...' : 'Create'}
                                 </button>
                             </div>
                         </form>
@@ -222,63 +289,64 @@ const AdminDashboard = () => {
                 </div>
             )}
 
-            {/* Edit Modal */}
             {showEditModal && editingEntity && (
-                <div className="fixed inset-0 bg-black/50 flex justify-center items-center z-[1000]">
-                    <div className="bg-white w-full max-w-[440px] p-12 rounded-3xl shadow-lg animate-[slideUp_0.4s_ease-out] mx-4">
-                        <h2 className="m-0 mb-8 text-3xl font-bold text-center text-slate-900 tracking-tight">Edit Entity</h2>
+                <div className="fixed inset-0 bg-black/50 flex justify-center items-center z-[1000] p-4">
+                    <div className="bg-white w-full max-w-[440px] p-8 sm:p-10 rounded-2xl shadow-xl animate-[slideUp_0.4s_ease-out] border border-slate-200">
+                        <h2 className="m-0 mb-6 text-2xl font-semibold text-center text-slate-900 tracking-tight">Edit Entity</h2>
                         <form onSubmit={handleUpdate} className="flex flex-col gap-5">
                             <div className="flex flex-col gap-2">
                                 <label className="text-sm font-semibold text-slate-900">Name</label>
-                                <input 
-                                    value={editForm.name} 
-                                    onChange={e => setEditForm({ ...editForm, name: e.target.value })} 
+                                <input
+                                    value={editForm.name}
+                                    onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
                                     required
-                                    className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
+                                    className={inputClass}
                                 />
                             </div>
                             <div className="flex flex-col gap-2">
-                                <label className="text-sm font-semibold text-slate-900">Phone</label>
+                                <label className="text-sm font-semibold text-slate-900">Phone (Optional)</label>
                                 <input
                                     type="tel"
                                     value={editForm.phone}
-                                    onChange={e => setEditForm({ ...editForm, phone: e.target.value })}
-                                    required
-                                    className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
+                                    onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                                    className={inputClass}
                                 />
                             </div>
                             <div className="flex flex-col gap-2">
                                 <label className="text-sm font-semibold text-slate-900">Email (Optional)</label>
-                                <input 
-                                    type="email" 
-                                    value={editForm.email} 
-                                    onChange={e => setEditForm({ ...editForm, email: e.target.value })} 
-                                    className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
+                                <input
+                                    type="email"
+                                    value={editForm.email}
+                                    onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                                    className={inputClass}
                                 />
                             </div>
                             <div className="flex flex-col gap-2">
                                 <label className="text-sm font-semibold text-slate-900">New Password (optional)</label>
-                                <input 
-                                    type="password" 
-                                    value={editForm.password} 
-                                    onChange={e => setEditForm({ ...editForm, password: e.target.value })} 
+                                <PasswordInput
+                                    value={editForm.password}
+                                    onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
                                     placeholder="Leave blank to keep current password"
-                                    className="w-full py-3.5 px-4 border border-slate-200 rounded-xl font-inherit text-base bg-slate-50 transition-all text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
                                 />
                             </div>
-                            <div className="flex gap-4 mt-4">
-                                <button 
-                                    type="button" 
-                                    onClick={() => { setShowEditModal(false); setEditingEntity(null); }}
-                                    className="flex-1 py-4 px-4 bg-slate-200 text-slate-800 border-none rounded-xl cursor-pointer hover:bg-slate-300 transition-colors"
+                            <div className="flex gap-4 mt-2">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setShowEditModal(false);
+                                        setEditingEntity(null);
+                                    }}
+                                    disabled={isSubmitting}
+                                    className="flex-1 py-3 px-4 bg-slate-100 text-slate-800 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-200 transition-colors disabled:opacity-60"
                                 >
                                     Cancel
                                 </button>
-                                <button 
-                                    type="submit" 
-                                    className="flex-1 py-4 px-4 bg-primary text-white border-none rounded-xl font-semibold text-base cursor-pointer transition-all shadow-lg shadow-blue-300/30 hover:bg-primary-dark hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-400/40"
+                                <button
+                                    type="submit"
+                                    disabled={isSubmitting}
+                                    className="flex-1 py-3 px-4 bg-primary text-white border-none rounded-xl font-semibold cursor-pointer hover:bg-primary-dark transition-colors disabled:opacity-60"
                                 >
-                                    Save
+                                    {isSubmitting ? 'Saving...' : 'Save'}
                                 </button>
                             </div>
                         </form>
@@ -287,6 +355,6 @@ const AdminDashboard = () => {
             )}
         </div>
     );
-}
+};
 
 export default AdminDashboard;

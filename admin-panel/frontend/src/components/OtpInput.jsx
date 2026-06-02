@@ -1,6 +1,10 @@
 import { useRef, useState, useEffect } from 'react';
 
-const OtpInput = ({ length = 6, onChange }) => {
+const OtpInput = ({ length = 6, onChange, variant = 'light' }) => {
+    const isDark = variant === 'dark';
+    const cellClass = isDark
+        ? "w-12 h-14 text-center text-2xl font-bold p-0 border border-slate-700 rounded-xl bg-slate-800/50 text-white focus:outline-none focus:border-cyan-500 focus:bg-slate-900 focus:ring-4 focus:ring-cyan-500/10"
+        : "w-12 h-14 text-center text-2xl font-bold p-0 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100";
     const [otp, setOtp] = useState(new Array(length).fill(""));
     const inputRefs = useRef([]);
 
@@ -52,7 +56,7 @@ const OtpInput = ({ length = 6, onChange }) => {
                     onChange={(e) => handleChange(index, e)}
                     onClick={() => handleClick(index)}
                     onKeyDown={(e) => handleKeyDown(index, e)}
-                    className="w-12 h-14 text-center text-2xl font-bold p-0 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-blue-100"
+                    className={cellClass}
                 />
             ))}
         </div>

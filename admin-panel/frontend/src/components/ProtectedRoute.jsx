@@ -1,31 +1,32 @@
 import { Navigate, Outlet } from 'react-router-dom';
 import { jwtDecode } from 'jwt-decode';
+import { SUPERADMIN_ROUTES } from '../constants/routes';
 
 const ProtectedRoute = () => {
     const token = localStorage.getItem('token');
 
     if (!token) {
-        return <Navigate to="/admin/login" replace />;
+        return <Navigate to={SUPERADMIN_ROUTES.LOGIN} replace />;
     }
 
     let decoded;
     try {
         decoded = jwtDecode(token);
-    } catch (e) {
+    } catch {
         localStorage.removeItem('token');
-        return <Navigate to="/admin/login" replace />;
+        return <Navigate to={SUPERADMIN_ROUTES.LOGIN} replace />;
     }
 
-    // Check functionality: admin role and expiration
     const currentTime = Date.now() / 1000;
 
-    if (decoded.exp < currentTime) {
+    if (!decoded.exp || decoded.exp < currentTime) {
         localStorage.removeItem('token');
-        return <Navigate to="/admin/login" replace />;
+        return <Navigate to={SUPERADMIN_ROUTES.LOGIN} replace />;
     }
 
     if (decoded.role !== 'admin') {
-        return <Navigate to="/admin/login" replace />; // Or forbidden page
+        localStorage.removeItem('token');
+        return <Navigate to={SUPERADMIN_ROUTES.LOGIN} replace />;
     }
 
     return <Outlet />;

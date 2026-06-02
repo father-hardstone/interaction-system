@@ -47,23 +47,37 @@ class EntityController {
     async createEntityByAdmin(req, res) {
         try {
             let { name, email, phone, password } = req.body;
-            // Validation
-            const existing = await EntityService.findOne(e => e.phone === phone);
-            if (existing) return res.status(400).json({ error: "Entity exists" });
 
-            // Decrypt if needed then hash
+            if (!name || !password) {
+                return res.status(400).json({ error: 'Name and password are required' });
+            }
+
+            const normalizedPhone = (phone || '').trim();
+            const normalizedEmail = (email || '').trim().toLowerCase();
+
+            if (normalizedPhone) {
+                const existingByPhone = await EntityService.findOne(e => e.phone === normalizedPhone);
+                if (existingByPhone) return res.status(400).json({ error: 'An entity with this phone already exists' });
+            }
+
+            if (normalizedEmail) {
+                const existingByEmail = await EntityService.findOne(
+                    e => e.email && e.email.toLowerCase() === normalizedEmail
+                );
+                if (existingByEmail) return res.status(400).json({ error: 'An entity with this email already exists' });
+            }
+
             password = decryptPassword(password).trim();
             const hashedPassword = await bcrypt.hash(password, 10);
             const now = new Date().toISOString();
             const serial = await EntityService.getNextSerial('E');
 
-            // Admin created -> Auto Approved
             const newEntity = {
                 id: uuidv4(),
                 serial,
                 name,
-                email: email || '',
-                phone,
+                email: normalizedEmail,
+                phone: normalizedPhone,
                 password: hashedPassword,
                 otp: '123456',
                 active: 'true',
