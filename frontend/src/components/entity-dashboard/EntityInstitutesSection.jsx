@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { instituteService } from '../../services/instituteService';
 import { IconBuilding, IconPlus } from './icons';
+import LoadingButton from './LoadingButton';
 
 const TYPES = [
   { id: 'pharmacy', label: 'Pharmacy' },
@@ -17,13 +18,13 @@ const emptyForm = {
   address: '',
 };
 
-function Modal({ open, title, children, onClose }) {
+function Modal({ open, title, children, onClose, disableClose = false }) {
   if (!open) return null;
   return (
     <div
       className="fixed inset-0 z-[1300] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm px-4"
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose?.();
+        if (e.target === e.currentTarget && !disableClose) onClose?.();
       }}
     >
       <div className="w-full max-w-2xl bg-white rounded-3xl shadow-2xl overflow-hidden">
@@ -33,8 +34,9 @@ function Modal({ open, title, children, onClose }) {
           </div>
           <button
             type="button"
-            onClick={() => onClose?.()}
-            className="p-2 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-all"
+            onClick={() => !disableClose && onClose?.()}
+            disabled={disableClose}
+            className="p-2 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
             aria-label="Close"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -57,6 +59,7 @@ export default function EntityInstitutesSection({ entityId, entityName }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const isEditing = !!editingId;
 
   const load = async () => {
@@ -105,6 +108,7 @@ export default function EntityInstitutesSection({ entityId, entityName }) {
   };
 
   const closeModal = () => {
+    if (isSubmitting) return;
     setModalOpen(false);
     setEditingId('');
     setForm(emptyForm);
@@ -112,17 +116,22 @@ export default function EntityInstitutesSection({ entityId, entityName }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!canSubmit) return;
+    if (!canSubmit || isSubmitting) return;
     setError('');
     setSuccess('');
     try {
+      setIsSubmitting(true);
       if (isEditing) await instituteService.update(editingId, form);
       else await instituteService.create(form);
       setSuccess(isEditing ? 'Institute updated' : 'Institute created');
-      closeModal();
+      setModalOpen(false);
+      setEditingId('');
+      setForm(emptyForm);
       await load();
     } catch (err) {
       setError(err?.response?.data?.error || 'Save failed');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -229,8 +238,14 @@ export default function EntityInstitutesSection({ entityId, entityName }) {
         </div>
       </div>
 
-      <Modal open={modalOpen} title={isEditing ? 'Edit institute' : 'Create institute'} onClose={closeModal}>
+      <Modal
+        open={modalOpen}
+        title={isEditing ? 'Edit institute' : 'Create institute'}
+        onClose={closeModal}
+        disableClose={isSubmitting}
+      >
         <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <fieldset disabled={isSubmitting} className="contents border-0 p-0 m-0 min-w-0">
           <div className="md:col-span-2">
             <label className="text-xs font-semibold text-slate-500">Name</label>
             <input
@@ -293,22 +308,25 @@ export default function EntityInstitutesSection({ entityId, entityName }) {
               placeholder="Optional"
             />
           </div>
+          </fieldset>
 
           <div className="md:col-span-2 flex items-center justify-end gap-2 pt-2">
             <button
               type="button"
               onClick={closeModal}
-              className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-sm font-semibold hover:bg-slate-50"
+              disabled={isSubmitting}
+              className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-sm font-semibold hover:bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               Cancel
             </button>
-            <button
-              type="submit"
+            <LoadingButton
+              loading={isSubmitting}
+              loadingLabel={isEditing ? 'Saving…' : 'Creating…'}
               disabled={!canSubmit}
               className="px-5 py-2 rounded-xl bg-blue-500 text-white text-sm font-semibold hover:bg-blue-600 disabled:bg-slate-200 disabled:text-slate-400"
             >
               {isEditing ? 'Save changes' : 'Create'}
-            </button>
+            </LoadingButton>
           </div>
         </form>
       </Modal>
