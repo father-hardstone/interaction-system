@@ -10,13 +10,13 @@ router.post('/login', OfficerController.login);
 router.get(
     '/me',
     authenticateToken,
-    requireRoles(['officer', 'receptionist']),
+    requireRoles(['officer', 'receptionist', 'accountant']),
     OfficerController.getMe
 );
 router.put(
     '/me',
     authenticateToken,
-    requireRoles(['officer', 'receptionist']),
+    requireRoles(['officer', 'receptionist', 'accountant']),
     OfficerController.updateMe
 );
 
@@ -24,7 +24,7 @@ router.put(
 router.get(
     '/entity/:entityId',
     authenticateToken,
-    requireRoles(['entity', 'officer', 'receptionist']),
+    requireRoles(['entity', 'officer', 'receptionist', 'accountant']),
     OfficerController.getOfficersByEntity
 );
 

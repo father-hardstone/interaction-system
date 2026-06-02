@@ -1,4 +1,5 @@
 import { Component } from 'react';
+import { getHomePath } from '../utils/authRedirect';
 
 /**
  * React Error Boundary - catches JavaScript errors in child component tree.
@@ -46,7 +47,7 @@ class ErrorBoundary extends Component {
                                 Refresh page
                             </button>
                             <a
-                                href="/"
+                                href={getHomePath()}
                                 className="px-6 py-3 bg-slate-200 text-slate-800 rounded-xl font-semibold hover:bg-slate-300 transition-colors no-underline inline-block"
                             >
                                 Go home

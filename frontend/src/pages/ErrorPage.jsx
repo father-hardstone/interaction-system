@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { getHomePath } from '../utils/authRedirect';
 
 /**
  * Generic error page - for network errors, API failures, etc.
@@ -41,7 +42,7 @@ const ErrorPage = ({ error, resetError }) => {
                         Refresh page
                     </button>
                     <Link
-                        to="/"
+                        to={getHomePath()}
                         className="px-6 py-3 bg-slate-200 text-slate-800 rounded-xl font-semibold hover:bg-slate-300 transition-colors no-underline"
                     >
                         Go home

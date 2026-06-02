@@ -28,6 +28,9 @@ const CompletedInteractionsTable = ({
     formatDate,
     onInteractionClick,
     onEditCompleted,
+    onAddBillingInfo,
+    showEditButton = true,
+    highlightMissingBilling = true,
     blockEditCompleted = false,
     interactions = [],
     lastVisits = {},
@@ -98,11 +101,12 @@ const CompletedInteractionsTable = ({
                                     Array.isArray(interaction.serviceLines) && 
                                     interaction.serviceLines.some(line => (line.totalFee && line.totalFee > 0) || line.accountingNumber)
                                 );
+                                const rowHighlight = highlightMissingBilling && billingMissing;
                                 return (
                                 <tr
                                     key={interaction.id}
-                                    className={`border-b border-slate-100 transition-all cursor-pointer ${billingMissing ? 'bg-amber-50 hover:bg-amber-100/70' : 'hover:bg-slate-50'}`}
-                                    onClick={() => onInteractionClick(interaction)}
+                                    className={`border-b border-slate-100 transition-all ${onInteractionClick ? 'cursor-pointer' : ''} ${rowHighlight ? 'bg-amber-50 hover:bg-amber-100/70' : 'hover:bg-slate-50'}`}
+                                    onClick={onInteractionClick ? () => onInteractionClick(interaction) : undefined}
                                 >
                                     <td className="px-4 sm:px-6 py-4 align-middle">
                                         <span className="text-sm font-semibold text-blue-600 inline-flex items-center gap-1.5 flex-wrap">
@@ -134,7 +138,7 @@ const CompletedInteractionsTable = ({
                                     )}
                                     <td className="px-4 sm:px-6 py-4 align-middle text-right" onClick={(e) => e.stopPropagation()}>
                                         <div className="flex items-center justify-end gap-2">
-                                            {onEditCompleted && (
+                                            {showEditButton && onEditCompleted && (
                                                 <button
                                                     type="button"
                                                     onClick={() => !blockEditCompleted && onEditCompleted(interaction)}
@@ -145,7 +149,16 @@ const CompletedInteractionsTable = ({
                                                     Edit
                                                 </button>
                                             )}
-                                            {!isClosed && onEditCompleted && (
+                                            {!isClosed && onAddBillingInfo && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => onAddBillingInfo(interaction)}
+                                                    className="px-3 py-1.5 text-sm font-medium rounded-lg transition-colors text-emerald-600 border border-emerald-200 hover:bg-emerald-50"
+                                                >
+                                                    Add billing info
+                                                </button>
+                                            )}
+                                            {!isClosed && !onAddBillingInfo && onEditCompleted && (
                                                 <button
                                                     type="button"
                                                     onClick={() => !blockEditCompleted && onEditCompleted(interaction, { openBillingTab: true })}

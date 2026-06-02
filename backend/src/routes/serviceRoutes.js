@@ -3,7 +3,7 @@ const router = express.Router();
 const ServiceController = require('../controllers/ServiceController');
 const { authenticateToken, requireRoles } = require('../middleware/auth');
 
-router.use(authenticateToken, requireRoles(['entity', 'officer', 'receptionist']));
+router.use(authenticateToken, requireRoles(['entity', 'officer', 'receptionist', 'accountant']));
 
 // Get all services
 router.get('/', ServiceController.getAllServices);

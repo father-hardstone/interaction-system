@@ -14,6 +14,8 @@ import InteractionDetailsModal from '../components/InteractionDetailsModal';
 import QueueRegistrationModal from '../components/QueueRegistrationModal';
 import MediaViewerModal from '../components/MediaViewerModal';
 import { reportService } from '../services/reportService';
+import UnauthorizedView from '../components/UnauthorizedView';
+import { canAccessMainTab, MAIN_TABS, canManagePatients } from '../utils/userPermissions';
 
 const UserDashboard = () => {
     const navigate = useNavigate();
@@ -573,6 +575,7 @@ const UserDashboard = () => {
 
     const handleCreateVisitor = async (e) => {
         e.preventDefault();
+        if (!canManagePatients(userData?.role)) return;
         setError('');
         setFieldErrors({});
         setIsCreatingVisitor(true);
@@ -861,6 +864,7 @@ const UserDashboard = () => {
     };
 
     const handleOpenAddModal = () => {
+        if (!canManagePatients(userData?.role)) return;
         setEditingVisitorId(null);
         setVisitorForm({
             firstName: '',
@@ -903,6 +907,7 @@ const UserDashboard = () => {
     };
 
     const handleEditVisitor = (visitor, unconfirmed = false) => {
+        if (!canManagePatients(userData?.role)) return;
         setEditingVisitorId(visitor.id);
         setIsEditingUnconfirmed(unconfirmed);
         setVisitorForm({
@@ -989,6 +994,8 @@ const UserDashboard = () => {
         e.preventDefault();
         e.stopPropagation();
 
+        if (!canManagePatients(userData?.role)) return;
+
         if (!draggedPatient) {
             console.log('No dragged patient found');
             return;
@@ -1000,6 +1007,7 @@ const UserDashboard = () => {
 
     const handleRegisterPatient = async (patient, options = {}) => {
         if (!patient) return false;
+        if (!canManagePatients(userData?.role)) return false;
 
         const { reasonForVisit = '', visitMode = 'physical', parentInteractionId = '', reasonForVisitNotes = '', assignToOfficerId = '', assignOfficerSerial = '' } = options;
 
@@ -1210,7 +1218,11 @@ const UserDashboard = () => {
             <main className="flex-1 flex flex-col min-h-0 overflow-x-hidden overflow-y-auto bg-slate-50">
                 <div className="flex-1 flex flex-col min-h-0 p-4 sm:p-6 lg:p-8">
                     <MasterDataProvider>
-                    {activeTab === 'reception' && (
+                    {activeTab === 'reception' && !canAccessMainTab(userData?.role, MAIN_TABS.RECEPTION) && (
+                        <UnauthorizedView message="You don't have permission to view Front Desk. Contact your administrator if you need access." />
+                    )}
+
+                    {activeTab === 'reception' && canAccessMainTab(userData?.role, MAIN_TABS.RECEPTION) && (
                         <ReceptionTab
                             interactionFilter={interactionFilter}
                             setInteractionFilter={setInteractionFilter}
@@ -1330,7 +1342,11 @@ const UserDashboard = () => {
                         />
                     )}
 
-                    {activeTab === 'officer' && (
+                    {activeTab === 'officer' && !canAccessMainTab(userData?.role, MAIN_TABS.OFFICER) && (
+                        <UnauthorizedView message="You don't have permission to view Physician. Contact your administrator if you need access." />
+                    )}
+
+                    {activeTab === 'officer' && canAccessMainTab(userData?.role, MAIN_TABS.OFFICER) && (
                         <OfficerTab
                             userData={userData}
                             interactions={interactions}

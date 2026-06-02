@@ -7,6 +7,7 @@ import { formatPhoneDisplay, parsePhoneToDigits, getVisitorSerialDisplay, format
 
 import { useState, useMemo } from 'react';
 import api from '../services/api';
+import { canManagePatients } from '../utils/userPermissions';
 
 const VisitorsSection = ({
     visitors,
@@ -80,6 +81,7 @@ const VisitorsSection = ({
     unconfirmed = false,
 }) => {
     const { services = [], diagnostics = [] } = useMasterData();
+    const managePatients = canManagePatients(userData?.role);
     const [showRegisterConfirmModal, setShowRegisterConfirmModal] = useState(false);
     const [pendingRegisterVisitor, setPendingRegisterVisitor] = useState(null);
     const [reasonForVisit, setReasonForVisit] = useState('new_visit');
@@ -92,6 +94,7 @@ const VisitorsSection = ({
     const [isGeneratingOnboarding, setIsGeneratingOnboarding] = useState(false);
 
     const generateOnboardingLink = async () => {
+        if (!managePatients) return;
         setIsGeneratingOnboarding(true);
         try {
             const res = await api.post('/visitors/onboarding-link', {
@@ -137,6 +140,7 @@ const VisitorsSection = ({
     };
 
     const initiateRegistration = (visitor) => {
+        if (!managePatients) return;
         setPendingRegisterVisitor(visitor);
         setReasonForVisit('new_visit');
         setVisitMode('physical');
@@ -212,8 +216,10 @@ const searchContactDigits = parsePhoneToDigits(searchContact || '');
                         <h2 className="text-lg font-semibold text-slate-900">Patients</h2>
                         <p className="text-sm text-slate-500 mt-1">Manage patients for your entity</p>
                     </div>
+                    {managePatients && (
                     <div className="flex gap-2 w-full sm:w-auto">
                         <button
+                            type="button"
                             onClick={generateOnboardingLink}
                             disabled={isGeneratingOnboarding}
                             className="px-4 py-2 bg-indigo-50 text-indigo-600 border border-indigo-100 rounded-xl font-semibold text-sm hover:bg-indigo-100 transition-colors flex items-center gap-2"
@@ -231,12 +237,14 @@ const searchContactDigits = parsePhoneToDigits(searchContact || '');
                             Patient onboarding form
                         </button>
                         <button
+                            type="button"
                             onClick={onOpenAddModal || (() => setShowVisitorModal(true))}
                             className="px-4 py-2 bg-primary text-white rounded-xl font-semibold text-sm hover:bg-primary-dark transition-colors"
                         >
                             Add a patient
                         </button>
                     </div>
+                    )}
                 </div>
 
                 <PatientSearchFilters
@@ -287,7 +295,7 @@ const searchContactDigits = parsePhoneToDigits(searchContact || '');
                             ) : filteredVisitors.length === 0 ? (
                                 <tr>
                                     <td colSpan="10" className="px-6 py-8 text-center text-slate-400">
-                                        No patients found. Click "Add a patient" to get started.
+                                        {managePatients ? 'No patients found. Click "Add a patient" to get started.' : 'No patients found.'}
                                     </td>
                                 </tr>
                             ) : (
@@ -324,14 +332,14 @@ const searchContactDigits = parsePhoneToDigits(searchContact || '');
                                                     dragStarted = false;
                                                 }, 200);
                                             }} */
-                                            onTouchStart={(e) => {
+                                            onTouchStart={managePatients ? (e) => {
                                                 if (e.touches.length === 1) {
                                                     touchStartX = e.touches[0].clientX;
                                                     touchStartY = e.touches[0].clientY;
                                                     dragStarted = false;
                                                 }
-                                            }}
-                                            onTouchMove={(e) => {
+                                            } : undefined}
+                                            onTouchMove={managePatients ? (e) => {
                                                 if (e.touches.length === 1 && !dragStarted) {
                                                     const touch = e.touches[0];
                                                     const deltaX = Math.abs(touch.clientX - touchStartX);
@@ -360,8 +368,8 @@ const searchContactDigits = parsePhoneToDigits(searchContact || '');
                                                         handlePatientDragStart(syntheticEvent, visitor);
                                                     }
                                                 }
-                                            }}
-                                            onTouchEnd={(e) => {
+                                            } : undefined}
+                                            onTouchEnd={managePatients ? (e) => {
                                                 if (dragStarted) {
                                                     // Restore styles
                                                     e.currentTarget.style.opacity = '1';
@@ -394,7 +402,7 @@ const searchContactDigits = parsePhoneToDigits(searchContact || '');
                                                         dragStarted = false;
                                                     }, 200);
                                                 }
-                                            }}
+                                            } : undefined}
                                         >
                                             <td className="px-4 sm:px-6 py-4 text-slate-700 hidden md:table-cell text-sm">
                                                 {formatDateMMDDYYYY(visitor.dateOfBirth) || '-'}
@@ -433,6 +441,7 @@ const searchContactDigits = parsePhoneToDigits(searchContact || '');
                                             </td>
                                             <td className="px-4 sm:px-6 py-4" onClick={(e) => e.stopPropagation()}>
                                                 <div className="flex gap-2">
+                                                    {managePatients && (
                                                     <button
                                                         type="button"
                                                         onClick={() => onEditVisitor?.(visitor)}
@@ -440,7 +449,8 @@ const searchContactDigits = parsePhoneToDigits(searchContact || '');
                                                     >
                                                         Edit
                                                     </button>
-                                                    {actionsMode === 'entity' ? (
+                                                    )}
+                                                    {managePatients && actionsMode === 'entity' ? (
                                                         <button
                                                             type="button"
                                                             onClick={() => onDeleteVisitor?.(visitor)}
@@ -457,7 +467,7 @@ const searchContactDigits = parsePhoneToDigits(searchContact || '');
                                                                 </>
                                                             ) : 'Delete'}
                                                         </button>
-                                                    ) : (() => {
+                                                    ) : managePatients ? (() => {
                                                         const isRegistered =
                                                             visitor.stillInService === true ||
                                                             interactionsForRegistration.some(i => i.visitorId === visitor.id && !i.completed && !i.cancelled);
@@ -481,7 +491,9 @@ const searchContactDigits = parsePhoneToDigits(searchContact || '');
                                                                 ) : isRegistered ? 'In Service' : 'Register'}
                                                             </button>
                                                         );
-                                                    })()}
+                                                    })() : (
+                                                        <span className="text-xs text-slate-400">—</span>
+                                                    )}
                                                 </div>
                                             </td>
                                         </tr>

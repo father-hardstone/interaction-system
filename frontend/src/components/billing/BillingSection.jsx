@@ -28,7 +28,9 @@ const BillingSection = ({
     getVisitorSerial,
     formatDate,
     lastVisits = {},
+    userRole = '',
 }) => {
+    const isAccountant = userRole === 'accountant';
     const { services = [], diagnostics = [] } = useMasterData();
     const [activeBillingSubTab, setActiveBillingSubTab] = useState('completed');
     const [internalModalInteraction, setInternalModalInteraction] = useState(null);
@@ -45,6 +47,7 @@ const BillingSection = ({
     const [showMinistryConfirm, setShowMinistryConfirm] = useState(false);
     const [lastMinistryRows, setLastMinistryRows] = useState([]);
     const [isMinistryProcessing, setIsMinistryProcessing] = useState(false);
+    const [billingModalLinesOnly, setBillingModalLinesOnly] = useState(false);
 
     const billingModalInteraction = billingModalInteractionProp ?? internalModalInteraction;
     const handleOpenBillNow = onOpenBillNow ?? ((i) => setInternalModalInteraction(i));
@@ -93,7 +96,40 @@ const BillingSection = ({
     };
 
     const handleCloseModal = () => {
+        setBillingModalLinesOnly(false);
         handleCloseBillNow();
+    };
+
+    const handleOpenAddBillingInfo = (interaction) => {
+        setBillingModalLinesOnly(true);
+        handleOpenBillNow(interaction);
+    };
+
+    const handleSaveBillingLinesOnly = async (data) => {
+        const interactionId = data?.interactionId;
+        if (!interactionId) {
+            throw new Error('Missing interaction id');
+        }
+
+        const serviceLines = Array.isArray(data?.billingLines)
+            ? data.billingLines.map((l, idx) => ({
+                  serialNumber: l?.serialNumber ?? idx + 1,
+                  service: (l?.service || '').trim(),
+                  suffix: (l?.suffix || '').trim(),
+                  diagnostic: (l?.diagnostic || '').trim(),
+                  totalFee: parseFloat(l?.totalFee) || 0,
+                  accountingNumber: (l?.accountingNumber || '').trim(),
+              }))
+            : [];
+
+        try {
+            const updated = await interactionService.saveDetails(interactionId, { serviceLines });
+            onInteractionUpdated?.(updated);
+            return updated;
+        } catch (e) {
+            console.error('Failed to save billing lines:', e);
+            throw e;
+        }
     };
 
     const handleSaveBilling = async (data) => {
@@ -287,8 +323,11 @@ const BillingSection = ({
                         getVisitorName={getVisitorName}
                         getVisitorSerial={getVisitorSerial}
                         formatDate={formatDate}
-                        onInteractionClick={onInteractionClick}
-                        onEditCompleted={(interaction, opts) => onInteractionClick?.(interaction, opts)}
+                        onInteractionClick={isAccountant ? undefined : onInteractionClick}
+                        onEditCompleted={isAccountant ? undefined : (interaction, opts) => onInteractionClick?.(interaction, opts)}
+                        onAddBillingInfo={isAccountant ? handleOpenAddBillingInfo : undefined}
+                        showEditButton={!isAccountant}
+                        highlightMissingBilling={!isAccountant}
                         blockEditCompleted={false}
                         interactions={interactions}
                         lastVisits={lastVisits}
@@ -362,7 +401,8 @@ const BillingSection = ({
                 officers={officers}
                 services={services}
                 diagnostics={diagnostics}
-                onSave={handleSaveBilling}
+                linesOnly={billingModalLinesOnly}
+                onSave={billingModalLinesOnly ? handleSaveBillingLinesOnly : handleSaveBilling}
             />
 
             <BillingStatementModals

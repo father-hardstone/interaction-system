@@ -1,28 +1,23 @@
-/** Receptionists table for Entity Dashboard – shown in Employees tab. */
-
-import { useState } from 'react';
 import { formatPhoneDisplay } from '../../utils/formatUtils';
-import FeatureComingSoonModal from './FeatureComingSoonModal';
 
-export default function EntityDashboardEmployeesTable({
-  receptionists = [],
-  onAddReceptionist,
-  onDeleteReceptionist,
+export default function EntityDashboardAccountantsTable({
+  accountants = [],
+  onAddAccountant,
+  onDeleteAccountant,
 }) {
-  const [showEditModal, setShowEditModal] = useState(false);
   return (
-    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm mt-8">
       <div className="p-6 border-b border-slate-200 flex justify-between items-center">
         <div>
-          <h2 className="text-lg font-semibold text-slate-900">Employees</h2>
-          <p className="text-sm text-slate-500 mt-1">Front desk staff (patients, registration, reports, outgoing log)</p>
+          <h2 className="text-lg font-semibold text-slate-900">Accountants</h2>
+          <p className="text-sm text-slate-500 mt-1">Billing and patients access only</p>
         </div>
         <button
           type="button"
-          onClick={onAddReceptionist}
+          onClick={onAddAccountant}
           className="px-4 py-2 bg-blue-500 text-white rounded-xl font-semibold text-sm hover:bg-blue-600 transition-colors"
         >
-          Add a receptionist
+          Add an accountant
         </button>
       </div>
       <div className="overflow-x-auto">
@@ -38,33 +33,33 @@ export default function EntityDashboardEmployeesTable({
             </tr>
           </thead>
           <tbody>
-            {receptionists.length === 0 ? (
+            {accountants.length === 0 ? (
               <tr>
                 <td colSpan={6} className="px-6 py-8 text-center text-slate-400">
-                  No receptionists found. Click &quot;Add a receptionist&quot; to get started.
+                  No accountants found. Click &quot;Add an accountant&quot; to get started.
                 </td>
               </tr>
             ) : (
-              receptionists.map((rec) => (
+              accountants.map((acct) => (
                 <tr
-                  key={rec.id}
+                  key={acct.id}
                   className="border-b border-slate-100 hover:bg-slate-50 transition-colors"
                 >
-                  <td className="px-6 py-4 font-medium text-slate-900">{rec.serial}</td>
-                  <td className="px-6 py-4 text-slate-700">{rec.name}</td>
+                  <td className="px-6 py-4 font-medium text-slate-900">{acct.serial}</td>
+                  <td className="px-6 py-4 text-slate-700">{acct.name}</td>
                   <td className="px-6 py-4 text-slate-700">
-                    {formatPhoneDisplay(rec.phone) || '—'}
+                    {formatPhoneDisplay(acct.phone) || '—'}
                   </td>
-                  <td className="px-6 py-4 text-slate-700">{rec.email}</td>
+                  <td className="px-6 py-4 text-slate-700">{acct.email}</td>
                   <td className="px-6 py-4">
                     <span
                       className={`px-3 py-1 rounded-full text-sm font-medium ${
-                        rec.active === 'true' && rec.approved === 'true'
+                        acct.active === 'true' && acct.approved === 'true'
                           ? 'bg-blue-100 text-blue-800'
                           : 'bg-yellow-100 text-yellow-800'
                       }`}
                     >
-                      {rec.active === 'true' && rec.approved === 'true' ? 'Active' : 'Pending'}
+                      {acct.active === 'true' && acct.approved === 'true' ? 'Active' : 'Pending'}
                     </span>
                   </td>
                   <td className="px-6 py-4">
@@ -73,10 +68,10 @@ export default function EntityDashboardEmployeesTable({
                       onClick={async () => {
                         if (
                           window.confirm(
-                            'Are you sure you want to delete this receptionist?'
+                            'Are you sure you want to delete this accountant?'
                           )
                         ) {
-                          await onDeleteReceptionist(rec.id);
+                          await onDeleteAccountant(acct.id);
                         }
                       }}
                       className="px-3 py-1 bg-red-500 text-white rounded-md text-sm hover:bg-red-600 transition-colors"
@@ -90,7 +85,6 @@ export default function EntityDashboardEmployeesTable({
           </tbody>
         </table>
       </div>
-      <FeatureComingSoonModal open={showEditModal} onClose={() => setShowEditModal(false)} />
     </div>
   );
 }
