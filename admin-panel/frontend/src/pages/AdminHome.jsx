@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { entityService } from '../services/entityService';
 import PasswordInput from '../components/PasswordInput';
+import LoadingButton from '../components/LoadingButton';
 
 const AdminDashboard = () => {
     const [entities, setEntities] = useState([]);
@@ -73,6 +74,19 @@ const AdminDashboard = () => {
         } finally {
             setIsSubmitting(false);
         }
+    };
+
+    const closeCreateModal = () => {
+        if (isSubmitting) return;
+        setShowCreateModal(false);
+        setNewEntity({ name: '', email: '', password: '' });
+    };
+
+    const closeEditModal = () => {
+        if (isSubmitting) return;
+        setShowEditModal(false);
+        setEditingEntity(null);
+        setEditForm({ name: '', email: '', phone: '', password: '' });
     };
 
     const handleEditClick = (entity) => {
@@ -236,10 +250,17 @@ const AdminDashboard = () => {
             </div>
 
             {showCreateModal && (
-                <div className="fixed inset-0 bg-black/50 flex justify-center items-center z-[1000] p-4">
-                    <div className="bg-white w-full max-w-[440px] p-8 sm:p-10 rounded-2xl shadow-xl animate-[slideUp_0.4s_ease-out] border border-slate-200">
+                <div
+                    className="fixed inset-0 bg-black/50 flex justify-center items-center z-[1000] p-4"
+                    onClick={() => !isSubmitting && closeCreateModal()}
+                >
+                    <div
+                        className="bg-white w-full max-w-[440px] p-8 sm:p-10 rounded-2xl shadow-xl animate-[slideUp_0.4s_ease-out] border border-slate-200"
+                        onClick={(e) => e.stopPropagation()}
+                    >
                         <h2 className="m-0 mb-6 text-2xl font-semibold text-center text-slate-900 tracking-tight">Create Entity</h2>
                         <form onSubmit={handleCreate} className="flex flex-col gap-5">
+                            <fieldset disabled={isSubmitting} className="flex flex-col gap-5 border-0 p-0 m-0 min-w-0">
                             <div className="flex flex-col gap-2">
                                 <label className="text-sm font-semibold text-slate-900">Name</label>
                                 <input
@@ -267,22 +288,23 @@ const AdminDashboard = () => {
                                     required
                                 />
                             </div>
+                            </fieldset>
                             <div className="flex gap-4 mt-2">
                                 <button
                                     type="button"
-                                    onClick={() => setShowCreateModal(false)}
+                                    onClick={closeCreateModal}
                                     disabled={isSubmitting}
-                                    className="flex-1 py-3 px-4 bg-slate-100 text-slate-800 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-200 transition-colors disabled:opacity-60"
+                                    className="flex-1 py-3 px-4 bg-slate-100 text-slate-800 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-200 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                                 >
                                     Cancel
                                 </button>
-                                <button
-                                    type="submit"
-                                    disabled={isSubmitting}
-                                    className="flex-1 py-3 px-4 bg-primary text-white border-none rounded-xl font-semibold cursor-pointer hover:bg-primary-dark transition-colors disabled:opacity-60"
+                                <LoadingButton
+                                    loading={isSubmitting}
+                                    loadingLabel="Creating…"
+                                    className="flex-1 py-3 px-4 bg-primary text-white border-none rounded-xl font-semibold cursor-pointer hover:bg-primary-dark transition-colors"
                                 >
-                                    {isSubmitting ? 'Creating...' : 'Create'}
-                                </button>
+                                    Create
+                                </LoadingButton>
                             </div>
                         </form>
                     </div>
@@ -290,10 +312,17 @@ const AdminDashboard = () => {
             )}
 
             {showEditModal && editingEntity && (
-                <div className="fixed inset-0 bg-black/50 flex justify-center items-center z-[1000] p-4">
-                    <div className="bg-white w-full max-w-[440px] p-8 sm:p-10 rounded-2xl shadow-xl animate-[slideUp_0.4s_ease-out] border border-slate-200">
+                <div
+                    className="fixed inset-0 bg-black/50 flex justify-center items-center z-[1000] p-4"
+                    onClick={() => !isSubmitting && closeEditModal()}
+                >
+                    <div
+                        className="bg-white w-full max-w-[440px] p-8 sm:p-10 rounded-2xl shadow-xl animate-[slideUp_0.4s_ease-out] border border-slate-200"
+                        onClick={(e) => e.stopPropagation()}
+                    >
                         <h2 className="m-0 mb-6 text-2xl font-semibold text-center text-slate-900 tracking-tight">Edit Entity</h2>
                         <form onSubmit={handleUpdate} className="flex flex-col gap-5">
+                            <fieldset disabled={isSubmitting} className="flex flex-col gap-5 border-0 p-0 m-0 min-w-0">
                             <div className="flex flex-col gap-2">
                                 <label className="text-sm font-semibold text-slate-900">Name</label>
                                 <input
@@ -329,25 +358,23 @@ const AdminDashboard = () => {
                                     placeholder="Leave blank to keep current password"
                                 />
                             </div>
+                            </fieldset>
                             <div className="flex gap-4 mt-2">
                                 <button
                                     type="button"
-                                    onClick={() => {
-                                        setShowEditModal(false);
-                                        setEditingEntity(null);
-                                    }}
+                                    onClick={closeEditModal}
                                     disabled={isSubmitting}
-                                    className="flex-1 py-3 px-4 bg-slate-100 text-slate-800 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-200 transition-colors disabled:opacity-60"
+                                    className="flex-1 py-3 px-4 bg-slate-100 text-slate-800 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-200 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                                 >
                                     Cancel
                                 </button>
-                                <button
-                                    type="submit"
-                                    disabled={isSubmitting}
-                                    className="flex-1 py-3 px-4 bg-primary text-white border-none rounded-xl font-semibold cursor-pointer hover:bg-primary-dark transition-colors disabled:opacity-60"
+                                <LoadingButton
+                                    loading={isSubmitting}
+                                    loadingLabel="Saving…"
+                                    className="flex-1 py-3 px-4 bg-primary text-white border-none rounded-xl font-semibold cursor-pointer hover:bg-primary-dark transition-colors"
                                 >
-                                    {isSubmitting ? 'Saving...' : 'Save'}
-                                </button>
+                                    Save
+                                </LoadingButton>
                             </div>
                         </form>
                     </div>
