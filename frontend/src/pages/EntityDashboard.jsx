@@ -57,6 +57,9 @@ const EntityDashboard = () => {
   const [error, setError] = useState('');
   const [receptionError, setReceptionError] = useState('');
   const [accountantError, setAccountantError] = useState('');
+  const [officerSubmitting, setOfficerSubmitting] = useState(false);
+  const [receptionistSubmitting, setReceptionistSubmitting] = useState(false);
+  const [accountantSubmitting, setAccountantSubmitting] = useState(false);
 
   const getDaysForPeriod = () => {
     if (period === 'month') return 30;
@@ -174,6 +177,7 @@ const EntityDashboard = () => {
 
   const handleCreateOfficer = async (e) => {
     e.preventDefault();
+    if (officerSubmitting) return;
     setError('');
     if (!newOfficer.name || !newOfficer.email || !newOfficer.password) {
       setError('Please fill in all fields');
@@ -189,6 +193,7 @@ const EntityDashboard = () => {
       return;
     }
     try {
+      setOfficerSubmitting(true);
       await officerService.create({
         entityId: entityData.id,
         entitySerial: entityData.serial,
@@ -204,11 +209,14 @@ const EntityDashboard = () => {
       await loadOfficers(entityData.id);
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to create officer');
+    } finally {
+      setOfficerSubmitting(false);
     }
   };
 
   const handleCreateReceptionist = async (e) => {
     e.preventDefault();
+    if (receptionistSubmitting) return;
     setReceptionError('');
     if (!newReceptionist.name || !newReceptionist.email || !newReceptionist.password) {
       setReceptionError('Please fill in all fields');
@@ -224,6 +232,7 @@ const EntityDashboard = () => {
       return;
     }
     try {
+      setReceptionistSubmitting(true);
       await receptionistService.create({
         entityId: entityData.id,
         entitySerial: entityData.serial,
@@ -239,10 +248,13 @@ const EntityDashboard = () => {
       await loadReceptionists(entityData.id);
     } catch (err) {
       setReceptionError(err.response?.data?.error || 'Failed to create receptionist');
+    } finally {
+      setReceptionistSubmitting(false);
     }
   };
 
   const handleCloseOfficerModal = () => {
+    if (officerSubmitting) return;
     setShowOfficerModal(false);
     setNewOfficer({ name: '', email: '', password: '' });
     setPhoneData({ fullNumber: '', valid: false });
@@ -250,6 +262,7 @@ const EntityDashboard = () => {
   };
 
   const handleCloseReceptionistModal = () => {
+    if (receptionistSubmitting) return;
     setShowReceptionistModal(false);
     setNewReceptionist({ name: '', email: '', password: '' });
     setReceptionPhoneData({ fullNumber: '', valid: false });
@@ -258,6 +271,7 @@ const EntityDashboard = () => {
 
   const handleCreateAccountant = async (e) => {
     e.preventDefault();
+    if (accountantSubmitting) return;
     setAccountantError('');
     if (!newAccountant.name || !newAccountant.email || !newAccountant.password) {
       setAccountantError('Please fill in all fields');
@@ -273,6 +287,7 @@ const EntityDashboard = () => {
       return;
     }
     try {
+      setAccountantSubmitting(true);
       await accountantService.create({
         entityId: entityData.id,
         entitySerial: entityData.serial,
@@ -288,10 +303,13 @@ const EntityDashboard = () => {
       await loadAccountants(entityData.id);
     } catch (err) {
       setAccountantError(err.response?.data?.error || 'Failed to create accountant');
+    } finally {
+      setAccountantSubmitting(false);
     }
   };
 
   const handleCloseAccountantModal = () => {
+    if (accountantSubmitting) return;
     setShowAccountantModal(false);
     setNewAccountant({ name: '', email: '', password: '' });
     setAccountantPhoneData({ fullNumber: '', valid: false });
@@ -380,6 +398,7 @@ const EntityDashboard = () => {
         phoneData={phoneData}
         setPhoneData={setPhoneData}
         onSubmit={handleCreateOfficer}
+        isSubmitting={officerSubmitting}
       />
 
       <AddReceptionistModal
@@ -391,6 +410,7 @@ const EntityDashboard = () => {
         receptionPhoneData={receptionPhoneData}
         setReceptionPhoneData={setReceptionPhoneData}
         onSubmit={handleCreateReceptionist}
+        isSubmitting={receptionistSubmitting}
       />
 
       <AddAccountantModal
@@ -402,6 +422,7 @@ const EntityDashboard = () => {
         accountantPhoneData={accountantPhoneData}
         setAccountantPhoneData={setAccountantPhoneData}
         onSubmit={handleCreateAccountant}
+        isSubmitting={accountantSubmitting}
       />
     </>
   );

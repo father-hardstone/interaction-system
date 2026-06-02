@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { authService } from '../services/authService';
 import { useNavigate, Link } from 'react-router-dom';
 import PasswordInput from '../components/PasswordInput';
+import LoadingButton from '../components/LoadingButton';
 import { validateEmail } from '../utils/crypto';
 import { SUPERADMIN_ROUTES } from '../constants/routes';
 
@@ -72,6 +73,7 @@ const Register = () => {
             )}
 
             <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+                <fieldset disabled={isSubmitting} className="flex flex-col gap-5 border-0 p-0 m-0 min-w-0">
                 <div className="flex flex-col gap-2">
                     <label className="text-sm font-bold text-slate-300">Full Name</label>
                     <input
@@ -112,14 +114,15 @@ const Register = () => {
                         autoComplete="new-password"
                     />
                 </div>
+                </fieldset>
 
-                <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="mt-4 py-4 px-4 bg-gradient-to-r from-cyan-500 to-blue-600 text-white border-none rounded-xl font-bold text-base cursor-pointer transition-all shadow-lg shadow-cyan-500/20 hover:shadow-cyan-500/40 hover:-translate-y-0.5 disabled:opacity-60 disabled:cursor-not-allowed"
+                <LoadingButton
+                    loading={isSubmitting}
+                    loadingLabel="Creating account…"
+                    className="mt-4 py-4 px-4 bg-gradient-to-r from-cyan-500 to-blue-600 text-white border-none rounded-xl font-bold text-base cursor-pointer transition-all shadow-lg shadow-cyan-500/20 hover:shadow-cyan-500/40 hover:-translate-y-0.5"
                 >
-                    {isSubmitting ? 'Creating account...' : 'Create Account'}
-                </button>
+                    Create Account
+                </LoadingButton>
             </form>
 
             <div className="mt-6 text-center text-sm">
